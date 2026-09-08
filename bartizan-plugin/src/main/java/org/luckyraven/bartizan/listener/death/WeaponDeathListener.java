@@ -70,6 +70,12 @@ public class WeaponDeathListener implements Listener {
 	 */
 	@EventHandler
 	public void onWeaponEntityDamage(WeaponEntityDamageEvent event) {
+		// m1: nothing else in this listener runs on a schedule, so a victim entry that never gets claimed by a
+		// PlayerDeathEvent (the target survived, or dies later with no killer to attribute it to) would otherwise
+		// sit in the map forever. Piggyback the sweep on the only other event this listener already receives
+		// rather than adding a repeating Timer for what is, at steady state, a handful of entries.
+		recentThrowableKills.values().removeIf(this::isExpired);
+
 		if (!(event.getEntity() instanceof Player victim)) return;
 
 		recentThrowableKills.put(victim.getUniqueId(), new RecordedKill(event.weaponName(), System.currentTimeMillis()));
@@ -83,14 +89,25 @@ public class WeaponDeathListener implements Listener {
 	@EventHandler(priority = EventPriority.HIGH)
 	public void onPlayerDeath(PlayerDeathEvent event) {
 		Player victim = event.getEntity();
-		Player killer = victim.getKiller();
 
+		// M1: an earlier LOWEST-priority listener (Gangland's own PlayerDeathListener) nulls the death message for
+		// an NPC victim, an NPC killer, or a duplicate event, and that decision must never be overridden here.
+		// Standalone (no Gangland present) the vanilla death message is non-null, so the weapon path below still
+		// runs unchanged.
+		if (event.getDeathMessage() == null) return;
+
+		// m1: removed unconditionally, BEFORE the killer == null check below. The entry is recorded (in
+		// onWeaponEntityDamage) for any player victim of a WeaponEntityDamageEvent regardless of whether this
+		// death ever gets an attributable killer — leaving the remove after the early return meant a death with
+		// no killer (environmental finish, self-detonation) left the entry in the map permanently.
+		RecordedKill recorded = recentThrowableKills.remove(victim.getUniqueId());
+
+		Player killer = victim.getKiller();
 		if (killer == null) return;
 
 		// A recorded throwable claim takes priority over whatever the killer currently holds — they may have
 		// switched items since throwing.
 		String throwableName = null;
-		RecordedKill recorded = recentThrowableKills.remove(victim.getUniqueId());
 		if (recorded != null && !isExpired(recorded)) {
 			throwableName = recorded.weaponName();
 		}

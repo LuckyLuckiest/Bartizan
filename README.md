@@ -6,8 +6,10 @@ installed on any Keystone-powered server, not just Gangland's.
 
 ## Install
 
-Drop `Bartizan-0.1.0.jar` beside `Keystone-1.9.0.jar` in `/plugins`. Bartizan `depend`s on Keystone — Keystone must
-already be installed and enabled. Soft-depends on `ViaVersion`, `PlaceholderAPI`, `NBTAPI`.
+Drop `Bartizan-0.1.0.jar` beside `Keystone-1.9.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
+Keystone and NBT-API — both must already be installed and enabled, or Bartizan fails to load (Keystone's
+`NbtBridge.detect()` falls back to a no-op accessor when NBT-API is absent, which makes every Bartizan item inert,
+so it is a hard `depend:`, not a `softdepend:`). Soft-depends on `ViaVersion`, `PlaceholderAPI`.
 
 ## Data folder
 

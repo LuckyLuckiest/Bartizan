@@ -60,17 +60,22 @@ public class WeaponTableImportTask {
 		if (!ganglandDatabase.exists()) {
 			log.debug("No legacy Gangland database found at {} — fresh install or a MySQL deployment, not an " +
 			          "error.", ganglandDatabase);
-		} else {
-			try {
-				importFrom(ganglandDatabase);
-			} catch (SQLException exception) {
-				Diagnostics hub = Diagnostics.active();
-				if (hub != null) {
-					hub.report(exception, IMPORT_FAULT_CODE);
-				}
-				log.error("Failed to import the legacy weapon table from {}; existing weapons keep their " +
-				          "re-minted UUIDs from the catalogue instead.", ganglandDatabase, exception);
+			writeMarker(marker);
+			return;
+		}
+
+		try {
+			importFrom(ganglandDatabase);
+		} catch (SQLException exception) {
+			// M2: a transient error (e.g. SQLITE_BUSY while Gangland's own pool still holds gangland.db on the
+			// first boot) must retry on the NEXT boot, not be permanently skipped — do not write the marker here.
+			Diagnostics hub = Diagnostics.active();
+			if (hub != null) {
+				hub.report(exception, IMPORT_FAULT_CODE);
 			}
+			log.error("Failed to import the legacy weapon table from {}; will retry on the next boot.",
+			          ganglandDatabase, exception);
+			return;
 		}
 
 		writeMarker(marker);

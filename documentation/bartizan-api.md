@@ -66,7 +66,7 @@ public interface BartizanApi {
 
 | Accessor | Returns | Members |
 |---|---|---|
-| `weapons()` | `weapon.WeaponCatalog` | `getWeaponTemplate(String)`, `getWeaponTemplates()`, `createTransientWeapon(String)`, `validateAndGetWeapon(Player, ItemStack)`, `isWeapon(ItemStack)` — the first four may return `null`/empty for an unknown name; none of them mint or register a weapon instance (read-only lookups). |
+| `weapons()` | `weapon.WeaponCatalog` | `getWeaponTemplate(String)`, `getWeaponTemplates()`, `createTransientWeapon(String)`, `isWeapon(ItemStack)` — read-only lookups: each may return `null`/empty for an unknown name, and none of them mints or registers a weapon instance. `validateAndGetWeapon(Player, ItemStack)` is **not** read-only — it resolves the held item's uuid and, when that uuid is not yet in the runtime registry, mints and registers a live `Weapon` instance for it (`WeaponService.getWeapon` → `weapons.put`); use `getWeaponTemplate(...)` instead for a read-only lookup. |
 | `wearables()` | `wearable.WearableCatalog` | `getWearable(String)`, `getWearables()`, `resolveWearable(@Nullable ItemStack)`, `applyWearableReduction(double, LivingEntity, boolean)`, `reduceCritBonus(double, LivingEntity)`, `reduceFireTicks(int, LivingEntity)` |
 | `ammunition()` | `ammo.AmmunitionCatalog` | `getAmmunitionKeys()`, `getAmmunition(String)` |
 | `npcWeapons()` | `npc.NpcWeaponFactory` | `create(LivingEntity shooter, String weaponName, double fireRateMultiplier, double aimErrorDegrees)` → `npc.NpcWeaponController extends org.luckyraven.keystone.npc.spi.NpcRangedAttack` — the sole implementation of that Keystone SPI. A consumer with no Bartizan installed uses `NpcRangedAttack.NONE` instead of calling this accessor. |

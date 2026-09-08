@@ -15,8 +15,8 @@
 # Each entry defines a custom armor piece that integrates with the damage pipeline.
 # Items are identified in-game by a hidden NBT tag embedded when built via API.
 #
-# Permission nodes are derived automatically as "gangland.wearables.<key>"
-# (e.g. police_vest → gangland.wearables.police_vest).
+# Permission nodes are derived automatically as "bartizan.wearables.<key>"
+# (e.g. police_vest → bartizan.wearables.police_vest).
 #
 # Fields:
 #   Material            - Bukkit material name; must be an armor type

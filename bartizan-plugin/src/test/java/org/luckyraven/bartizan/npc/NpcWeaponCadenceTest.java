@@ -67,6 +67,39 @@ class NpcWeaponCadenceTest {
 	}
 
 	@Test
+	void single_withFireRateMultiplier_scalesAndFloorsTheCooldown() {
+		int    perShot            = 1;
+		int    cooldown           = 7;
+		double fireRateMultiplier = 0.5;
+		GunWeapon gun = mockGun(SelectiveFire.SINGLE, perShot, cooldown);
+		RecordingController controller = newController(gun, fireRateMultiplier);
+		LivingEntity target = mock(LivingEntity.class);
+
+		assertTrue(controller.tryFire(target), "first tryFire should fire");
+		assertEquals(1, controller.fireRoundCalls, "exactly one round fired for one SINGLE trigger");
+		assertTrue(controller.isBusy(), "busy immediately after firing");
+
+		// NpcWeaponControllerImpl.scaleCooldown: max(round(baseCooldown * fireRateMultiplier), 5), where
+		// baseCooldown here is max(perShot * cooldown, 5) = max(7, 5) = 7 (unchanged). scaled = round(7 * 0.5) =
+		// round(3.5) = 4 (Math.round rounds half up) — BELOW the 5-tick floor, so the floor is the constraint
+		// that actually decides the final busy window (5, not 4). Chosen deliberately so dropping the
+		// `max(scaled, 5)` floor breaks this assertion (the window would be 4 ticks, not 5). A rounding-only
+		// regression (e.g. `(int)` truncation instead of `Math.round`) is not independently distinguishable from
+		// this same value — truncate(3.5) = 3 also floors to 5 — the floor was picked as the property this case
+		// pins because losing the 5-tick minimum is the more severe regression (an NPC firing faster than any
+		// configured weapon should allow).
+		int expectedBusyTicks = Math.max((int) Math.round(perShot * cooldown * fireRateMultiplier), 5);
+		assertEquals(5, expectedBusyTicks, "sanity: this case is only useful while the floor is the binding constraint");
+
+		for (int i = 0; i < expectedBusyTicks - 1; i++) {
+			controller.tick();
+			assertTrue(controller.isBusy(), "still busy after tick #" + (i + 1) + " of " + expectedBusyTicks);
+		}
+		controller.tick();
+		assertFalse(controller.isBusy(), "no longer busy after the full " + expectedBusyTicks + "-tick window");
+	}
+
+	@Test
 	void burst_oneTriggerSchedulesPerShotRoundsAndStaysBusyForTotalTicks() {
 		int perShot  = 3;
 		int cooldown = 4;

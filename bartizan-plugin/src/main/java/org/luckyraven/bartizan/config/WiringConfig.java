@@ -14,6 +14,7 @@ import org.luckyraven.bartizan.api.raytrace.WeaponVisualSpawner;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
 import org.luckyraven.bartizan.bootstrap.DefaultListenerService;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
+import org.luckyraven.bartizan.data.WeaponAutoSaveTask;
 import org.luckyraven.bartizan.data.WeaponDataCleanupTask;
 import org.luckyraven.bartizan.database.BartizanDatabase;
 import org.luckyraven.bartizan.file.WeaponBlockRegenerationSettings;
@@ -109,6 +110,22 @@ public final class WiringConfig {
 		// it externally, so the bean starts its own schedule. start(false): the cleanup touches repository/manager
 		// state, not a Bukkit-API-free flag flip (house rule feedback_repeating_timer_async).
 		task.start(false);
+		return task;
+	}
+
+	/**
+	 * B1 (gate-GG-review blocker): {@code WeaponManager.initialize()} wires {@code setDataSupplier(...)} but
+	 * nothing ever called {@code saveAll} — every persisted weapon UUID was lost on restart. Mirrors Gangland's
+	 * {@code PeriodicalUpdates.onInitialize()} gate: a non-positive {@code Auto_Save.Time} disables autosave, so
+	 * the task is built (for {@code Bartizan.onDisable()}'s final save to still find it via the container) but
+	 * {@code start(false)} is only called when its computed period is positive.
+	 */
+	@Bean
+	public WeaponAutoSaveTask weaponAutoSaveTask(BartizanDatabase database) {
+		WeaponAutoSaveTask task = new WeaponAutoSaveTask(bartizan, database.getRepositoryRegistry());
+		if (task.getPeriod() > 0) {
+			task.start(false);
+		}
 		return task;
 	}
 
