@@ -37,10 +37,11 @@ public class WeaponItemApiImpl implements WeaponItemApi {
 
 	@Override
 	public boolean isSameWeapon(ItemStack a, ItemStack b) {
-		// Player-less resolution — WeaponService.validateAndGetWeapon tolerates a null player (see
-		// WeaponItemSpawnListener's own precedent) since it only needs the item's own NBT to rebuild the Weapon.
-		Weapon w1 = weaponService.validateAndGetWeapon(null, a);
-		Weapon w2 = weaponService.validateAndGetWeapon(null, b);
+		// Read-only: compare the configured templates. validateAndGetWeapon would mint and register a uuid'd weapon
+		// for every stack passed here, and the repository's data supplier would then persist it (gate-GG review B3).
+		// Weapon.compareTo reads only name, category, material and configured durability - all on the template.
+		Weapon w1 = weaponService.getWeaponTemplate(weaponService.getHeldWeaponName(a));
+		Weapon w2 = weaponService.getWeaponTemplate(weaponService.getHeldWeaponName(b));
 		if (w1 == null || w2 == null) return false;
 
 		return weaponService.compare(w1, w2) == 0;

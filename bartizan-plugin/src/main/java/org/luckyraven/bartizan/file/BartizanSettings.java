@@ -34,6 +34,7 @@ public class BartizanSettings implements FileInitializer {
 
 	private static @Getter boolean autoSaveDebug;
 	private static @Getter int     autoSaveTime;
+	private static @Getter int     cleanUpTime;
 
 	private static @Getter String  databaseType;
 	private static @Getter String  mysqlHost, mysqlUsername, mysqlPassword;
@@ -104,6 +105,10 @@ public class BartizanSettings implements FileInitializer {
 		NodeReader autoSave = section(root, "Auto_Save", report);
 		autoSaveDebug = bool(autoSave, "Debug", true);
 		autoSaveTime  = intVal(autoSave, "Time", 10);
+
+		// Clean_Up.Time (days): the weapon-table cleanup schedule driving WeaponDataCleanupTask (gate-GG review B1).
+		NodeReader cleanUp = section(root, "Clean_Up", report);
+		cleanUpTime = intVal(cleanUp, "Time", 30);
 
 		NodeReader database = section(root, "Database", report);
 		NodeReader mysql     = section(database, "MySQL", report);

@@ -42,6 +42,9 @@ public final class Bartizan extends JavaPlugin {
 
 	@Override
 	public void onDisable() {
+		// Symmetric teardown (gate-GG review B2): the WeaponRaytracer, BartizanApi and ItemVocabulary providers are
+		// registered at bean construction, so a disable/enable cycle must not leave dead providers behind.
+		getServer().getServicesManager().unregisterAll(this);
 		PacketBridge.reset();
 
 		if (context == null) return;
@@ -50,6 +53,8 @@ public final class Bartizan extends JavaPlugin {
 			context.shutdownBeans();
 		} catch (Throwable t) {
 			log.error("Bartizan failed to shut down cleanly", t);
+		} finally {
+			context.getContainer().clear();
 		}
 	}
 
@@ -61,7 +66,10 @@ public final class Bartizan extends JavaPlugin {
 		Metrics metrics = new Metrics(this, PLUGIN_ID);
 
 		metrics.addCustomChart(new SingleLineChart("number_of_weapons",
-		                                           () -> context.get(WeaponAddon.class).size()));
+		                                           () -> {
+		                                               WeaponAddon addon = context == null ? null : context.get(WeaponAddon.class);
+		                                               return addon == null ? 0 : addon.size();
+		                                           }));
 	}
 
 	/**

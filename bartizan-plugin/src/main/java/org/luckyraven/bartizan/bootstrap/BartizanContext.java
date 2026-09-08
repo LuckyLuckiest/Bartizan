@@ -94,6 +94,10 @@ public final class BartizanContext {
 		// FILE phase: after each file-initializer bean is registered, run FileManager.initializeAll() so the file
 		// is loaded before the next FILE-phase bean's @Bean method runs. FileManager is produced by KernelConfig in
 		// the KERNEL phase, so it is guaranteed to be in the container.
+		// NOTE (gate-GG review m3): this hook does NOT register FileInitializer beans - each FILE-phase bean calls
+		// fileManager.registerInitializer(this) itself (FilesConfig). A new FILE bean that forgets that call is never
+		// initialised and nothing warns; keep the pattern or move registration into this hook (FileManager keeps a
+		// plain list, so never do both).
 		beanFactory.setPhaseHook(Phase.FILE, beans -> {
 			FileManager fm = container.getInstance(FileManager.class);
 			if (fm != null) {
@@ -172,4 +176,8 @@ public final class BartizanContext {
 
 		log.debug("Command phase complete: {} command(s) registered", commandManager.commandView().size());
 	}
+	public DependencyContainer getContainer() {
+		return container;
+	}
+
 }

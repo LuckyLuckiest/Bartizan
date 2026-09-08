@@ -89,7 +89,7 @@ public final class ItemConfig {
 	 * {@link WeaponItemApi} — the cross-plugin build/compare/display-name helpers (bartizan.md §1.6(9)).
 	 */
 	@Bean
-	public WeaponItemApi weaponItemApi(WeaponService weaponService) {
+	public WeaponItemApiImpl weaponItemApi(WeaponService weaponService) {
 		return new WeaponItemApiImpl(weaponService);
 	}
 
@@ -101,7 +101,7 @@ public final class ItemConfig {
 	 * {@code uniqueItemRefresher} (0), ammunition sits behind it at 0.
 	 */
 	@Bean
-	public ItemVocabulary bartizanItemVocabulary(WeaponConverter weaponConverter,
+	public BartizanItemVocabulary bartizanItemVocabulary(WeaponConverter weaponConverter,
 	                                             AmmunitionConverter ammunitionConverter,
 	                                             WearableConverter wearableConverter,
 	                                             WeaponItemSerializer weaponItemSerializer,

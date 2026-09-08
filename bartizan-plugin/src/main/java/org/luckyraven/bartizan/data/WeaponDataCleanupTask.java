@@ -30,8 +30,11 @@ public final class WeaponDataCleanupTask extends Timer {
 	}
 
 	private static long periodTicks() {
-		// Auto_Save.Time is authored in minutes (settings.yml, bartizan.md §1.8), same unit Gangland uses.
-		return BartizanSettings.getAutoSaveTime() * 60L * 20L;
+		// Clean_Up.Time is authored in DAYS (settings.yml), the same schedule Gangland's PluginDataCleanupService ran this
+		// cleanup on (Clean_Up.Time: 30). Auto_Save.Time is the autosave interval in minutes and must never drive a table
+		// wipe (gate-GG review B1). A non-positive value falls back to one day rather than an every-tick wipe.
+		long days = Math.max(1L, BartizanSettings.getCleanUpTime());
+		return days * 24L * 60L * 60L * 20L;
 	}
 
 	public String name() {
