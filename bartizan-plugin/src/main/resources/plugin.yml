@@ -1,0 +1,27 @@
+name: Bartizan
+version: ${project.version}
+main: org.luckyraven.bartizan.Bartizan
+database: true
+# Support floor is MC 1.16, matching Keystone's API floor; players on older clients go through ViaVersion/ViaBackwards
+api-version: '1.16'
+depend:
+   - Keystone
+softdepend:
+   - ViaVersion
+   - PlaceholderAPI
+   - NBTAPI
+authors:
+   - LuckyRaven10
+description: ${project.description}
+
+commands:
+   bartizan:
+      description: Bartizan weapons main command.
+      permission: bartizan.command.main
+      aliases:
+         - btz
+         - weapon
+
+permissions:
+   bartizan.command.main:
+      default: op
