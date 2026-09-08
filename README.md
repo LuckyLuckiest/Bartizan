@@ -32,8 +32,57 @@ Consumers (e.g. Gangland Warfare's `gangland-features/*` modules) depend on `bar
 discover `BartizanApi` through Bukkit's `ServicesManager` at runtime — Bartizan never names a consumer's types, and
 a consumer never names Bartizan's plugin-side (`bartizan-plugin`) types.
 
-See `documentation/bartizan-api.md` for the service table and a worked resolution example, and
-`documentation/migration.md` for what server owners moving off an older Gangland Warfare weapon module need to do. _(both documents are added in B21)_
+See [`documentation/bartizan-api.md`](documentation/bartizan-api.md) for the service table and a worked resolution
+example, and [`documentation/migration.md`](documentation/migration.md) for what server owners moving off an older
+Gangland Warfare weapon module need to do.
+
+## Package map (as-built, 0.1.0)
+
+```
+bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
+                                       .ammo                   Ammunition, AmmunitionCatalog
+                                       .combat                 CombatEligibility
+                                       .event                  WeaponEvent, WeaponShootEvent, WeaponRaytraceImpactEvent,
+                                                                WeaponEntityDamageEvent, WeaponKillEntityEvent,
+                                                                WeaponReloadEvent/Start/Complete, WeaponChangeSelectiveFireEvent
+                                       .item                   WeaponItemApi
+                                       .npc                    NpcWeaponFactory, NpcWeaponController
+                                       .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
+                                       .weapon                 Weapon + 5 subclasses, WeaponType, ThrowableType, SelectiveFire,
+                                                                WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
+                                       .weapon.dto              15 config records (AmmunitionData, DamageData, ...)
+                                       .weapon.durability        DurabilityCalculator
+                                       .weapon.modifiers          BlockDamageManager + action/*
+                                       .weapon.recoil            RecoilManager
+                                       .weapon.reload            Reload, ReloadType, InstantReload, NumberedReload
+                                       .weapon.spread            SpreadManager
+                                       .wearable               Wearable, WearableCatalog
+
+bartizan-plugin org.luckyraven.bartizan                       Bartizan, BartizanApiImpl
+                                       .ammo                   AmmunitionManager
+                                       .bootstrap              BartizanContext, DefaultListenerService
+                                       .command(.data|.wearable) WeaponCommand/Give/Info/List, Ammunition*, Wearable*, DebugCommand
+                                       .config                 KernelConfig, FilesConfig, DatabaseConfig, WiringConfig, ItemConfig
+                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 9 YAML section parsers
+                                       .data                   WeaponDataCleanupTask
+                                       .database               BartizanDatabase, WeaponTable, WeaponRepository, WeaponTableImportTask
+                                       .file                   BartizanSettings, BartizanMessages, WeaponLoader
+                                       .fire                   PluginFireRegistry
+                                       .item                   converters, serializers, refreshers, WeaponItemApiImpl, BartizanItemVocabulary
+                                       .listener(.*)           WeaponInteract, ScopeJumpListener, death/fire/player/projectile/reload/selective/wearable
+                                       .metrics                WeaponMetrics
+                                       .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
+                                       .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
+                                                                RaytraceContext, WeaponVisualSpawner
+                                       .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser
+                                       .weapon(.action)        WeaponService, WeaponManager, GunAction/FullAutoTask/MeleeAction/...
+                                       .wearable               WearableAddon, WearableService
+```
+
+`WeaponShooting`, `WeaponMuzzle` and `SteppedProjectileTask` live in `bartizan-plugin`'s `raytrace` package, not
+`bartizan-api` — moved there at gate GD once their only external caller (a Gangland NPC combat delegate) became
+Bartizan's own `NpcWeaponControllerImpl`. `RaytraceContext` and `WeaponVisualSpawner` stay in `bartizan-api` because
+`WeaponRaytracer`'s own signature names them.
 
 ## Build
 

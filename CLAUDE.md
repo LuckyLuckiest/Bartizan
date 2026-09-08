@@ -28,6 +28,10 @@ or any `io.papermc.*` import). Use Spigot/Bukkit equivalents instead.
   belongs in `bartizan-plugin`.
 - Bartizan does **not** use `keystone-module` — it is a plain plugin, not a Keystone module host. No
   `ModuleLoader`, no `module.yml`, no `Host_Api`.
+- The final, as-built package map for both modules is in [`README.md`](README.md#package-map-as-built-010) —
+  consult it before assuming where a class lives; three raytrace classes (`WeaponShooting`, `WeaponMuzzle`,
+  `SteppedProjectileTask`) moved from `bartizan-api` to `bartizan-plugin` at gate GD after the initial split, so an
+  older mental model of the package layout is wrong for those three.
 
 ## Cross-plugin discovery
 
