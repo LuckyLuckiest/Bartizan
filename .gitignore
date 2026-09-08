@@ -1,0 +1,9 @@
+target/
+.flattened-pom.xml
+*.iml
+.idea/
+.vscode/
+*.log
+
+# Generated knowledge-graph output (graphify skill)
+graphify-out/

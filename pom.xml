@@ -1,0 +1,440 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.luckyraven.bartizan</groupId>
+    <artifactId>bartizan</artifactId>
+    <version>${revision}</version>
+    <packaging>pom</packaging>
+
+    <name>Bartizan</name>
+    <description>Standalone weapons plugin for Gangland Warfare: weapons, ammunition, wearables and projectile combat, on top of Keystone.</description>
+    <!-- Maven Central requires url, licenses, developers and scm in every published pom. The child
+         modules inherit all four from here; the child.*.inherit.append.path="false" attributes stop
+         Maven appending each module's directory to the inherited urls (those links would 404). -->
+    <url child.project.url.inherit.append.path="false">https://github.com/LuckyLuckiest/Bartizan</url>
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <id>LuckyLuckiest</id>
+            <name>LuckyRaven10</name>
+            <email>luckyluckiest2002@gmail.com</email>
+            <url>https://github.com/LuckyLuckiest</url>
+        </developer>
+    </developers>
+    <scm child.scm.connection.inherit.append.path="false"
+         child.scm.developerConnection.inherit.append.path="false"
+         child.scm.url.inherit.append.path="false">
+        <connection>scm:git:https://github.com/LuckyLuckiest/Bartizan.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/LuckyLuckiest/Bartizan.git</developerConnection>
+        <url>https://github.com/LuckyLuckiest/Bartizan</url>
+        <tag>HEAD</tag>
+    </scm>
+
+    <modules>
+        <module>bartizan-api</module>
+        <module>bartizan-plugin</module>
+    </modules>
+
+    <properties>
+        <!-- Single source of truth for the Bartizan version (CI-friendly versioning).
+             Bump ONLY this property; child poms reference ${revision} and flatten-maven-plugin
+             resolves it in the installed/deployed poms. -->
+        <revision>0.1.0</revision>
+
+        <!-- Java 17, matching Keystone's floor. -->
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- API floor: Spigot 1.16.5, matching Keystone's floor and plugin.yml's api-version. -->
+        <bukkit.version>1.16.5-R0.1-SNAPSHOT</bukkit.version>
+
+        <!-- Keystone: provided at runtime from Keystone-<version>.jar in /plugins, never shaded. -->
+        <keystone.version>1.9.0</keystone.version>
+
+        <viaversion.version>5.8.1</viaversion.version>
+        <xseries.version>13.6.0</xseries.version>
+        <gson.version>2.10.1</gson.version>
+        <bstats.version>3.2.1</bstats.version>
+        <log4j.version>2.19.0</log4j.version>
+
+        <junit.version>6.0.3</junit.version>
+        <mockito.version>5.23.0</mockito.version>
+        <lombok.version>1.18.44</lombok.version>
+        <annotations.version>26.1.0</annotations.version>
+        <sqlite-jdbc.version>3.51.2.0</sqlite-jdbc.version>
+        <maven-surefire-plugin.version>3.5.5</maven-surefire-plugin.version>
+
+        <!-- Central publishing (release profile only) -->
+        <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
+        <maven-javadoc-plugin.version>3.11.2</maven-javadoc-plugin.version>
+        <maven-gpg-plugin.version>3.2.7</maven-gpg-plugin.version>
+        <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
+        <!-- -Dcentral.skipPublishing=true runs the deploy phase without touching Central at all:
+             the plugin stages nothing and writes no bundle (verified against 0.11.0). -->
+        <central.skipPublishing>false</central.skipPublishing>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>maven_central</id>
+            <url>https://repo.maven.apache.org/maven2/</url>
+        </repository>
+        <repository>
+            <id>spigot-repo</id>
+            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+        </repository>
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+        <repository>
+            <id>jitpack.io</id>
+            <url>https://jitpack.io</url>
+        </repository>
+        <repository>
+            <id>placeholderapi</id>
+            <url>https://repo.extendedclip.com/content/repositories/placeholderapi/</url>
+        </repository>
+        <!-- viaversion-api (Keystone has no ViaVersion repo; Gangland's root pom does) -->
+        <repository>
+            <id>viaversion-repo</id>
+            <url>https://repo.viaversion.com</url>
+        </repository>
+    </repositories>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Bartizan's own artifact (self-reference for the api/plugin split) -->
+            <dependency>
+                <groupId>org.luckyraven.bartizan</groupId>
+                <artifactId>bartizan-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Keystone — provided everywhere, never shaded. -->
+            <dependency>
+                <groupId>org.luckyraven</groupId>
+                <artifactId>keystone-common</artifactId>
+                <version>${keystone.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.luckyraven</groupId>
+                <artifactId>keystone-bean</artifactId>
+                <version>${keystone.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.luckyraven</groupId>
+                <artifactId>keystone-command</artifactId>
+                <version>${keystone.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.luckyraven</groupId>
+                <artifactId>keystone-item</artifactId>
+                <version>${keystone.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.luckyraven</groupId>
+                <artifactId>keystone-persistence</artifactId>
+                <version>${keystone.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.luckyraven</groupId>
+                <artifactId>keystone-hooks</artifactId>
+                <version>${keystone.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <!-- Not in the checklist's abbreviated keystone-{...} list (B1), but B2 requires
+                 bartizan-api to depend on keystone-npc (provided) for the NpcRangedAttack SPI —
+                 without a managed version here that dependency cannot resolve. Recorded as a gap
+                 fill in section 7, not a real inconsistency. -->
+            <dependency>
+                <groupId>org.luckyraven</groupId>
+                <artifactId>keystone-npc</artifactId>
+                <version>${keystone.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>com.viaversion</groupId>
+                <artifactId>viaversion-api</artifactId>
+                <version>${viaversion.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cryptomorin</groupId>
+                <artifactId>XSeries</artifactId>
+                <version>${xseries.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.bstats</groupId>
+                <artifactId>bstats-bukkit</artifactId>
+                <version>${bstats.version}</version>
+                <scope>compile</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.code.gson</groupId>
+                <artifactId>gson</artifactId>
+                <version>${gson.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-api</artifactId>
+                <version>${log4j.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-core</artifactId>
+                <version>${log4j.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.jetbrains</groupId>
+                <artifactId>annotations</artifactId>
+                <version>${annotations.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+                <version>${lombok.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- Server platform -->
+            <dependency>
+                <groupId>org.spigotmc</groupId>
+                <artifactId>spigot-api</artifactId>
+                <version>${bukkit.version}</version>
+                <scope>provided</scope>
+            </dependency>
+
+            <!-- Test -->
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-core</artifactId>
+                <version>${mockito.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.xerial</groupId>
+                <artifactId>sqlite-jdbc</artifactId>
+                <version>${sqlite-jdbc.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Every module compiles against Spigot, lombok and JetBrains annotations -->
+        <dependency>
+            <groupId>org.spigotmc</groupId>
+            <artifactId>spigot-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains</groupId>
+            <artifactId>annotations</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Resolves ${revision} in the poms that get installed/deployed, so consumers
+                 resolving org.luckyraven.bartizan:* from a repository see a concrete version. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <version>1.6.0</version>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <version>3.2.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>3.3.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>3.4.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-install-plugin</artifactId>
+                    <version>3.1.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>3.6.1</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <!-- Everything the Sonatype Central Portal requires on top of the normal build: sources +
+         javadoc jars, GPG signatures (.asc), and the upload bundle with md5/sha1 (required) plus
+         sha256/sha512 checksums for every deployed file. Kept out of the default build so
+         day-to-day `mvn install` stays fast and never asks for a GPG key.
+
+             Release:            mvn clean deploy -P release
+             Build w/o publish:  mvn clean install -P release -Dgpg.skip=true
+                                 (sources/javadoc jars only; signing and Central never run,
+                                 because the publish goal is bound to the deploy phase)
+
+         Needs a Central Portal token under <server><id>central</id></server> in ~/.m2/settings.xml
+         and a GPG key published to a key server — see Keystone's docs/central-publishing.md. -->
+    <profiles>
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>${maven-source-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>${maven-javadoc-plugin.version}</version>
+                        <configuration>
+                            <!-- Central only requires the javadoc jar to exist; doclint stays off
+                                 so incomplete doc comments never block a release. -->
+                            <doclint>none</doclint>
+                            <quiet>true</quiet>
+                            <notimestamp>true</notimestamp>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>${maven-gpg-plugin.version}</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>${central-publishing-maven-plugin.version}</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <deploymentName>Bartizan ${revision}</deploymentName>
+                            <!-- Stop after portal validation; publishing stays a manual button on
+                                 central.sonatype.com so a bad deployment can be dropped. -->
+                            <autoPublish>false</autoPublish>
+                            <!-- md5 + sha1 (required by Central) plus sha256 + sha512, generated
+                                 for every file in the bundle. -->
+                            <checksums>all</checksums>
+                            <skipPublishing>${central.skipPublishing}</skipPublishing>
+                            <!-- The shaded Bartizan-<version>.jar goes onto servers, not into Maven
+                                 builds — consumers compile against bartizan-api. -->
+                            <excludeArtifacts>
+                                <excludeArtifact>bartizan-plugin</excludeArtifact>
+                            </excludeArtifacts>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

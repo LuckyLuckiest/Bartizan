@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.luckyraven.bartizan</groupId>
+        <artifactId>bartizan</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>bartizan-api</artifactId>
+    <name>Bartizan API</name>
+    <description>Public weapon/ammo/wearable model and service contracts. No net.minecraft, no org.bukkit.craftbukkit, no org.luckyraven.gangland symbols — provided scope in every consumer.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.luckyraven</groupId>
+            <artifactId>keystone-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.luckyraven</groupId>
+            <artifactId>keystone-item</artifactId>
+        </dependency>
+        <!-- Brings citizens-main transitively at provided scope; that is expected and never
+             reaches the jar. NpcWeaponController only extends the keystone-npc SPI interface. -->
+        <dependency>
+            <groupId>org.luckyraven</groupId>
+            <artifactId>keystone-npc</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.spigotmc</groupId>
+            <artifactId>spigot-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cryptomorin</groupId>
+            <artifactId>XSeries</artifactId>
+        </dependency>
+
+        <!-- Test — ModifierHandlerTest (ported from Gangland) needs Mockito even though this is
+             a library module; that is not a "test dependency in a module pom" violation, it is a
+             library module's own test config (bartizan.md B19). -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
