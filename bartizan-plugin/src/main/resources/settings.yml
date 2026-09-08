@@ -1,0 +1,34 @@
+# settings.yml - Bartizan's runtime configuration (bartizan.md §1.8). Carries only the seven Gangland settings
+# the weapon module actually read, plus the infrastructure sections a standalone plugin needs.
+
+Language: "en"
+
+Debug:
+   Enable: false
+
+Money_Symbol: "$"
+
+Block_Regeneration:
+   Restore_Delay_Ticks: 100
+   Regeneration_Delay_Ticks: 100
+   Regeneration_Step_Ticks: 4
+
+Auto_Save:
+   Debug: true
+   Time: 10
+
+# Weapon-table cleanup schedule (days), drives WeaponDataCleanupTask - not the same as Auto_Save.Time
+# (gate-GG review B1).
+Clean_Up:
+   Time: 30
+
+Database:
+   Type: "sqlite"
+   MySQL:
+      Host: "localhost"
+      Port: 3306
+      Username: "root"
+      Password: ""
+   SQLite:
+      Backup: true
+      Failed_MySQL: true

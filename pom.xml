@@ -170,6 +170,16 @@
                 <version>${keystone.version}</version>
                 <scope>provided</scope>
             </dependency>
+            <!-- Another gap-fill, same reasoning as keystone-npc above: B19's ported WeaponItemPredicatesTest
+                 needs org.luckyraven.keystone.testkit.RecordingNbtAccessor, which was not in B1's abbreviated
+                 dependencyManagement list. Test scope only, declared on bartizan-plugin (bartizan-api gets no
+                 test dependencies beyond what B2 already gave it). -->
+            <dependency>
+                <groupId>org.luckyraven</groupId>
+                <artifactId>keystone-testkit</artifactId>
+                <version>${keystone.version}</version>
+                <scope>test</scope>
+            </dependency>
 
             <dependency>
                 <groupId>com.viaversion</groupId>

@@ -144,6 +144,12 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- RecordingNbtAccessor / NbtBridge for WeaponItemPredicatesTest (bartizan.md §3, B19) -->
+        <dependency>
+            <groupId>org.luckyraven</groupId>
+            <artifactId>keystone-testkit</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>

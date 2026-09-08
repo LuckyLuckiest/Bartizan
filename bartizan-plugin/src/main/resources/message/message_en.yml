@@ -1,0 +1,37 @@
+# message_en.yml - Bartizan's message catalogue (bartizan.md §1.5).
+# 18 entries: 4 prefixes + 14 content members - exactly what BartizanMessages reads, nothing else.
+
+Normal:
+   Prefix: "&8&l[&7B&fT&7Z&8&l]&7 "
+
+Commands:
+   Prefix: "&6BTZ &8&l>>&7 "
+   Syntax:
+      Missing_Arguments: "&4Missing Arguments&7: "
+   Weapon:
+      Received: "You received &8(&7%amount%&8) &e%weapon% &7weapon."
+      List_Header: "List of weapons"
+   Ammo:
+      Received: "You received &8(&7%amount%&8) &e%ammo% &7ammunition."
+      List_Header: "List of ammunition"
+   Wearable:
+      Gave: "Gave &b%name% &7x&b%amount%&7."
+      List_Header: "List of wearables"
+
+Errors:
+   Prefix: "&4Error&7: "
+   Must_Be_Numbers: "&a%command% &7must be numbers."
+   Not_Valid_Weapon: "&cInvalid weapon type &3%args%&c."
+   Not_Valid_Ammo: "&cInvalid ammunition type &3%args%&c."
+   Wearable:
+      Invalid: "Invalid wearable: &c%name%"
+      Not_Registered: "Wearable not registered: &c%key%"
+      Not_Wearable: "Not a registered wearable!"
+
+Information:
+   Prefix: "&8&l[&7Information&8&l]&7 "
+
+Death:
+   Weapon:
+      - "%killer% killed %victim% vigorously using %item%."
+      - "%victim% was killed by %killer% using %item%."
