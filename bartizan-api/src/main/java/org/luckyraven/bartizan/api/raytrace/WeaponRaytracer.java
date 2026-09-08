@@ -7,7 +7,7 @@ import org.bukkit.Location;
  * (bartizan.md §1.6(7)). The runtime is {@code WeaponRaytracerImpl}, holding {@code WeaponManager},
  * {@code WearableAddon}, {@code BlockDamageManager} and {@link WeaponVisualSpawner} - it cannot live in
  * {@code bartizan-api} without dragging the whole runtime with it. This interface carries only the four members
- * every consumer (and this same module's {@link WeaponShooting}) actually calls.
+ * every consumer (and this same module's {@code WeaponShooting}) actually calls.
  *
  * <p>The {@code ServicesManager} key stays this interface, matching today's
  * {@code getRegistration(WeaponRaytracer.class)} call shape for third-party consumers (bartizan.md §C.3).
@@ -38,7 +38,7 @@ public interface WeaponRaytracer {
 	/**
 	 * Runs the full hitscan loop for a single ray, synchronously, until the ray stops (no more penetration, no more
 	 * ricochet, no more distance). The supplied request must carry an origin already at the muzzle position - see
-	 * {@link WeaponMuzzle#compute}.
+	 * {@code WeaponMuzzle#compute}.
 	 */
 	void fireInstant(RaytraceRequest request);
 
