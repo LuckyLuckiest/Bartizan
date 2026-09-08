@@ -1,0 +1,58 @@
+{
+	"weapon_help": {
+		"usage": "/bartizan weapon help <page>",
+		"description": "Shows the specified page in the weapon menu."
+	},
+	"weapon_list": {
+		"usage": "/bartizan weapon list",
+		"description": "Shows a list of registered weapons."
+	},
+	"weapon_give": {
+		"usage": "/bartizan weapon give <name> <amount>",
+		"description": "Gives the specified weapon if registered."
+	},
+	"weapon_info": {
+		"usage": "/bartizan weapon info <name>",
+		"description": "Shows the information of the held weapon or of the specified name."
+	},
+	"ammunition_help": {
+		"usage": "/bartizan ammo help <page>",
+		"description": "Shows the specified page in the ammo menu."
+	},
+	"ammunition_list": {
+		"usage": "/bartizan ammo list",
+		"description": "Shows all the available ammo."
+	},
+	"ammunition_give": {
+		"usage": "/bartizan ammo give <name> <amount>",
+		"description": "Gives the player the specified ammo if registered."
+	},
+	"ammunition_info": {
+		"usage": "/bartizan ammo info <name>",
+		"description": "Shows the information of the held ammo or of the specified name."
+	},
+	"wearable_help": {
+		"usage": "/bartizan wearable help <page>",
+		"description": "Shows the specified page in the wearable menu."
+	},
+	"wearable_give": {
+		"usage": "/bartizan wearable give <name> <amount>",
+		"description": "Gives the specified wearable item."
+	},
+	"wearable_info": {
+		"usage": "/bartizan wearable info <name>",
+		"description": "Shows information about the specified wearable item."
+	},
+	"wearable_list": {
+		"usage": "/bartizan wearable list",
+		"description": "Shows all registered wearable items."
+	},
+	"bartizan_debug": {
+		"usage": "/bartizan debug weapon",
+		"description": "Lists the UUID of every currently loaded weapon."
+	},
+	"bartizan_reload": {
+		"usage": "/bartizan reload",
+		"description": "Reloads Bartizan's files and beans."
+	}
+}

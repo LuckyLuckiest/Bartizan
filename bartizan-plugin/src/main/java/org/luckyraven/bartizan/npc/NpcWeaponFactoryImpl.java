@@ -1,0 +1,35 @@
+package org.luckyraven.bartizan.npc;
+
+import org.bukkit.entity.LivingEntity;
+import org.luckyraven.bartizan.Bartizan;
+import org.luckyraven.bartizan.api.npc.NpcWeaponController;
+import org.luckyraven.bartizan.api.npc.NpcWeaponFactory;
+import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.weapon.WeaponManager;
+
+/**
+ * Bartizan's sole {@link NpcWeaponFactory} implementation (bartizan.md §1.6(8)). Resolves a fresh, non-persisted
+ * weapon instance via {@link WeaponManager#createTransientWeapon(String)} — matching {@code W/WeaponService.java}'s
+ * own fallback path for weapons that never touch the {@code weapon} table (NPCs never own a persisted UUID).
+ * Constructor matches {@code WiringConfig.npcWeaponFactory(WeaponManager)}'s existing
+ * {@code new NpcWeaponFactoryImpl(bartizan, weaponManager)} call exactly (bartizan.md B10 row) — no config-class
+ * change needed.
+ */
+public class NpcWeaponFactoryImpl implements NpcWeaponFactory {
+
+	private final Bartizan      bartizan;
+	private final WeaponManager weaponManager;
+
+	public NpcWeaponFactoryImpl(Bartizan bartizan, WeaponManager weaponManager) {
+		this.bartizan      = bartizan;
+		this.weaponManager = weaponManager;
+	}
+
+	@Override
+	public NpcWeaponController create(LivingEntity shooter, String weaponName, double fireRateMultiplier,
+	                                  double aimErrorDegrees) {
+		Weapon weapon = weaponManager.createTransientWeapon(weaponName);
+		return new NpcWeaponControllerImpl(bartizan, shooter, weapon, fireRateMultiplier, aimErrorDegrees);
+	}
+
+}

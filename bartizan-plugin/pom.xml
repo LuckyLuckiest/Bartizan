@@ -83,6 +83,18 @@
             <groupId>org.luckyraven</groupId>
             <artifactId>keystone-item</artifactId>
         </dependency>
+        <!-- NpcWeaponControllerImpl implements NpcWeaponController extends keystone-npc's NpcRangedAttack SPI
+             interface (bartizan.md §1.6(8)/§B17). bartizan-api declares this at `provided` scope, which Maven does
+             NOT propagate transitively to a dependent module — without this entry javac cannot resolve
+             NpcRangedAttack's class file when compiling any class that implements NpcWeaponController, and (as
+             observed while writing B17/B20) a single unresolved supertype like this can cascade into spurious
+             "cannot find symbol: variable log" errors across unrelated Lombok-processed classes in the same
+             compilation round. Same "brings citizens-main transitively at provided scope, never reaches the jar"
+             note as bartizan-api's own copy of this dependency. -->
+        <dependency>
+            <groupId>org.luckyraven</groupId>
+            <artifactId>keystone-npc</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.luckyraven</groupId>
             <artifactId>keystone-persistence</artifactId>
