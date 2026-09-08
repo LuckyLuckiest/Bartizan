@@ -2,6 +2,7 @@ package org.luckyraven.bartizan.api.weapon;
 
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 
@@ -11,13 +12,19 @@ import java.util.Collection;
  */
 public interface WeaponCatalog {
 
-	Weapon getWeaponTemplate(String name);
+	/** @return the configured template, or {@code null} when no weapon has that name. */
+	@Nullable
+	Weapon getWeaponTemplate(@Nullable String name);
 
 	Collection<Weapon> getWeaponTemplates();
 
-	Weapon createTransientWeapon(String name);
+	/** @return a fresh, unowned copy of the template, or {@code null} when no weapon has that name. */
+	@Nullable
+	Weapon createTransientWeapon(@Nullable String name);
 
-	Weapon validateAndGetWeapon(Player player, ItemStack item);
+	/** @return the weapon the item represents, or {@code null} when the item is not a valid weapon for that player. */
+	@Nullable
+	Weapon validateAndGetWeapon(Player player, @Nullable ItemStack item);
 
 	boolean isWeapon(ItemStack item);
 

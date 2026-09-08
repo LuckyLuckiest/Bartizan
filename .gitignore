@@ -7,3 +7,6 @@ target/
 
 # Generated knowledge-graph output (graphify skill)
 graphify-out/
+
+# Read-only source snapshot of Gangland ref 0.8.4 (git archive) used as the copy source by the port executors
+.gangland-0.8.4/

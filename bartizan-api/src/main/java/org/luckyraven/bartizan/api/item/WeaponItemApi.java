@@ -1,6 +1,7 @@
 package org.luckyraven.bartizan.api.item;
 
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Cross-plugin item helpers for weapon ItemStacks (bartizan.md §1.6(9)) - implemented by
@@ -17,6 +18,8 @@ import org.bukkit.inventory.ItemStack;
  */
 public interface WeaponItemApi {
 
+	/** @return the item for a fresh transient weapon of that name, or {@code null} when no weapon has that name. */
+	@Nullable
 	ItemStack buildItem(String weaponName);
 
 	boolean isValidWeaponName(String name);

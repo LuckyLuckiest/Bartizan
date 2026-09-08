@@ -1,4 +1,4 @@
-package org.luckyraven.bartizan.api.raytrace;
+package org.luckyraven.bartizan.raytrace;
 
 import org.bukkit.Location;
 import org.bukkit.entity.LivingEntity;

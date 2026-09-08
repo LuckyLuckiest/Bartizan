@@ -12,7 +12,6 @@ import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
-import org.luckyraven.bartizan.api.weapon.reload.Reload;
 
 import java.util.Objects;
 

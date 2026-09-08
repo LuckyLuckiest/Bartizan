@@ -12,7 +12,9 @@ import java.util.Map;
  */
 public interface WearableCatalog {
 
-	Wearable getWearable(String key);
+	/** @return the configured wearable, or {@code null} when no wearable has that key. */
+	@Nullable
+	Wearable getWearable(@Nullable String key);
 
 	Map<String, Wearable> getWearables();
 

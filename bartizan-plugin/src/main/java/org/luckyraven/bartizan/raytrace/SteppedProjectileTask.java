@@ -1,4 +1,8 @@
-package org.luckyraven.bartizan.api.raytrace;
+package org.luckyraven.bartizan.raytrace;
+
+import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
+import org.luckyraven.bartizan.api.raytrace.RaytraceContext;
+import org.luckyraven.bartizan.api.raytrace.WeaponVisualSpawner;
 
 import com.cryptomorin.xseries.particles.XParticle;
 import org.bukkit.Location;

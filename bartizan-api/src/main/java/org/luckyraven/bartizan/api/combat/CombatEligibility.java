@@ -19,11 +19,20 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 @FunctionalInterface
 public interface CombatEligibility {
 
+	/**
+	 * @return {@code false} when the player is out of combat (downed, dead, otherwise protected). Callers gate with
+	 * {@code if (!canBeHit(player))} - the INVERSE of the old {@code DownedPlayerRegistry.isDowned(uuid)}; an
+	 * implementor porting that registry returns {@code !isDowned}, never {@code isDowned}.
+	 */
 	boolean canBeHit(Player player);
 
 	CombatEligibility DEFAULT = player -> !player.isDead();
 
 	static CombatEligibility resolve() {
+		if (Bukkit.getServer() == null) {
+			return DEFAULT; // no server installed (unit tests)
+		}
+
 		RegisteredServiceProvider<CombatEligibility> registration =
 				Bukkit.getServicesManager().getRegistration(CombatEligibility.class);
 

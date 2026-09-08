@@ -1,4 +1,8 @@
-package org.luckyraven.bartizan.api.raytrace;
+package org.luckyraven.bartizan.raytrace;
+
+import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
+import org.luckyraven.bartizan.api.raytrace.RaytraceContext;
+import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 
 import org.bukkit.Location;
 import org.bukkit.entity.Fireball;
@@ -19,7 +23,7 @@ import org.luckyraven.bartizan.api.weapon.GunWeapon;
  * {@link WeaponRaytracer#fireInstant} and ROCKET / FLARE through a {@link SteppedProjectileTask} that drives a cosmetic
  * Bukkit projectile entity.
  * <p>
- * Both {@code GunAction} (player firing path) and {@code AbstractNpc#performGanglandWeaponAttack} (NPC firing path)
+ * Both {@code GunAction} (player firing path) and {@code NpcWeaponControllerImpl} (NPC firing path)
  * call this helper so the dispatch logic stays in one place. Player-specific concerns (durability decrement, recoil,
  * sound to shooter, item update) live in the callers.
  */
