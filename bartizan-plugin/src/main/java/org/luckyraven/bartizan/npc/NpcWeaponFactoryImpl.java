@@ -29,6 +29,10 @@ public class NpcWeaponFactoryImpl implements NpcWeaponFactory {
 	public NpcWeaponController create(LivingEntity shooter, String weaponName, double fireRateMultiplier,
 	                                  double aimErrorDegrees) {
 		Weapon weapon = weaponManager.createTransientWeapon(weaponName);
+		if (weapon == null) {
+			// Gate-H review M1: an unknown name used to surface as an NPE on the controller's first combat tick.
+			throw new IllegalArgumentException("Unknown weapon '" + weaponName + "' - check WeaponItemApi.isValidWeaponName first");
+		}
 		return new NpcWeaponControllerImpl(bartizan, shooter, weapon, fireRateMultiplier, aimErrorDegrees);
 	}
 

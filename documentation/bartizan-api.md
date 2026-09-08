@@ -61,6 +61,9 @@ public interface BartizanApi {
 }
 ```
 
+> `NpcWeaponFactory.create` throws `IllegalArgumentException` for a weapon name that is not configured; call `items().isValidWeaponName(name)` first (Gangland's `BartizanNpcWeapons` does, returning `NpcRangedAttack.NONE`).
+
+
 | Accessor | Returns | Members |
 |---|---|---|
 | `weapons()` | `weapon.WeaponCatalog` | `getWeaponTemplate(String)`, `getWeaponTemplates()`, `createTransientWeapon(String)`, `validateAndGetWeapon(Player, ItemStack)`, `isWeapon(ItemStack)` — the first four may return `null`/empty for an unknown name; none of them mint or register a weapon instance (read-only lookups). |
