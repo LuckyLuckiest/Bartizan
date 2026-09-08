@@ -31,8 +31,15 @@
                         <goals><goal>shade</goal></goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <!-- No relocations: Keystone is provided (never shaded here), and
-                                 bartizan-api is the only compile-scoped dependency of our own. -->
+                            <!-- Keystone is provided (never shaded here) and bartizan-api is our own, so the only
+                                 relocation is bStats: Spigot shares classes across plugin classloaders, and
+                                 Gangland relocates the same library (gangland-build/pom.xml). -->
+                            <relocations>
+                                <relocation>
+                                    <pattern>org.bstats</pattern>
+                                    <shadedPattern>org.luckyraven.bartizan.dependency.bstats</shadedPattern>
+                                </relocation>
+                            </relocations>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>

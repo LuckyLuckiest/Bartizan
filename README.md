@@ -33,7 +33,7 @@ discover `BartizanApi` through Bukkit's `ServicesManager` at runtime — Bartiza
 a consumer never names Bartizan's plugin-side (`bartizan-plugin`) types.
 
 See `documentation/bartizan-api.md` for the service table and a worked resolution example, and
-`documentation/migration.md` for what server owners moving off an older Gangland Warfare weapon module need to do.
+`documentation/migration.md` for what server owners moving off an older Gangland Warfare weapon module need to do. _(both documents are added in B21)_
 
 ## Build
 
