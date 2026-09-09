@@ -119,7 +119,7 @@ public class BartizanSettings implements FileInitializer {
 		mysqlUsername     = str(mysql, "Username", "root");
 		mysqlPassword     = str(mysql, "Password", "");
 		mysqlPort         = intVal(mysql, "Port", 3306);
-		sqliteBackup      = bool(sqlite, "Backup", true);
+		sqliteBackup      = bool(sqlite, "Backup", false);
 		sqliteFailedMysql = bool(sqlite, "Failed_MySQL", true);
 
 		if (!report.isEmpty()) report.log(log);

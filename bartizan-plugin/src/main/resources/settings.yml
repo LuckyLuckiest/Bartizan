@@ -30,5 +30,5 @@ Database:
       Username: "root"
       Password: ""
    SQLite:
-      Backup: true
+      Backup: false
       Failed_MySQL: true
