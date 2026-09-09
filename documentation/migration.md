@@ -79,7 +79,6 @@ jetpack:
       fuel_max: 3600
       jetpack_fuel_consumption_rate: 1
       jetpack_ascend_power: 0.2
-      jetpack_glide_descent_rate: -0.05
       jetpack_max_speed_y: 0.45
       Sounds:
          Thrust:
