@@ -9,7 +9,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.luckyraven.keystone.item.ItemBuilder;
-import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.util.ActionBarManager;
 import org.luckyraven.keystone.exception.PluginException;
 import org.luckyraven.bartizan.api.weapon.Weapon;
@@ -90,10 +89,6 @@ public abstract class Reload implements Cloneable {
 			ActionBarManager.send(player, weapon.getReloadActionBarData().getOpening());
 		}
 
-		// start reloading sound
-		SoundEffect.playSounds(player, weapon.getSoundData().getReloadCustomStart(),
-		                              weapon.getSoundData().getReloadDefaultBefore());
-
 		// scope the player and make them slow down
 		weapon.scope(player, false);
 
@@ -106,10 +101,6 @@ public abstract class Reload implements Cloneable {
 		this.currentPlayer = null;
 
 		if (player == null) return;
-
-		// end reloading sound
-		SoundEffect.playSounds(player, weapon.getSoundData().getReloadCustomEnd(),
-		                              weapon.getSoundData().getReloadDefaultAfter());
 
 		// un-scope the player to resume the showdown
 		weapon.unScope(player, true);

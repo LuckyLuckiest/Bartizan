@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.support.WeaponFixtures;
+import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.weapon.WeaponService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,7 +31,7 @@ class FullAutoTaskTest {
 		FullAutoTask task = new FullAutoTask(mock(JavaPlugin.class), mock(WeaponService.class), weapon,
 		                                     mock(WeaponRaytracer.class), mock(Player.class), mock(ItemStack.class),
 		                                     () -> {
-		                                     });
+		                                     }, mock(EffectRunner.class));
 
 		assertEquals(1L, task.getDelay());
 		assertEquals(1L, task.getPeriod());

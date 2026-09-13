@@ -73,8 +73,7 @@ public final class WiringConfig {
 	}
 
 	/**
-	 * The one feedback engine every hook fires through (weapons-roadmap.md gate {@code HA}, §1). Not yet called from
-	 * any firing action — wiring the hooks in is a follow-up task.
+	 * The one feedback engine every hook fires through (weapons-roadmap.md gate {@code HA}, §1).
 	 */
 	@Bean
 	public EffectRunner effectRunner(BartizanSettings settings) {
@@ -91,9 +90,9 @@ public final class WiringConfig {
 	@Bean
 	public WeaponRaytracerImpl weaponRaytracer(WeaponManager weaponManager, WearableAddon wearableAddon,
 	                                           BlockDamageManager blockDamageManager,
-	                                           WeaponVisualSpawner weaponVisualSpawner) {
+	                                           WeaponVisualSpawner weaponVisualSpawner, EffectRunner effectRunner) {
 		WeaponRaytracerImpl raytracer = new WeaponRaytracerImpl(weaponManager, wearableAddon, blockDamageManager,
-		                                                        weaponVisualSpawner);
+		                                                        weaponVisualSpawner, effectRunner);
 		Bukkit.getServicesManager().register(WeaponRaytracer.class, raytracer, bartizan, ServicePriority.Normal);
 		return raytracer;
 	}
@@ -127,8 +126,8 @@ public final class WiringConfig {
 	}
 
 	@Bean
-	public NpcWeaponFactory npcWeaponFactory(WeaponManager weaponManager) {
-		return new NpcWeaponFactoryImpl(bartizan, weaponManager);
+	public NpcWeaponFactory npcWeaponFactory(WeaponManager weaponManager, EffectRunner effectRunner) {
+		return new NpcWeaponFactoryImpl(bartizan, weaponManager, effectRunner);
 	}
 
 	/**

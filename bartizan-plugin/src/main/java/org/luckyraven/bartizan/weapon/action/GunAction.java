@@ -4,11 +4,13 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.luckyraven.keystone.item.ItemBuilder;
-import org.luckyraven.keystone.sound.SoundEffect;
-import org.luckyraven.keystone.util.ActionBarManager;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.raytrace.WeaponShooting;
 import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
@@ -19,12 +21,15 @@ public class GunAction {
 	private final WeaponService   weaponService;
 	private final GunWeapon       weapon;
 	private final WeaponRaytracer raytracer;
+	private final EffectRunner    effectRunner;
 
-	public GunAction(JavaPlugin plugin, WeaponService weaponService, GunWeapon weapon, WeaponRaytracer raytracer) {
+	public GunAction(JavaPlugin plugin, WeaponService weaponService, GunWeapon weapon, WeaponRaytracer raytracer,
+	                 EffectRunner effectRunner) {
 		this.plugin        = plugin;
 		this.weaponService = weaponService;
 		this.weapon        = weapon;
 		this.raytracer     = raytracer;
+		this.effectRunner  = effectRunner;
 	}
 
 	public void weaponShoot(Player shooter) {
@@ -37,8 +42,10 @@ public class GunAction {
 
 		// check the durability of the weapon
 		if (weapon.isBroken()) {
-			EmptyMagSoundGate.play(plugin, shooter, weapon);
-			ActionBarManager.send(shooter, "&cBroken");
+			EmptyMagSoundGate.play(plugin, shooter, weapon, effectRunner);
+
+			EffectContext denyCtx = EffectContext.builder().weapon(weapon).source(shooter).denyReason("Broken").build();
+			effectRunner.run(weapon, EffectHook.ON_DENY, denyCtx);
 			return;
 		}
 
@@ -48,7 +55,7 @@ public class GunAction {
 		// no shot fired
 		if (!consumed) {
 			// empty magazine sound — gated so burst/auto modes play it only once per press cycle
-			EmptyMagSoundGate.play(plugin, shooter, weapon);
+			EmptyMagSoundGate.play(plugin, shooter, weapon, effectRunner);
 			return;
 		}
 
@@ -63,7 +70,7 @@ public class GunAction {
 			return;
 		}
 
-		WeaponShooting.fire(plugin, raytracer, shooter, weapon);
+		WeaponShooting.fire(plugin, raytracer, shooter, weapon, effectRunner);
 
 		weapon.updateWeaponData(heldWeapon);
 
@@ -80,9 +87,16 @@ public class GunAction {
 			weapon.applyPush(shooter);
 		}
 
-		// shooting sound — echo broadcasts to all players near the shooter's location
-		SoundEffect.playSoundsAtLocation(shooter.getLocation(), weapon.getSoundData().getShotCustom(),
-		                                        weapon.getSoundData().getShotDefault());
+		// shooting feedback — echoes to nearby players via the configured On_Shoot effects
+		EffectContext ctx = EffectContext.builder()
+		                                 .weapon(weapon)
+		                                 .source(shooter)
+		                                 .muzzle(WeaponMuzzle.compute(shooter, shooter.getEyeLocation().getDirection()))
+		                                 .ammoLeft(weapon.getAmmunitionData() != null ? weapon.getCurrentMagCapacity() : 0)
+		                                 .ammoMax(weapon.getAmmunitionData() != null
+		                                          ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
+		                                 .build();
+		effectRunner.run(weapon, EffectHook.ON_SHOOT, ctx);
 	}
 
 }

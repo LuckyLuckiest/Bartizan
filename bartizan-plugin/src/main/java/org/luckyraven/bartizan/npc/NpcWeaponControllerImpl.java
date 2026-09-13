@@ -14,9 +14,12 @@ import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.raytrace.WeaponShooting;
 import org.luckyraven.keystone.item.ItemBuilder;
-import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.timer.SequenceTimer;
 
 /**
@@ -47,17 +50,19 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	private final Weapon        weapon;
 	private final double        fireRateMultiplier;
 	private final double        aimErrorDegrees;
+	private final EffectRunner  effectRunner;
 
 	/** Ticks remaining before the next {@link #tryFire} may act. Decremented one-per-tick by {@link #tick()}. */
 	private int attackCooldown;
 
 	public NpcWeaponControllerImpl(JavaPlugin plugin, LivingEntity shooter, Weapon weapon,
-	                               double fireRateMultiplier, double aimErrorDegrees) {
+	                               double fireRateMultiplier, double aimErrorDegrees, EffectRunner effectRunner) {
 		this.plugin             = plugin;
 		this.shooter            = shooter;
 		this.weapon             = weapon;
 		this.fireRateMultiplier = fireRateMultiplier;
 		this.aimErrorDegrees    = aimErrorDegrees;
+		this.effectRunner       = effectRunner;
 	}
 
 	@Override
@@ -198,12 +203,18 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 		RegisteredServiceProvider<WeaponRaytracer> registration =
 				Bukkit.getServicesManager().getRegistration(WeaponRaytracer.class);
 		if (registration != null) {
-			WeaponShooting.fire(plugin, registration.getProvider(), shooter, gun);
+			WeaponShooting.fire(plugin, registration.getProvider(), shooter, gun, effectRunner);
 		}
 
-		SoundEffect shotCustom  = weapon.getSoundData() == null ? null : weapon.getSoundData().getShotCustom();
-		SoundEffect shotDefault = weapon.getSoundData() == null ? null : weapon.getSoundData().getShotDefault();
-		SoundEffect.playSoundsAtLocation(shooter.getEyeLocation(), shotCustom, shotDefault);
+		EffectContext ctx = EffectContext.builder()
+		                                 .weapon(weapon)
+		                                 .source(shooter)
+		                                 .muzzle(WeaponMuzzle.compute(shooter, shooter.getEyeLocation().getDirection()))
+		                                 .ammoLeft(weapon.getAmmunitionData() != null ? weapon.getCurrentMagCapacity() : 0)
+		                                 .ammoMax(weapon.getAmmunitionData() != null
+		                                          ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
+		                                 .build();
+		effectRunner.run(weapon, EffectHook.ON_SHOOT, ctx);
 
 		refreshHeldItem();
 		return true;

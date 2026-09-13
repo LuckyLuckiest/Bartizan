@@ -16,15 +16,17 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.luckyraven.keystone.bean.autowire.AutowireTarget;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
-import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.keystone.timer.CountdownTimer;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.keystone.timer.SequenceTimer;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.weapon.dto.ScopeData;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.weapon.action.BiologicalAction;
@@ -46,7 +48,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 @ListenerHandler
-@AutowireTarget({WeaponService.class, WeaponRaytracer.class, PluginFireRegistry.class, CombatEligibility.class})
+@AutowireTarget({WeaponService.class, WeaponRaytracer.class, PluginFireRegistry.class, CombatEligibility.class,
+                EffectRunner.class})
 public class WeaponInteract implements Listener {
 
 	/**
@@ -76,6 +79,7 @@ public class WeaponInteract implements Listener {
 	private final WeaponRaytracer    raytracer;
 	private final PluginFireRegistry fireRegistry;
 	private final CombatEligibility  combatEligibility;
+	private final EffectRunner       effectRunner;
 
 	private final Map<UUID, AtomicReference<WeaponData>> continuousFire;
 	/**
@@ -120,12 +124,14 @@ public class WeaponInteract implements Listener {
 	private final Map<UUID, Long>                        lastMeleeSwingMs;
 
 	public WeaponInteract(JavaPlugin plugin, WeaponService weaponService, WeaponRaytracer raytracer,
-	                      PluginFireRegistry fireRegistry, CombatEligibility combatEligibility) {
+	                      PluginFireRegistry fireRegistry, CombatEligibility combatEligibility,
+	                      EffectRunner effectRunner) {
 		this.plugin            = plugin;
 		this.weaponService     = weaponService;
 		this.raytracer         = raytracer;
 		this.fireRegistry      = fireRegistry;
 		this.combatEligibility = combatEligibility;
+		this.effectRunner      = effectRunner;
 		this.continuousFire    = new ConcurrentHashMap<>();
 		this.pressLockUntilTick = new ConcurrentHashMap<>();
 		this.pressHoldState     = new ConcurrentHashMap<>();
@@ -161,11 +167,12 @@ public class WeaponInteract implements Listener {
 			event.setUseInteractedBlock(Event.Result.DENY);
 			event.setUseItemInHand(Event.Result.DENY);
 
-			if (scopeData != null && !scopeData.isScoped()) weapon.scope(player, true);
+			boolean scopingIn = scopeData != null && !scopeData.isScoped();
+			if (scopingIn) weapon.scope(player, true);
 			else weapon.unScope(player, true);
 
-			SoundEffect.playSounds(player, weapon.getSoundData().getScopeCustom(),
-			                              weapon.getSoundData().getScopeDefault());
+			EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).build();
+			effectRunner.run(weapon, scopingIn ? EffectHook.ON_SCOPE_IN : EffectHook.ON_SCOPE_OUT, ctx);
 			return;
 		}
 
@@ -281,7 +288,7 @@ public class WeaponInteract implements Listener {
 		if (weapon instanceof MeleeWeapon melee) {
 			event.setCancelled(true);
 			if (tryClaimMeleeSwing(melee.getUuid())) {
-				boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns).activate(player);
+				boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner).activate(player);
 				if (hit) melee.applyOnHitDurability(player, player.getInventory().getHeldItemSlot());
 			}
 			return;
@@ -293,44 +300,57 @@ public class WeaponInteract implements Listener {
 
 	@EventHandler
 	public void onWeaponHeld(PlayerItemHeldEvent event) {
-		// check if it was a weapon
-		Player    player = event.getPlayer();
-		ItemStack item   = player.getInventory().getItem(event.getPreviousSlot());
-		Weapon    weapon = weaponService.validateAndGetWeapon(player, item);
+		Player player = event.getPlayer();
 
-		if (weapon == null) return;
+		// previous slot: run cleanup + ON_HOLSTER when it held a weapon
+		ItemStack previousItem   = player.getInventory().getItem(event.getPreviousSlot());
+		Weapon    previousWeapon = weaponService.validateAndGetWeapon(player, previousItem);
 
-		UUID weaponUuid = weapon.getUuid();
+		if (previousWeapon != null) {
+			UUID weaponUuid = previousWeapon.getUuid();
 
-		// unscoped and reset recoil for any weapon type
-		weapon.unScope(player, true);
-		weapon.getRecoil().resetRecoilPattern();
+			// unscoped and reset recoil for any weapon type
+			previousWeapon.unScope(player, true);
+			previousWeapon.getRecoil().resetRecoilPattern();
 
-		// drop the SINGLE/BURST press lock and held-trigger gate so the new selection starts on a clean trigger
-		// (applies to both gun and incendiary weapons, both of which share these maps)
-		pressLockUntilTick.remove(weaponUuid);
-		pressHoldState.remove(weaponUuid);
+			// drop the SINGLE/BURST press lock and held-trigger gate so the new selection starts on a clean trigger
+			// (applies to both gun and incendiary weapons, both of which share these maps)
+			pressLockUntilTick.remove(weaponUuid);
+			pressHoldState.remove(weaponUuid);
 
-		// drop the melee dedup timestamp so swapping weapons doesn't carry stale gating across selections
-		lastMeleeSwingMs.remove(weaponUuid);
+			// drop the melee dedup timestamp so swapping weapons doesn't carry stale gating across selections
+			lastMeleeSwingMs.remove(weaponUuid);
 
-		if (weapon instanceof GunWeapon) {
-			// cancel any active auto fire
-			FullAutoTask autoTask = autoTasks.get(weaponUuid);
-			if (autoTask != null) {
-				autoTask.stop();
+			if (previousWeapon instanceof GunWeapon) {
+				// cancel any active auto fire
+				FullAutoTask autoTask = autoTasks.get(weaponUuid);
+				if (autoTask != null) {
+					autoTask.stop();
+				}
 			}
+
+			// cancel active incendiary / biological tasks
+			RepeatingTimer activeTask = activeTasks.remove(weaponUuid);
+			if (activeTask != null) {
+				activeTask.stop();
+			}
+
+			// drop any pending biological release callback so the charge dies with the swap
+			releaseCallbacks.remove(weaponUuid);
+			continuousFire.remove(weaponUuid);
+
+			EffectContext holsterCtx = EffectContext.builder().weapon(previousWeapon).source(player).build();
+			effectRunner.run(previousWeapon, EffectHook.ON_HOLSTER, holsterCtx);
 		}
 
-		// cancel active incendiary / biological tasks
-		RepeatingTimer activeTask = activeTasks.remove(weaponUuid);
-		if (activeTask != null) {
-			activeTask.stop();
-		}
+		// new slot: ON_EQUIP when it holds a weapon
+		ItemStack newItem   = player.getInventory().getItem(event.getNewSlot());
+		Weapon    newWeapon = weaponService.validateAndGetWeapon(player, newItem);
 
-		// drop any pending biological release callback so the charge dies with the swap
-		releaseCallbacks.remove(weaponUuid);
-		continuousFire.remove(weaponUuid);
+		if (newWeapon != null) {
+			EffectContext equipCtx = EffectContext.builder().weapon(newWeapon).source(player).build();
+			effectRunner.run(newWeapon, EffectHook.ON_EQUIP, equipCtx);
+		}
 	}
 
 	/**
@@ -362,14 +382,15 @@ public class WeaponInteract implements Listener {
 		} else if (weapon instanceof MeleeWeapon melee) {
 			if (leftClick) {
 				if (tryClaimMeleeSwing(melee.getUuid())) {
-					boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns).activate(player);
+					boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner).activate(player);
 					if (hit) melee.applyOnHitDurability(player, player.getInventory().getHeldItemSlot());
 				}
 			}
 		} else if (weapon instanceof IncendiaryWeapon incendiary) {
 			if (!rightClick) return;
 
-			IncendiaryAction action = new IncendiaryAction(plugin, weaponService, incendiary, raytracer, fireRegistry);
+			IncendiaryAction action = new IncendiaryAction(plugin, weaponService, incendiary, raytracer, fireRegistry,
+			                                               effectRunner);
 
 			SelectiveFire mode = incendiary.getCurrentSelectiveFire();
 			if (mode == SelectiveFire.AUTO) {
@@ -397,7 +418,7 @@ public class WeaponInteract implements Listener {
 			return;
 		}
 
-		BiologicalAction action = new BiologicalAction(plugin, weapon, raytracer, activeTasks);
+		BiologicalAction action = new BiologicalAction(plugin, weapon, raytracer, activeTasks, effectRunner);
 		if (!action.start(player)) return;
 
 		WeaponData freshWeaponData = new WeaponData();
@@ -441,7 +462,7 @@ public class WeaponInteract implements Listener {
 
 		engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS);
 
-		new ThrowableAction(plugin, weapon, fireRegistry).activate(player);
+		new ThrowableAction(plugin, weapon, fireRegistry, effectRunner).activate(player);
 	}
 
 	/**
@@ -613,7 +634,7 @@ public class WeaponInteract implements Listener {
 			                                () -> {
 												autoTasks.remove(weaponUuid);
 												continuousFire.remove(weaponUuid);
-											});
+											}, effectRunner);
 
 			autoTasks.put(weaponUuid, autoTask);
 
@@ -689,7 +710,7 @@ public class WeaponInteract implements Listener {
 	}
 
 	private void shootInterval(Player player, GunWeapon weapon) {
-		GunAction gunAction = new GunAction(plugin, weaponService, weapon, raytracer);
+		GunAction gunAction = new GunAction(plugin, weaponService, weapon, raytracer, effectRunner);
 
 		// shoot the weapon
 		gunAction.weaponShoot(player);

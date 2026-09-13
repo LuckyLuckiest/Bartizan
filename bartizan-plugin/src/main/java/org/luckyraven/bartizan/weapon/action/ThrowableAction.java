@@ -9,16 +9,19 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.util.Vector;
-import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.timer.CountdownTimer;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.keystone.util.ParticleUtil;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.ThrowableData;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
 import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.api.weapon.ProjectileState;
+import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.ThrowableType;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
@@ -51,11 +54,14 @@ public class ThrowableAction {
 	private final JavaPlugin         plugin;
 	private final ThrowableWeapon    weapon;
 	private final PluginFireRegistry fireRegistry;
+	private final EffectRunner       effectRunner;
 
-	public ThrowableAction(JavaPlugin plugin, ThrowableWeapon weapon, PluginFireRegistry fireRegistry) {
+	public ThrowableAction(JavaPlugin plugin, ThrowableWeapon weapon, PluginFireRegistry fireRegistry,
+	                       EffectRunner effectRunner) {
 		this.plugin       = plugin;
 		this.weapon       = weapon;
 		this.fireRegistry = fireRegistry;
+		this.effectRunner = effectRunner;
 	}
 
 	public void activate(Player player) {
@@ -77,8 +83,16 @@ public class ThrowableAction {
 		Vector throwVec = eyeLoc.getDirection().normalize().multiply(1.2).add(new Vector(0, 0.2, 0));
 		grenade.setVelocity(throwVec);
 
-		SoundEffect.playSounds(player, weapon.getSoundData().getShotCustom(),
-		                              weapon.getSoundData().getShotDefault());
+		EffectContext shootCtx = EffectContext.builder()
+		                                      .weapon(weapon)
+		                                      .source(player)
+		                                      .muzzle(WeaponMuzzle.compute(player, eyeLoc.getDirection()))
+		                                      .ammoLeft(weapon.getAmmunitionData() != null
+		                                                ? weapon.getCurrentMagCapacity() : 0)
+		                                      .ammoMax(weapon.getAmmunitionData() != null
+		                                               ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
+		                                      .build();
+		effectRunner.run(weapon, EffectHook.ON_SHOOT, shootCtx);
 
 		if (weapon.getRecoilData() != null) {
 			weapon.getRecoil().applyRecoil(player);
@@ -174,7 +188,7 @@ public class ThrowableAction {
 		ThrowableType type = data.getType() != null ? data.getType() : ThrowableType.EXPLOSIVE;
 		switch (type) {
 			case STUN -> {
-				detonateStun(center, data, world);
+				detonateStun(center, data, player, world);
 				return;
 			}
 			case SMOKE -> {
@@ -306,10 +320,12 @@ public class ThrowableAction {
 	 * explosion emitter, sparks, smoke) and plays a high-pitched bang sound, then applies the configured potion effects
 	 * to every living entity within {@code explosionRadius}, including the thrower.
 	 */
-	private void detonateStun(Location center, ThrowableData data, World world) {
+	private void detonateStun(Location center, ThrowableData data, Player player, World world) {
 		double radius = data.getExplosionRadius();
 		ParticleUtil.spawnFlashbangBurst(center, radius);
-		world.playSound(center, Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 1.8f);
+
+		EffectContext explodeCtx = EffectContext.builder().weapon(weapon).source(player).impact(center).build();
+		effectRunner.run(weapon, EffectHook.ON_EXPLODE, explodeCtx);
 
 		List<PotionEffect> effects = PotionEffectParser.parseList(data.getEffects());
 		if (effects.isEmpty()) return;

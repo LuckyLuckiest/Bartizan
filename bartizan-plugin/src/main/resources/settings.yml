@@ -17,7 +17,7 @@ Block_Regeneration:
 # A weapon's own list REPLACES the default for that hook entirely - never merged. Same hook -> effect-list shape
 # as a weapon's own Effects: section (weapons-roadmap.md gate HA, §1).
 #
-# Hooks (v1): On_Shoot, On_Hit, On_Headshot, On_Kill, On_Miss, On_Empty, On_Deny, On_Equip, On_Holster,
+# Hooks (v1): On_Shoot, On_Hit, On_Headshot, On_Critical, On_Kill, On_Miss, On_Empty, On_Deny, On_Equip, On_Holster,
 # On_Reload_Start, On_Reload_End, On_Reload_Cancel, On_Scope_In, On_Scope_Out, On_Explode, On_Charge_Level,
 # On_Charge_Full, On_Beam_Fire, On_Status_Apply, On_Status_Expire. An unknown hook name is a warning, not an
 # error - the rest of the file still loads.
@@ -44,9 +44,19 @@ Block_Regeneration:
 # Placeholders available in Text/Title/Subtitle/Command: %player% %victim% %weapon% %damage% %distance% %level%
 # %ammo_left% %ammo_max% %deny_reason%
 Default_Effects:
-   On_Headshot:
+   On_Critical:
       - Type: Sound
         Sound: ITEM_SHIELD_BREAK
         Volume: 1.0
         Pitch: 1.0
         Target: source
+   On_Deny:
+      - Type: Action_Bar
+        Text: "&c%deny_reason%"
+        Target: source
+   On_Explode:
+      - Type: Sound
+        Sound: ENTITY_GENERIC_EXPLODE
+        Volume: 2.0
+        Pitch: 1.0
+        At: impact

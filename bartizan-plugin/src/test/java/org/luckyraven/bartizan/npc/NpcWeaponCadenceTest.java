@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
+import org.luckyraven.bartizan.effect.EffectRunner;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -178,7 +179,7 @@ class NpcWeaponCadenceTest {
 		LivingEntity shooter = mock(LivingEntity.class);
 		// aimErrorDegrees is accepted and stored but must never affect this path (bartizan.md §1.6(8)) — a
 		// deliberately nonzero, never-asserted-on value here would catch anyone who wires it in by mistake.
-		return new RecordingController(plugin, shooter, gun, fireRateMultiplier, 15.0);
+		return new RecordingController(plugin, shooter, gun, fireRateMultiplier, 15.0, mock(EffectRunner.class));
 	}
 
 	private static GunWeapon mockGun(SelectiveFire mode, int perShot, int cooldown) {
@@ -214,8 +215,8 @@ class NpcWeaponCadenceTest {
 		int lastBurstCooldown = -1;
 
 		RecordingController(JavaPlugin plugin, LivingEntity shooter, GunWeapon weapon, double fireRateMultiplier,
-		                    double aimErrorDegrees) {
-			super(plugin, shooter, weapon, fireRateMultiplier, aimErrorDegrees);
+		                    double aimErrorDegrees, EffectRunner effectRunner) {
+			super(plugin, shooter, weapon, fireRateMultiplier, aimErrorDegrees, effectRunner);
 		}
 
 		@Override

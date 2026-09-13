@@ -5,6 +5,7 @@ import org.luckyraven.bartizan.Bartizan;
 import org.luckyraven.bartizan.api.npc.NpcWeaponController;
 import org.luckyraven.bartizan.api.npc.NpcWeaponFactory;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 
 /**
@@ -19,10 +20,12 @@ public class NpcWeaponFactoryImpl implements NpcWeaponFactory {
 
 	private final Bartizan      bartizan;
 	private final WeaponManager weaponManager;
+	private final EffectRunner  effectRunner;
 
-	public NpcWeaponFactoryImpl(Bartizan bartizan, WeaponManager weaponManager) {
+	public NpcWeaponFactoryImpl(Bartizan bartizan, WeaponManager weaponManager, EffectRunner effectRunner) {
 		this.bartizan      = bartizan;
 		this.weaponManager = weaponManager;
+		this.effectRunner  = effectRunner;
 	}
 
 	@Override
@@ -33,7 +36,7 @@ public class NpcWeaponFactoryImpl implements NpcWeaponFactory {
 			// Gate-H review M1: an unknown name used to surface as an NPE on the controller's first combat tick.
 			throw new IllegalArgumentException("Unknown weapon '" + weaponName + "' - check WeaponItemApi.isValidWeaponName first");
 		}
-		return new NpcWeaponControllerImpl(bartizan, shooter, weapon, fireRateMultiplier, aimErrorDegrees);
+		return new NpcWeaponControllerImpl(bartizan, shooter, weapon, fireRateMultiplier, aimErrorDegrees, effectRunner);
 	}
 
 }

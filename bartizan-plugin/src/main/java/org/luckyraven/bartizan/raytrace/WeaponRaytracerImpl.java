@@ -9,8 +9,10 @@ import org.bukkit.util.BoundingBox;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.Nullable;
-import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.util.ParticleUtil;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
@@ -77,14 +79,17 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 	private final WearableService      wearableService;
 	private final BlockDamageManager   blockDamageManager;
 	private final WeaponVisualSpawner  visualSpawner;
+	private final EffectRunner         effectRunner;
 	private final Random               random;
 
 	public WeaponRaytracerImpl(WeaponService weaponService, WearableService wearableService,
-	                           BlockDamageManager blockDamageManager, WeaponVisualSpawner visualSpawner) {
+	                           BlockDamageManager blockDamageManager, WeaponVisualSpawner visualSpawner,
+	                           EffectRunner effectRunner) {
 		this.weaponService      = weaponService;
 		this.wearableService    = wearableService;
 		this.blockDamageManager = blockDamageManager;
 		this.visualSpawner      = visualSpawner;
+		this.effectRunner       = effectRunner;
 		this.random             = new Random();
 	}
 
@@ -186,6 +191,18 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		}
 
 		flushTracer(ctx);
+
+		if (!ctx.isHitEntity()) {
+			List<Location> segments   = ctx.getTracerSegments();
+			Location       missImpact = segments.isEmpty() ? null : segments.get(segments.size() - 1);
+
+			EffectContext effectCtx = EffectContext.builder()
+			                                       .weapon(request.getWeapon())
+			                                       .source(request.getShooter())
+			                                       .impact(missImpact)
+			                                       .build();
+			effectRunner.run(request.getWeapon(), EffectHook.ON_MISS, effectCtx);
+		}
 	}
 
 	/**
@@ -392,8 +409,11 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		Weapon       weapon  = ctx.getRequest().getWeapon();
 		LivingEntity shooter = ctx.getRequest().getShooter();
 
+		ctx.setHitEntity(true);
+
 		// --- Compute damage (gun-specific extras only when applicable) ---
 		boolean criticalHit = false;
+		boolean headshot    = false;
 		double  damage      = ctx.getState().getCurrentDamage();
 
 		if (hit instanceof LivingEntity living) {
@@ -411,6 +431,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 			if (weapon instanceof GunWeapon gun
 			    && weaponService.isHeadPosition(impactPt, living.getLocation())) {
 				damage += gun.getDamageData().getHeadDamage();
+				headshot = true;
 			}
 		} else {
 			// Non-living: skip armor / wearable / headshot. Flat damage still applies so vehicle hits
@@ -475,16 +496,22 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 				living.setFireTicks(fireTicks);
 			}
 
-			SoundEffect impactCustom  = weapon.getSoundData().getImpactCustom();
-			SoundEffect impactDefault = weapon.getSoundData().getImpactDefault();
-			if (impactCustom != null || impactDefault != null) {
-				SoundEffect.playSoundsAtLocation(living.getLocation(), impactCustom, impactDefault);
+			EffectContext effectCtx = EffectContext.builder()
+			                                       .weapon(weapon)
+			                                       .source(shooter)
+			                                       .victim(living)
+			                                       .impact(impactPt)
+			                                       .damage(event.getDamage())
+			                                       .distance(ctx.getRequest().getOrigin().distance(impactPt))
+			                                       .build();
+			effectRunner.run(weapon, EffectHook.ON_HIT, effectCtx);
+
+			if (criticalHit) {
+				effectRunner.run(weapon, EffectHook.ON_CRITICAL, effectCtx);
 			}
 
-			if (criticalHit && shooter instanceof Player player) {
-				SoundEffect critSound = new SoundEffect(
-						SoundEffect.SoundType.VANILLA, "ITEM_SHIELD_BREAK", 1F, 1F);
-				critSound.playSound(player);
+			if (headshot) {
+				effectRunner.run(weapon, EffectHook.ON_HEADSHOT, effectCtx);
 			}
 		}
 	}

@@ -29,6 +29,12 @@ public class RaytraceContext {
 	private Vector   currentDir;
 	private double   remaining;
 	private int      iterations;
+	/**
+	 * Set by {@code WeaponRaytracerImpl.handleEntityImpact} the moment a ray actually strikes an entity. Read by
+	 * {@code WeaponRaytracerImpl.fireInstant} after the ray finishes to decide whether {@code EffectHook.ON_MISS}
+	 * should fire (weapons-roadmap.md gate {@code HA}, §1).
+	 */
+	private boolean  hitEntity;
 
 	public RaytraceContext(RaytraceRequest request, ProjectileState state) {
 		this.request        = request;

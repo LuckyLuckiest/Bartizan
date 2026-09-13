@@ -4,14 +4,17 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
-import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.keystone.util.ActionBarManager;
 import org.luckyraven.keystone.util.ParticleUtil;
 import org.luckyraven.bartizan.api.weapon.dto.BiologicalData;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.listener.WeaponInteract;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
+import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
@@ -37,14 +40,16 @@ public class BiologicalAction {
 	private final WeaponRaytracer           raytracer;
 	private final Map<UUID, RepeatingTimer> activeTasks;
 	private final Map<UUID, int[]>          chargeLevels;
+	private final EffectRunner              effectRunner;
 
 	public BiologicalAction(JavaPlugin plugin, BiologicalWeapon weapon, WeaponRaytracer raytracer,
-	                        Map<UUID, RepeatingTimer> activeTasks) {
+	                        Map<UUID, RepeatingTimer> activeTasks, EffectRunner effectRunner) {
 		this.plugin        = plugin;
 		this.weapon        = weapon;
 		this.raytracer     = raytracer;
 		this.activeTasks   = activeTasks;
 		this.chargeLevels  = new ConcurrentHashMap<>();
+		this.effectRunner  = effectRunner;
 	}
 
 	/**
@@ -57,7 +62,7 @@ public class BiologicalAction {
 
 		if (activeTasks.containsKey(weaponUuid)) return false;
 		if (weapon.getAmmunitionData() != null && weapon.isMagazineEmpty()) {
-			EmptyMagSoundGate.play(plugin, player, weapon);
+			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 			return false;
 		}
 
@@ -69,8 +74,15 @@ public class BiologicalAction {
 		RepeatingTimer timer = new RepeatingTimer(plugin, 1L, time -> {
 			if (time.getTickCount() % data.getChargeTimePerLevel() == 0 && charge[0] < data.getMaxChargeLevel()) {
 				charge[0]++;
-				ActionBarManager.send(player, "§6Charging... §e[" + "■".repeat(charge[0]) +
+				ActionBarManager.send(player, "&6Charging... &e[" + "■".repeat(charge[0]) +
 				                              "□".repeat(data.getMaxChargeLevel() - charge[0]) + "]");
+
+				EffectContext levelCtx = EffectContext.builder().weapon(weapon).source(player).level(charge[0]).build();
+				effectRunner.run(weapon, EffectHook.ON_CHARGE_LEVEL, levelCtx);
+
+				if (charge[0] >= data.getMaxChargeLevel()) {
+					effectRunner.run(weapon, EffectHook.ON_CHARGE_FULL, levelCtx);
+				}
 			}
 			// visual ring that grows with charge level
 			ParticleUtil.spawnChargeRing(player.getLocation(), charge[0], data.getMaxChargeLevel());
@@ -103,9 +115,18 @@ public class BiologicalAction {
 
 		BiologicalData data = weapon.getBiologicalData();
 
-		// release sound and recoil
-		SoundEffect.playSounds(player, weapon.getSoundData().getShotCustom(),
-		                              weapon.getSoundData().getShotDefault());
+		// release feedback and recoil
+		EffectContext shootCtx = EffectContext.builder()
+		                                      .weapon(weapon)
+		                                      .source(player)
+		                                      .muzzle(WeaponMuzzle.compute(player, player.getEyeLocation().getDirection()))
+		                                      .level(level)
+		                                      .ammoLeft(weapon.getAmmunitionData() != null
+		                                                ? weapon.getCurrentMagCapacity() : 0)
+		                                      .ammoMax(weapon.getAmmunitionData() != null
+		                                               ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
+		                                      .build();
+		effectRunner.run(weapon, EffectHook.ON_SHOOT, shootCtx);
 
 		if (weapon.getRecoilData() != null) {
 			weapon.getRecoil().applyRecoil(player);

@@ -11,6 +11,9 @@ import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.file.BartizanSettings;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 import org.mockito.ArgumentCaptor;
@@ -41,7 +44,7 @@ class WeaponDeathListenerTest {
 			+ "untouched — the weapon path never even inspects the killer")
 	void onPlayerDeath_nullDeathMessage_neverOverridden() {
 		WeaponManager        weaponManager = mock(WeaponManager.class);
-		WeaponDeathListener  listener      = new WeaponDeathListener(weaponManager);
+		WeaponDeathListener  listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class));
 
 		Player          victim = mock(Player.class);
 		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
@@ -59,7 +62,7 @@ class WeaponDeathListenerTest {
 			+ "cannot resurface and misattribute a later, unrelated death for the same player")
 	void onPlayerDeath_noKiller_stillClearsRecordedThrowableKillForLaterDeath() {
 		WeaponManager       weaponManager = mock(WeaponManager.class);
-		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class));
 
 		Player victim = mock(Player.class);
 		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -104,7 +107,8 @@ class WeaponDeathListenerTest {
 		primeMoneySymbol();
 
 		WeaponManager       weaponManager = mock(WeaponManager.class);
-		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager);
+		EffectRunner        effectRunner  = mock(EffectRunner.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner);
 
 		Player victim = mock(Player.class);
 		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -142,13 +146,18 @@ class WeaponDeathListenerTest {
 		}
 
 		verify(event).setDeathMessage("Killer killed Victim with Big Gun");
+
+		ArgumentCaptor<EffectHook> hookCaptor = ArgumentCaptor.forClass(EffectHook.class);
+		verify(effectRunner).run(eq(weapon), hookCaptor.capture(), any(EffectContext.class));
+		assertEquals(EffectHook.ON_KILL, hookCaptor.getValue());
 	}
 
 	@Test
-	@DisplayName("a cancelled WeaponKillEntityEvent leaves the vanilla death message untouched")
+	@DisplayName("a cancelled WeaponKillEntityEvent leaves the vanilla death message untouched and never runs ON_KILL")
 	void onPlayerDeath_cancelledKillEvent_leavesVanillaMessage() {
 		WeaponManager       weaponManager = mock(WeaponManager.class);
-		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager);
+		EffectRunner        effectRunner  = mock(EffectRunner.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner);
 
 		Player victim = mock(Player.class);
 		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -180,6 +189,7 @@ class WeaponDeathListenerTest {
 		}
 
 		verify(event, never()).setDeathMessage(any());
+		verify(effectRunner, never()).run(any(), any(), any());
 	}
 
 	/**

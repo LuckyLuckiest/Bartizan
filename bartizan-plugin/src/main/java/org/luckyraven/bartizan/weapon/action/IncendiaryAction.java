@@ -10,12 +10,14 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 import org.luckyraven.keystone.item.ItemBuilder;
-import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.keystone.util.ParticleUtil;
 import org.luckyraven.bartizan.weapon.WeaponService;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.IncendiaryData;
 import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.listener.WeaponInteract;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
@@ -42,14 +44,16 @@ public class IncendiaryAction {
 	private final IncendiaryWeapon   weapon;
 	private final WeaponRaytracer    raytracer;
 	private final PluginFireRegistry fireRegistry;
+	private final EffectRunner       effectRunner;
 
 	public IncendiaryAction(JavaPlugin plugin, WeaponService weaponService, IncendiaryWeapon weapon,
-	                        WeaponRaytracer raytracer, PluginFireRegistry fireRegistry) {
+	                        WeaponRaytracer raytracer, PluginFireRegistry fireRegistry, EffectRunner effectRunner) {
 		this.plugin        = plugin;
 		this.weaponService = weaponService;
 		this.weapon        = weapon;
 		this.raytracer     = raytracer;
 		this.fireRegistry  = fireRegistry;
+		this.effectRunner  = effectRunner;
 	}
 
 	/**
@@ -60,7 +64,7 @@ public class IncendiaryAction {
 	 */
 	public boolean fireOnce(Player player) {
 		if (weapon.isBroken()) {
-			EmptyMagSoundGate.play(plugin, player, weapon);
+			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 			return false;
 		}
 
@@ -68,13 +72,19 @@ public class IncendiaryAction {
 		boolean        tracksAmmo = weapon.getAmmunitionData() != null;
 
 		if (tracksAmmo && weapon.isMagazineEmpty()) {
-			EmptyMagSoundGate.play(plugin, player, weapon);
+			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 			return false;
 		}
 
-		// shoot sound
-		SoundEffect.playSounds(player, weapon.getSoundData().getShotCustom(),
-		                              weapon.getSoundData().getShotDefault());
+		// shoot feedback
+		EffectContext shootCtx = EffectContext.builder()
+		                                      .weapon(weapon)
+		                                      .source(player)
+		                                      .muzzle(WeaponMuzzle.compute(player, player.getEyeLocation().getDirection()))
+		                                      .ammoLeft(tracksAmmo ? weapon.getCurrentMagCapacity() : 0)
+		                                      .ammoMax(tracksAmmo ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
+		                                      .build();
+		effectRunner.run(weapon, EffectHook.ON_SHOOT, shootCtx);
 
 		sprayFire(player, data, tracksAmmo);
 		return true;

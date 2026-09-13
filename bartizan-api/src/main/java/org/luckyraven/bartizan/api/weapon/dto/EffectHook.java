@@ -14,6 +14,7 @@ public enum EffectHook {
 	ON_SHOOT,
 	ON_HIT,
 	ON_HEADSHOT,
+	ON_CRITICAL,
 	ON_KILL,
 	ON_MISS,
 	ON_EMPTY,

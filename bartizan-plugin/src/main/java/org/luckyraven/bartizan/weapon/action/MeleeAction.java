@@ -4,14 +4,17 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
-import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.util.ParticleUtil;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.MeleeData;
 import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.ArmorPiercingModifier;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -40,11 +43,14 @@ public class MeleeAction {
 	private final MeleeWeapon     weapon;
 	private final WeaponRaytracer raytracer;
 	private final Map<UUID, Long> cooldowns;
+	private final EffectRunner    effectRunner;
 
-	public MeleeAction(MeleeWeapon weapon, WeaponRaytracer raytracer, Map<UUID, Long> cooldowns) {
-		this.weapon    = weapon;
-		this.raytracer = raytracer;
-		this.cooldowns = cooldowns;
+	public MeleeAction(MeleeWeapon weapon, WeaponRaytracer raytracer, Map<UUID, Long> cooldowns,
+	                   EffectRunner effectRunner) {
+		this.weapon       = weapon;
+		this.raytracer    = raytracer;
+		this.cooldowns    = cooldowns;
+		this.effectRunner = effectRunner;
 	}
 
 	/**
@@ -57,8 +63,8 @@ public class MeleeAction {
 
 		// empty-mag guard — only applies to melee weapons with ammo configured
 		if (weapon.getReloadData() != null && weapon.isMagazineEmpty()) {
-			SoundEffect.playSounds(player, weapon.getSoundData().getEmptyMagCustom(),
-			                              weapon.getSoundData().getEmptyMagDefault());
+			EffectContext emptyCtx = EffectContext.builder().weapon(weapon).source(player).build();
+			effectRunner.run(weapon, EffectHook.ON_EMPTY, emptyCtx);
 			return false;
 		}
 
@@ -126,9 +132,17 @@ public class MeleeAction {
 		// slash effect always plays on swing (not just on hit)
 		ParticleUtil.spawnSlashArc(player.getLocation(), lookDir, range * 0.6);
 
-		// swing sound and recoil always apply on swing
-		SoundEffect.playSounds(player, weapon.getSoundData().getShotCustom(),
-		                              weapon.getSoundData().getShotDefault());
+		// swing feedback and recoil always apply on swing
+		EffectContext shootCtx = EffectContext.builder()
+		                                      .weapon(weapon)
+		                                      .source(player)
+		                                      .muzzle(WeaponMuzzle.compute(player, lookDir))
+		                                      .ammoLeft(weapon.getAmmunitionData() != null
+		                                                ? weapon.getCurrentMagCapacity() : 0)
+		                                      .ammoMax(weapon.getAmmunitionData() != null
+		                                               ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
+		                                      .build();
+		effectRunner.run(weapon, EffectHook.ON_SHOOT, shootCtx);
 
 		if (weapon.getRecoilData() != null) {
 			weapon.getRecoil().applyRecoil(player);

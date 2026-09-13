@@ -144,6 +144,14 @@ class EffectsSectionParserTest {
 	}
 
 	@Test
+	@DisplayName("On_Critical round-trips through EffectHook.key()/fromKey (gate HA follow-up: the crit hook)")
+	void onCritical_roundTripsThroughFromKey() {
+		assertEquals("On_Critical", EffectHook.ON_CRITICAL.key());
+		assertEquals(EffectHook.ON_CRITICAL, EffectHook.fromKey("On_Critical").orElseThrow());
+		assertEquals(EffectHook.ON_CRITICAL, EffectHook.fromKey("on_critical").orElseThrow());
+	}
+
+	@Test
 	@DisplayName("unknown effect type is a warning and the entry is skipped")
 	void unknownType_warnsAndSkips() {
 		NodeReader effects = effectsReaderFor("""

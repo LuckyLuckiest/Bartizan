@@ -16,6 +16,7 @@ import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.api.weapon.ProjectileState;
 import org.luckyraven.bartizan.api.weapon.ProjectileType;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.effect.EffectRunner;
 
 /**
  * Shared dispatch helper that fires a {@link GunWeapon} through the unified weapon raytracer, regardless of whether the
@@ -40,13 +41,14 @@ public final class WeaponShooting {
 	/**
 	 * Fires the given gun weapon from the given shooter through the unified raytracer.
 	 */
-	public static void fire(JavaPlugin plugin, WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon) {
+	public static void fire(JavaPlugin plugin, WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon,
+	                        EffectRunner effectRunner) {
 		ProjectileData projectileData = weapon.getProjectileData();
 		ProjectileType type           = projectileData.getType();
 
 		switch (type) {
 			case BULLET, SPREAD -> fireHitscan(raytracer, shooter, weapon, projectileData, type);
-			case ROCKET, FLARE -> fireSlow(plugin, raytracer, shooter, weapon, projectileData, type);
+			case ROCKET, FLARE -> fireSlow(plugin, raytracer, shooter, weapon, projectileData, type, effectRunner);
 		}
 	}
 
@@ -77,7 +79,7 @@ public final class WeaponShooting {
 	}
 
 	private static void fireSlow(JavaPlugin plugin, WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon,
-	                             ProjectileData projectileData, ProjectileType type) {
+	                             ProjectileData projectileData, ProjectileType type, EffectRunner effectRunner) {
 		Vector   aimDir         = shooter.getEyeLocation().getDirection();
 		Location muzzle         = WeaponMuzzle.compute(shooter, aimDir);
 		Vector   spreadDir      = weapon.getSpread().applySpread(aimDir).normalize();
@@ -114,7 +116,7 @@ public final class WeaponShooting {
 		double  explosionDamage = explode ? damageData.getExplosionDamage() : 0;
 
 		new SteppedProjectileTask(plugin, raytracer, raytracer.getVisualSpawner(), visual, ctx, explode,
-		                          explosionRadius, explosionDamage, maxTicks).start();
+		                          explosionRadius, explosionDamage, maxTicks, effectRunner).start();
 	}
 
 }

@@ -12,6 +12,9 @@ import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.file.BartizanMessages;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
 import org.luckyraven.bartizan.weapon.WeaponManager;
@@ -57,12 +60,14 @@ public class WeaponDeathListener implements Listener {
 	private static final long THROWABLE_CLAIM_TTL_MS = 5000L;
 
 	private final WeaponManager weaponManager;
+	private final EffectRunner  effectRunner;
 
 	/** {@code victimUuid -> (weaponName, recordedAtMillis)}. Private to this listener — never a static. */
 	private final Map<UUID, RecordedKill> recentThrowableKills = new ConcurrentHashMap<>();
 
-	public WeaponDeathListener(WeaponManager weaponManager) {
+	public WeaponDeathListener(WeaponManager weaponManager, EffectRunner effectRunner) {
 		this.weaponManager = weaponManager;
+		this.effectRunner  = effectRunner;
 	}
 
 	/**
@@ -136,6 +141,11 @@ public class WeaponDeathListener implements Listener {
 		Bukkit.getPluginManager().callEvent(killEvent);
 		if (killEvent.isCancelled()) {
 			return;
+		}
+
+		if (weapon != null) {
+			EffectContext ctx = EffectContext.builder().weapon(weapon).source(killer).victim(victim).build();
+			effectRunner.run(weapon, EffectHook.ON_KILL, ctx);
 		}
 
 		event.setDeathMessage(BartizanChatUtil.color(template.replace("%killer%", killer.getName())

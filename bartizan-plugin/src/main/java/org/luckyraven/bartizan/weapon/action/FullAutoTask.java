@@ -7,6 +7,7 @@ import org.luckyraven.keystone.timer.Timer;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.effect.EffectRunner;
 
 /**
  * I will not claim this class as an invention from my side, but it is made by CJCrafter from WeaponMechanics. A
@@ -53,11 +54,12 @@ public class FullAutoTask extends Timer {
 	private final Player          player;
 	private final ItemStack       itemStack;
 	private final Runnable        onCancel;
+	private final EffectRunner    effectRunner;
 
 	private int tickIndex;
 
 	public FullAutoTask(JavaPlugin plugin, WeaponService weaponService, GunWeapon weapon, WeaponRaytracer raytracer,
-	                    Player player, ItemStack weaponItem, Runnable onCancel) {
+	                    Player player, ItemStack weaponItem, Runnable onCancel, EffectRunner effectRunner) {
 		// Delay 1, not the cooldown: WeaponInteract fires the first round synchronously via run() the moment the
 		// trigger is pulled, and the scheduled ticks continue the cadence table from index 1.
 		super(plugin, 1L, 1L);
@@ -69,6 +71,7 @@ public class FullAutoTask extends Timer {
 		this.player        = player;
 		this.itemStack     = weaponItem;
 		this.onCancel      = onCancel;
+		this.effectRunner  = effectRunner;
 
 		this.tickIndex = 0;
 	}
@@ -92,7 +95,7 @@ public class FullAutoTask extends Timer {
 		int shotsPerSecond = Math.max(1, Math.min(tickValue, 20));
 
 		if (AUTO[shotsPerSecond][tickIndex]) {
-			GunAction gunAction = new GunAction(plugin, weaponService, weapon, raytracer);
+			GunAction gunAction = new GunAction(plugin, weaponService, weapon, raytracer, effectRunner);
 
 			gunAction.weaponShoot(player);
 		}

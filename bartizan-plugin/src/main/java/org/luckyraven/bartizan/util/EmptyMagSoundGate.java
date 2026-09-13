@@ -2,10 +2,11 @@ package org.luckyraven.bartizan.util;
 
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.bartizan.api.weapon.Weapon;
-import org.luckyraven.bartizan.api.weapon.dto.SoundData;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
 
 import java.util.Map;
 import java.util.Set;
@@ -38,7 +39,7 @@ public final class EmptyMagSoundGate {
 	private EmptyMagSoundGate() {
 	}
 
-	public static void play(JavaPlugin plugin, Player player, Weapon weapon) {
+	public static void play(JavaPlugin plugin, Player player, Weapon weapon, EffectRunner effectRunner) {
 		UUID uuid = weapon.getUuid();
 		if (!GATE.add(uuid)) {
 			// Gate already active (e.g. AUTO firing empty mag every N ticks) — refresh the watchdog
@@ -47,8 +48,8 @@ public final class EmptyMagSoundGate {
 			return;
 		}
 
-		SoundData soundData = weapon.getSoundData();
-		SoundEffect.playSounds(player, soundData.getEmptyMagCustom(), soundData.getEmptyMagDefault());
+		EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).build();
+		effectRunner.run(weapon, EffectHook.ON_EMPTY, ctx);
 
 		AtomicBoolean pressing = new AtomicBoolean(true);
 		PRESS_FLAGS.put(uuid, pressing);

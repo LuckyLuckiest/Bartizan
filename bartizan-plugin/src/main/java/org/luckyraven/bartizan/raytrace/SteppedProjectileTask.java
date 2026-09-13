@@ -6,13 +6,15 @@ import org.luckyraven.bartizan.api.raytrace.WeaponVisualSpawner;
 
 import com.cryptomorin.xseries.particles.XParticle;
 import org.bukkit.Location;
-import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Projectile;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 
 import java.util.List;
@@ -42,6 +44,7 @@ public class SteppedProjectileTask {
 	private final double              explosionRadius;
 	private final double              explosionDamage;
 	private final int                 maxTicks;
+	private final EffectRunner        effectRunner;
 
 	private Location       lastLoc;
 	private RepeatingTimer timer;
@@ -50,7 +53,8 @@ public class SteppedProjectileTask {
 
 	public SteppedProjectileTask(JavaPlugin plugin, WeaponRaytracer raytracer, WeaponVisualSpawner visualSpawner,
 	                             Projectile visual, RaytraceContext ctx, boolean explodeOnTerminate,
-	                             double explosionRadius, double explosionDamage, int maxTicks) {
+	                             double explosionRadius, double explosionDamage, int maxTicks,
+	                             EffectRunner effectRunner) {
 		this.plugin             = plugin;
 		this.raytracer          = raytracer;
 		this.visualSpawner      = visualSpawner;
@@ -60,6 +64,7 @@ public class SteppedProjectileTask {
 		this.explosionRadius    = explosionRadius;
 		this.explosionDamage    = explosionDamage;
 		this.maxTicks           = maxTicks;
+		this.effectRunner       = effectRunner;
 		this.lastLoc            = visual.getLocation();
 		this.tickCounter        = 0;
 		this.finished           = false;
@@ -169,7 +174,13 @@ public class SteppedProjectileTask {
 		world.spawnParticle(XParticle.EXPLOSION.get(), loc, 5, 0.5, 0.5, 0.5, 0.1);
 		world.spawnParticle(XParticle.SMOKE.get(), loc, 30, 1.0, 1.0, 1.0, 0.1);
 		world.spawnParticle(XParticle.FLAME.get(), loc, 20, 1.0, 1.0, 1.0, 0.1);
-		world.playSound(loc, Sound.ENTITY_GENERIC_EXPLODE, 2.0f, 1.0f);
+
+		EffectContext effectCtx = EffectContext.builder()
+		                                       .weapon(ctx.getRequest().getWeapon())
+		                                       .source(shooter)
+		                                       .impact(loc)
+		                                       .build();
+		effectRunner.run(ctx.getRequest().getWeapon(), EffectHook.ON_EXPLODE, effectCtx);
 	}
 
 }
