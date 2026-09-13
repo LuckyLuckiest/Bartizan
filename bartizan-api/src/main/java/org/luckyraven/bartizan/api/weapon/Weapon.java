@@ -60,6 +60,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	private       RecoilData             recoilData;
 	private       ScopeData              scopeData;
 	private       SpreadData             spreadData;
+	private       EffectsData            effects = EffectsData.empty();
 	// Runtime state
 	private       int                    currentMagCapacity;
 	private       SelectiveFire          currentSelectiveFire;
@@ -412,6 +413,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		if (this.scopeData != null) this.scopeData.setScoped(false);
 
 		this.spreadData           = source.spreadData != null ? source.spreadData.clone() : null;
+		this.effects              = source.effects != null ? source.effects.clone() : EffectsData.empty();
 		this.recoil               = new RecoilManager(this);
 		this.spread               = new SpreadManager(this);
 		this.durabilityCalculator = new DurabilityCalculator(this);

@@ -115,6 +115,7 @@ public class WeaponAddon {
 		applyOptionalShootConfig(shoot, weapon, report);
 		applyScope(root, weapon, report);
 		ModifiersSectionParser.apply(root, weapon, report);
+		applyEffects(root, weapon, report);
 
 		// hand the placeholder resolver to the weapon instance so its rendering path can resolve
 		// configured PlaceholderAPI tokens
@@ -225,6 +226,20 @@ public class WeaponAddon {
 		weapon.getSpreadData().setResetOnBound(bounds.get("Reset_On_Bound").asBool().orDefault(false));
 		weapon.getSpreadData().setBoundMinimum(bounds.get("Min").asDouble().orDefault(0.0));
 		weapon.getSpreadData().setBoundMaximum(bounds.get("Max").asDouble().orDefault(0.0));
+	}
+
+	/**
+	 * Parses the root {@code Effects:} section (weapons-roadmap.md gate {@code HA}, §1) and lowers the legacy
+	 * {@code Shoot.Sound.*}/{@code Reload.Sound.*} slots into it, so old shipped YAML keeps producing feedback
+	 * through the same {@link org.luckyraven.bartizan.effect.EffectRunner} path without any file edits.
+	 */
+	private void applyEffects(NodeReader root, Weapon weapon, ConfigReport report) {
+		MappingNode effectsSection = root.get("Effects").asMapping().orNull();
+		NodeReader  effects        = effectsSection != null ? NodeReader.of(effectsSection, report) : null;
+
+		EffectsData effectsData = EffectsSectionParser.parse(effects, report);
+		EffectsSectionParser.lowerLegacySounds(weapon.getSoundData(), effectsData);
+		weapon.setEffects(effectsData);
 	}
 
 	private void applyScope(NodeReader root, Weapon weapon, ConfigReport report) {

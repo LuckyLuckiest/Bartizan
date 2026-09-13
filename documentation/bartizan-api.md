@@ -94,6 +94,17 @@ the fifteen `weapon.dto.*` records, `ammo.Ammunition`, `wearable.Wearable` (stri
 `fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code needs no edit),
 `BartizanItemPredicates.WEARABLE`.
 
+### Effects (`weapon.dto.{EffectHook, EffectSpec, EffectsData}`)
+
+Gate `HA`'s feedback engine model, added at the api layer so a consumer can read what a weapon will do without
+depending on `bartizan-plugin`. `EffectHook` is the v1 set of ~20 feedback hooks (`ON_SHOOT`, `ON_HIT`, `ON_KILL`,
+…); `key()`/`fromKey(String)` round-trip the `Capitalized_Underscore` YAML spelling (`On_Shoot`). `EffectSpec` is
+an immutable `(type, args)` record for one configured effect entry, with typed arg accessors (`arg`, `intArg`,
+`doubleArg`, `boolArg`). `EffectsData` is the hook → effect-list table (`forHook`, `has`, `put`, `empty()`).
+`Weapon#getEffects()` exposes a weapon's parsed `Effects:` section (never `null`, empty when none configured). The
+runtime engine that reads these (`effect.EffectRunner` and its 15 hook effects) lives in `bartizan-plugin` and is
+not yet wired into any firing action.
+
 ### Events (`org.luckyraven.bartizan.api.event`)
 
 `WeaponEvent`, `WeaponShootEvent`, `WeaponRaytraceImpactEvent` (cancelling suppresses damage only — penetration and

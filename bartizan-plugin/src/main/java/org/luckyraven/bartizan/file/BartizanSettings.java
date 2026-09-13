@@ -10,6 +10,8 @@ import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.FileHandlerReader;
 import org.luckyraven.keystone.persistence.config.MappingNode;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.bartizan.api.weapon.dto.EffectsData;
+import org.luckyraven.bartizan.configuration.parser.EffectsSectionParser;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -31,6 +33,12 @@ public class BartizanSettings implements FileInitializer {
 	private static @Getter int blockRestoreDelayTicks;
 	private static @Getter int blockRegenerationDelayTicks;
 	private static @Getter int blockRegenerationStepTicks;
+
+	/**
+	 * Fallback effect lists used when a weapon declares no {@code Effects:} list for a given hook (weapons-roadmap.md
+	 * gate {@code HA}, §1 "Global defaults"). Never {@code null} — empty when {@code Default_Effects:} is absent.
+	 */
+	private static @Getter EffectsData defaultEffects = EffectsData.empty();
 
 	private final FileHandler fileHandler;
 
@@ -92,6 +100,9 @@ public class BartizanSettings implements FileInitializer {
 		blockRestoreDelayTicks      = intVal(blockRegeneration, "Restore_Delay_Ticks", 100);
 		blockRegenerationDelayTicks = intVal(blockRegeneration, "Regeneration_Delay_Ticks", 100);
 		blockRegenerationStepTicks  = intVal(blockRegeneration, "Regeneration_Step_Ticks", 4);
+
+		NodeReader defaultEffectsSection = section(root, "Default_Effects", report);
+		defaultEffects = EffectsSectionParser.parse(defaultEffectsSection, report);
 
 		if (!report.isEmpty()) report.log(log);
 	}

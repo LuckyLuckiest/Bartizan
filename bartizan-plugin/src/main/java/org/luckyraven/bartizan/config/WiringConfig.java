@@ -14,6 +14,8 @@ import org.luckyraven.bartizan.api.raytrace.WeaponVisualSpawner;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
 import org.luckyraven.bartizan.bootstrap.DefaultListenerService;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
+import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.file.BartizanSettings;
 import org.luckyraven.bartizan.file.WeaponBlockRegenerationSettings;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.npc.NpcWeaponFactoryImpl;
@@ -68,6 +70,15 @@ public final class WiringConfig {
 	@Bean
 	public WeaponVisualSpawner weaponVisualSpawner() {
 		return new WeaponVisualSpawner();
+	}
+
+	/**
+	 * The one feedback engine every hook fires through (weapons-roadmap.md gate {@code HA}, §1). Not yet called from
+	 * any firing action — wiring the hooks in is a follow-up task.
+	 */
+	@Bean
+	public EffectRunner effectRunner(BartizanSettings settings) {
+		return new EffectRunner(bartizan, settings);
 	}
 
 	/**
