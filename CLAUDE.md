@@ -21,14 +21,14 @@ or any `io.papermc.*` import). Use Spigot/Bukkit equivalents instead.
 - `bartizan-api` is the ONLY artifact a consumer plugin depends on (`provided` scope). It carries **zero**
   `net.minecraft.*` / `org.bukkit.craftbukkit.*` symbols and **zero** `org.luckyraven.gangland.*` symbols — the
   jar is never Paper-remapped, so an NMS symbol here breaks every consumer on Paper.
-- `bartizan-plugin` is the runtime: services, listeners, commands, persistence, item vocabulary registration. It
+- `bartizan-plugin` is the runtime: services, listeners, commands, item vocabulary registration. It
   is never a dependency of anything — nothing outside `bartizan-plugin` names its classes.
 - A type moves to `bartizan-api` only if a consumer needs to reference it directly (a domain type, a DTO, an
   event, a service contract) or if another api type's public signature requires it transitively. Everything else
   belongs in `bartizan-plugin`.
 - Bartizan does **not** use `keystone-module` — it is a plain plugin, not a Keystone module host. No
   `ModuleLoader`, no `module.yml`, no `Host_Api`.
-- The final, as-built package map for both modules is in [`README.md`](README.md#package-map-as-built-010) —
+- The final, as-built package map for both modules is in [`README.md`](README.md#package-map-as-built-020) —
   consult it before assuming where a class lives; three raytrace classes (`WeaponShooting`, `WeaponMuzzle`,
   `SteppedProjectileTask`) moved from `bartizan-api` to `bartizan-plugin` at gate GD after the initial split, so an
   older mental model of the package layout is wrong for those three.

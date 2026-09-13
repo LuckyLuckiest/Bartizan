@@ -1,49 +1,23 @@
 package org.luckyraven.bartizan.weapon;
 
 import org.luckyraven.keystone.bean.BeanLifecycle;
-import org.luckyraven.bartizan.database.BartizanDatabase;
-import org.luckyraven.bartizan.database.WeaponRepository;
-import org.luckyraven.keystone.persistence.repository.IRepository;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
-import org.luckyraven.bartizan.api.weapon.Weapon;
 
-import java.util.Collection;
-
+/**
+ * The runtime weapon registry bean. Live {@link org.luckyraven.bartizan.api.weapon.Weapon} instances are keyed by
+ * the uuid the item carries in NBT and rebuilt from that NBT on first use
+ * ({@link WeaponService#validateAndGetWeapon}). Nothing is persisted — the item is the source of truth — so the only
+ * lifecycle duty left is wiping the registry on reload, when the templates it clones from are re-parsed.
+ */
 public class WeaponManager extends WeaponService implements BeanLifecycle {
 
-	private final WeaponAddon      weaponAddon;
-	private final BartizanDatabase database;
-
-	public WeaponManager(WeaponAddon weaponAddon, BartizanDatabase database) {
+	public WeaponManager(WeaponAddon weaponAddon) {
 		super(weaponAddon);
-		this.weaponAddon = weaponAddon;
-		this.database    = database;
-	}
-
-	public void initialize() {
-		IRepository<Weapon> repository = database.getRepositoryRegistry().getRepository(Weapon.class);
-
-		if (repository instanceof WeaponRepository weaponRepository) {
-			weaponRepository.setWeaponAddon(weaponAddon);
-		}
-
-		Collection<Weapon> loaded = repository.loadAll();
-
-		for (Weapon weapon : loaded) {
-			getWeapons().put(weapon.getUuid(), weapon);
-		}
-
-		repository.setDataSupplier(() -> getWeapons().values());
 	}
 
 	@Override
 	public void onClear() {
 		clear();
-	}
-
-	@Override
-	public void onInitialize(boolean firstLoad) {
-		initialize();
 	}
 
 }

@@ -16,9 +16,9 @@ import java.util.Objects;
 
 /**
  * Bartizan's {@code settings.yml} reader — same {@link FileInitializer} shape as Gangland's {@code Settings}
- * (bartizan.md §1.8), but carrying only the seven Gangland settings the weapon module actually reads, plus the
- * three infrastructure sections a standalone plugin needs (Debug, Auto_Save, Database). Never
- * {@code setDefaults}/{@code copyDefaults} — every default lives in the shipped {@code settings.yml} itself.
+ * (bartizan.md §1.8), but carrying only the settings the weapon module actually reads plus a {@code Debug} flag.
+ * There is no database section: Bartizan keeps no database. Never {@code setDefaults}/{@code copyDefaults} — every
+ * default lives in the shipped {@code settings.yml} itself.
  */
 @CustomLog
 public class BartizanSettings implements FileInitializer {
@@ -31,15 +31,6 @@ public class BartizanSettings implements FileInitializer {
 	private static @Getter int blockRestoreDelayTicks;
 	private static @Getter int blockRegenerationDelayTicks;
 	private static @Getter int blockRegenerationStepTicks;
-
-	private static @Getter boolean autoSaveDebug;
-	private static @Getter int     autoSaveTime;
-	private static @Getter int     cleanUpTime;
-
-	private static @Getter String  databaseType;
-	private static @Getter String  mysqlHost, mysqlUsername, mysqlPassword;
-	private static @Getter int     mysqlPort;
-	private static @Getter boolean sqliteBackup, sqliteFailedMysql;
 
 	private final FileHandler fileHandler;
 
@@ -101,26 +92,6 @@ public class BartizanSettings implements FileInitializer {
 		blockRestoreDelayTicks      = intVal(blockRegeneration, "Restore_Delay_Ticks", 100);
 		blockRegenerationDelayTicks = intVal(blockRegeneration, "Regeneration_Delay_Ticks", 100);
 		blockRegenerationStepTicks  = intVal(blockRegeneration, "Regeneration_Step_Ticks", 4);
-
-		NodeReader autoSave = section(root, "Auto_Save", report);
-		autoSaveDebug = bool(autoSave, "Debug", true);
-		autoSaveTime  = intVal(autoSave, "Time", 10);
-
-		// Clean_Up.Time (days): the weapon-table cleanup schedule driving WeaponDataCleanupTask (gate-GG review B1).
-		NodeReader cleanUp = section(root, "Clean_Up", report);
-		cleanUpTime = intVal(cleanUp, "Time", 30);
-
-		NodeReader database = section(root, "Database", report);
-		NodeReader mysql     = section(database, "MySQL", report);
-		NodeReader sqlite    = section(database, "SQLite", report);
-
-		databaseType      = str(database, "Type", "sqlite");
-		mysqlHost         = str(mysql, "Host", "localhost");
-		mysqlUsername     = str(mysql, "Username", "root");
-		mysqlPassword     = str(mysql, "Password", "");
-		mysqlPort         = intVal(mysql, "Port", 3306);
-		sqliteBackup      = bool(sqlite, "Backup", false);
-		sqliteFailedMysql = bool(sqlite, "Failed_MySQL", true);
 
 		if (!report.isEmpty()) report.log(log);
 	}

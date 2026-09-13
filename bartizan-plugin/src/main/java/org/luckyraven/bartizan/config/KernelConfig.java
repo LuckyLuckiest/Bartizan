@@ -2,7 +2,6 @@ package org.luckyraven.bartizan.config;
 
 import org.luckyraven.bartizan.Bartizan;
 import org.luckyraven.bartizan.command.data.InformationManager;
-import org.luckyraven.bartizan.database.BartizanDatabaseSettings;
 import org.luckyraven.keystone.bean.Bean;
 import org.luckyraven.keystone.bean.Configuration;
 import org.luckyraven.keystone.bean.Phase;
@@ -16,13 +15,12 @@ import org.luckyraven.keystone.permission.PermissionManager;
 import org.luckyraven.keystone.permission.PermissionWorker;
 import org.luckyraven.keystone.persistence.FileHandler;
 import org.luckyraven.keystone.persistence.FileManager;
-import org.luckyraven.keystone.persistence.database.DatabaseManager;
-import org.luckyraven.keystone.persistence.database.DatabaseSettingsProvider;
 
 /**
  * KERNEL-phase configuration that produces every bootstrap-critical singleton Bartizan needs before the FILE phase
  * begins — the standalone-plugin twin of Gangland's {@code KernelConfig} (bartizan.md §2 B10), minus every module
- * concern (no {@code ModuleLoader} parameter, no per-module {@code commands.json} merge).
+ * concern (no {@code ModuleLoader} parameter, no per-module {@code commands.json} merge) and minus the database
+ * beans (Bartizan keeps no database since 0.2.0).
  */
 @Configuration(phase = Phase.KERNEL)
 public class KernelConfig {
@@ -45,9 +43,9 @@ public class KernelConfig {
 	}
 
 	/**
-	 * The plugin's fault hub (Keystone diagnostics). Guard-wrapped listener dispatch, the command dispatch funnel
-	 * and repository failures all report here; faults are classified, logged at the right level, and kept in a
-	 * recent-faults ring. Installed process-wide so Keystone code paths reach it via {@code Diagnostics.active()}.
+	 * The plugin's fault hub (Keystone diagnostics). Guard-wrapped listener dispatch and the command dispatch funnel
+	 * report here; faults are classified, logged at the right level, and kept in a recent-faults ring. Installed
+	 * process-wide so Keystone code paths reach it via {@code Diagnostics.active()}.
 	 */
 	@Bean
 	public Diagnostics diagnostics() {
@@ -92,16 +90,6 @@ public class KernelConfig {
 		FileManager fm = new FileManager(bartizan);
 		fm.addFile(new FileHandler(bartizan, "settings", ".yml"), true);
 		return fm;
-	}
-
-	@Bean
-	public DatabaseSettingsProvider databaseSettings() {
-		return new BartizanDatabaseSettings();
-	}
-
-	@Bean
-	public DatabaseManager databaseManager(DatabaseSettingsProvider databaseSettings) {
-		return new DatabaseManager(bartizan, databaseSettings);
 	}
 
 }

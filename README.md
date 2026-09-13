@@ -6,7 +6,7 @@ installed on any Keystone-powered server, not just Gangland's.
 
 ## Install
 
-Drop `Bartizan-0.1.0.jar` beside `Keystone-1.9.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
+Drop `Bartizan-0.2.0.jar` beside `Keystone-1.9.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
 Keystone and NBT-API — both must already be installed and enabled, or Bartizan fails to load (Keystone's
 `NbtBridge.detect()` falls back to a no-op accessor when NBT-API is absent, which makes every Bartizan item inert,
 so it is a hard `depend:`, not a `softdepend:`). Soft-depends on `ViaVersion`, `PlaceholderAPI`.
@@ -19,16 +19,18 @@ plugins/Bartizan/message/message_en.yml
 plugins/Bartizan/weapon/<22 files>.yml
 plugins/Bartizan/items/ammunition.yml
 plugins/Bartizan/items/wearables.yml
-plugins/Bartizan/database/bartizan.db          (SQLite; table `weapon`, columns uuid + type)
-plugins/Bartizan/.weapon-import-done           (one-shot import marker — see documentation/migration.md)
 ```
+
+Bartizan keeps no database. A weapon item's identity and state live in its own NBT (`uuid`, `weapon`, `ammo-left`,
+`selective-fire` tags) and the runtime registry is rebuilt from those tags on first use. A `database/` folder or a
+`.weapon-import-done` marker left behind by 0.1.0 is ignored and can be deleted.
 
 ## Modules
 
 | Artifact | Purpose |
 |---|---|
 | `bartizan-api` | The weapon/ammo/wearable model and service contracts (`BartizanApi`, `WeaponCatalog`, events, `NpcRangedAttack` SPI impl surface). `provided` scope in every consumer; zero `net.minecraft`, zero `org.bukkit.craftbukkit`, zero `org.luckyraven.gangland` symbols. |
-| `bartizan-plugin` | The runtime: services, listeners, commands, persistence, item vocabulary. Shaded into `Bartizan-0.1.0.jar`. Never a dependency of anything else. |
+| `bartizan-plugin` | The runtime: services, listeners, commands, item vocabulary. Shaded into `Bartizan-0.2.0.jar`. Never a dependency of anything else. |
 
 Consumers (e.g. Gangland Warfare's `gangland-features/*` modules) depend on `bartizan-api` at `provided` scope and
 discover `BartizanApi` through Bukkit's `ServicesManager` at runtime — Bartizan never names a consumer's types, and
@@ -38,7 +40,7 @@ See [`documentation/bartizan-api.md`](documentation/bartizan-api.md) for the ser
 example, and [`documentation/migration.md`](documentation/migration.md) for what server owners moving off an older
 Gangland Warfare weapon module need to do.
 
-## Package map (as-built, 0.1.0)
+## Package map (as-built, 0.2.0)
 
 ```
 bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
@@ -64,10 +66,8 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .ammo                   AmmunitionManager
                                        .bootstrap              BartizanContext, DefaultListenerService
                                        .command(.data|.wearable) WeaponCommand/Give/Info/List, Ammunition*, Wearable*, DebugCommand
-                                       .config                 KernelConfig, FilesConfig, DatabaseConfig, WiringConfig, ItemConfig
+                                       .config                 KernelConfig, FilesConfig, WiringConfig, ItemConfig
                                        .configuration(.parser) WeaponAddon, AmmunitionAddon, the 9 YAML section parsers
-                                       .data                   WeaponDataCleanupTask
-                                       .database               BartizanDatabase, WeaponTable, WeaponRepository, WeaponTableImportTask
                                        .file                   BartizanSettings, BartizanMessages, WeaponLoader
                                        .fire                   PluginFireRegistry
                                        .item                   converters, serializers, refreshers, WeaponItemApiImpl, BartizanItemVocabulary
@@ -89,7 +89,7 @@ Bartizan's own `NpcWeaponControllerImpl`. `RaytraceContext` and `WeaponVisualSpa
 ## Build
 
 ```
-mvn clean install            # bartizan-plugin/target/Bartizan-0.1.0.jar
+mvn clean install            # bartizan-plugin/target/Bartizan-0.2.0.jar
 mvn clean install -DskipTests
 ```
 

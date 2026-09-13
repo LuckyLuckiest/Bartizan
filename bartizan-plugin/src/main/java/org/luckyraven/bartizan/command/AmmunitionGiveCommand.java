@@ -42,7 +42,7 @@ class AmmunitionGiveCommand extends SubArgument {
 	}
 
 	private void ammunitionGive() {
-		Argument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
+		OptionalArgument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			Player player = (Player) sender;
 
 			String  ammoName       = args[2];
@@ -60,7 +60,7 @@ class AmmunitionGiveCommand extends SubArgument {
 					.stream().toList();
 		});
 
-		Argument amount = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
+		OptionalArgument amount = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			Player player = (Player) sender;
 
 			String ammoName = args[2];
@@ -83,6 +83,9 @@ class AmmunitionGiveCommand extends SubArgument {
 				player.sendMessage(invalidAmmo.replace("%args%", ammoName));
 			}
 		}, sender -> List.of("<amount>"));
+
+		name.setDisplayName("name");
+		amount.setDisplayName("amount");
 
 		name.addSubArgument(amount);
 		this.addSubArgument(name);

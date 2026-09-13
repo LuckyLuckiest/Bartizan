@@ -56,7 +56,7 @@ class WeaponInfoCommand extends SubArgument {
 	}
 
 	private void weaponInfo() {
-		Argument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
+		OptionalArgument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			Player player = (Player) sender;
 
 			String weaponName = args[2];
@@ -70,6 +70,8 @@ class WeaponInfoCommand extends SubArgument {
 			sendInfo(player, weapon);
 		}, sender -> weaponAddon.getWeaponKeys()
 				.stream().toList());
+
+		name.setDisplayName("name");
 
 		this.addSubArgument(name);
 	}

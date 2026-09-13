@@ -9,10 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.bootstrap.BartizanContext;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
-import org.luckyraven.bartizan.database.BartizanDatabase;
 import org.luckyraven.keystone.nms.PacketBridge;
-import org.luckyraven.keystone.persistence.database.DatabaseManager;
-import org.luckyraven.keystone.persistence.repository.RepositoryRegistry;
 
 @Getter
 @CustomLog
@@ -52,46 +49,13 @@ public final class Bartizan extends JavaPlugin {
 
 		if (context == null) return;
 
-		// B1 (gate-GG-review blocker): mirrors the stage-isolation shape of Gangland's ShutdownSequence — bean
-		// shutdown, final force-save, connection close, backend disconnect, each isolated so a throwing stage never
-		// skips the ones after it. Without the last two stages the DatabaseBackend's HikariCP pool (and, on
-		// SQLite/Windows, its file handles) outlives a /reload.
+		// Nothing to flush: the weapon registry is rebuilt from item NBT, so bean shutdown is the only stage left.
 		try {
-			stage("shutdown.beans", context::shutdownBeans);
-			stage("shutdown.save", this::forceSave);
-			stage("shutdown.connections", this::closeConnections);
-			stage("shutdown.backend", this::disconnectBackend);
+			context.shutdownBeans();
+		} catch (Throwable t) {
+			log.error("Bartizan bean shutdown failed; clearing the container anyway", t);
 		} finally {
 			context.getContainer().clear();
-		}
-	}
-
-	private void forceSave() {
-		RepositoryRegistry repositoryRegistry = context.get(RepositoryRegistry.class);
-		if (repositoryRegistry == null) return;
-
-		repositoryRegistry.saveAll();
-	}
-
-	private void closeConnections() {
-		DatabaseManager databaseManager = context.get(DatabaseManager.class);
-		if (databaseManager == null || databaseManager.getDatabases().isEmpty()) return;
-
-		databaseManager.closeConnections();
-	}
-
-	private void disconnectBackend() {
-		BartizanDatabase database = context.get(BartizanDatabase.class);
-		if (database == null) return;
-
-		database.disconnectBackend();
-	}
-
-	private void stage(String code, Runnable body) {
-		try {
-			body.run();
-		} catch (Throwable t) {
-			log.error("Bartizan shutdown stage '{}' failed; continuing with the remaining stages", code, t);
 		}
 	}
 

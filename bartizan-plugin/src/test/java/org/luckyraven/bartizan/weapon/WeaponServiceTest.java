@@ -26,9 +26,8 @@ import static org.mockito.Mockito.when;
  * Pins the read-only lookup seams added for WP-06 (P0, weapons.md observation #6).
  *
  * <p>Every {@code getWeapon(type)} call with a null uuid minted a fresh {@link Weapon} with a random uuid and put it
- * into {@code WeaponService.weapons}. That map is the autosave data supplier ({@code WeaponManager.initialize}), so
- * item converters, item refreshers, shop display names and throwable death messages each grew the registry — and the
- * {@code weapon} table — by one row per call, without bound.
+ * into {@code WeaponService.weapons}, so item converters, item refreshers, shop display names and throwable death
+ * messages each grew the registry by one entry per call, without bound.
  *
  * <p>{@code getWeaponTemplate} / {@code getWeaponTemplates} / {@code createTransientWeapon} give those callers a
  * lookup that never registers anything; only a real give ({@code getWeapon(...)}) still mints.
@@ -62,7 +61,7 @@ class WeaponServiceTest {
 
 		assertSame(gunTemplate, template);
 		assertTrue(service.getWeapons().isEmpty(),
-		           "a read-only template lookup must not mint a registry entry (and a weapon table row)");
+		           "a read-only template lookup must not mint a registry entry");
 	}
 
 	@Test
@@ -94,7 +93,7 @@ class WeaponServiceTest {
 		assertNotSame(first, second);
 		assertNotNull(first.getUuid());
 		assertTrue(service.getWeapons().isEmpty(),
-		           "converters and refreshers must not add a row per item they build");
+		           "converters and refreshers must not add a registry entry per item they build");
 	}
 
 	@Test

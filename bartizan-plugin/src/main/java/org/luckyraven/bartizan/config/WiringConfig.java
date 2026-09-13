@@ -14,9 +14,6 @@ import org.luckyraven.bartizan.api.raytrace.WeaponVisualSpawner;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
 import org.luckyraven.bartizan.bootstrap.DefaultListenerService;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
-import org.luckyraven.bartizan.data.WeaponAutoSaveTask;
-import org.luckyraven.bartizan.data.WeaponDataCleanupTask;
-import org.luckyraven.bartizan.database.BartizanDatabase;
 import org.luckyraven.bartizan.file.WeaponBlockRegenerationSettings;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.npc.NpcWeaponFactoryImpl;
@@ -25,13 +22,11 @@ import org.luckyraven.bartizan.weapon.WeaponManager;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.wearable.WearableAddon;
 import org.luckyraven.bartizan.wearable.WearableService;
-import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.keystone.bean.Bean;
 import org.luckyraven.keystone.bean.Configuration;
 import org.luckyraven.keystone.bean.SettingsLookup;
 import org.luckyraven.keystone.bean.autowire.DependencyContainer;
 import org.luckyraven.keystone.command.CommandManager;
-import org.luckyraven.keystone.persistence.repository.IRepository;
 
 /**
  * CONFIG-phase wiring for the weapon system — the standalone-plugin twin of Gangland's {@code WeaponModuleConfig}
@@ -56,8 +51,8 @@ public final class WiringConfig {
 	// ---------------------------------------------------------------------------------------------------------------
 
 	@Bean
-	public WeaponManager weaponManager(WeaponAddon weaponAddon, BartizanDatabase database) {
-		return new WeaponManager(weaponAddon, database);
+	public WeaponManager weaponManager(WeaponAddon weaponAddon) {
+		return new WeaponManager(weaponAddon);
 	}
 
 	@Bean
@@ -100,33 +95,6 @@ public final class WiringConfig {
 	@Bean
 	public PluginFireRegistry pluginFireRegistry() {
 		return new PluginFireRegistry();
-	}
-
-	@Bean
-	public WeaponDataCleanupTask weaponDataCleanupTask(WeaponManager weaponManager, BartizanDatabase database) {
-		IRepository<Weapon> weaponRepository = database.getRepositoryRegistry().getRepository(Weapon.class);
-		WeaponDataCleanupTask task = new WeaponDataCleanupTask(bartizan, weaponManager, weaponRepository);
-		// "becomes a plain Keystone Timer" (bartizan.md §1.1) — Bartizan has no PluginDataCleanupService to invoke
-		// it externally, so the bean starts its own schedule. start(false): the cleanup touches repository/manager
-		// state, not a Bukkit-API-free flag flip (house rule feedback_repeating_timer_async).
-		task.start(false);
-		return task;
-	}
-
-	/**
-	 * B1 (gate-GG-review blocker): {@code WeaponManager.initialize()} wires {@code setDataSupplier(...)} but
-	 * nothing ever called {@code saveAll} — every persisted weapon UUID was lost on restart. Mirrors Gangland's
-	 * {@code PeriodicalUpdates.onInitialize()} gate: a non-positive {@code Auto_Save.Time} disables autosave, so
-	 * the task is built (for {@code Bartizan.onDisable()}'s final save to still find it via the container) but
-	 * {@code start(false)} is only called when its computed period is positive.
-	 */
-	@Bean
-	public WeaponAutoSaveTask weaponAutoSaveTask(BartizanDatabase database) {
-		WeaponAutoSaveTask task = new WeaponAutoSaveTask(bartizan, database.getRepositoryRegistry());
-		if (task.getPeriod() > 0) {
-			task.start(false);
-		}
-		return task;
 	}
 
 	// ---------------------------------------------------------------------------------------------------------------

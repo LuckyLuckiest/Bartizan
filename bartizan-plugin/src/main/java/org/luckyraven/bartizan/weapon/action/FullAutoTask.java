@@ -58,7 +58,9 @@ public class FullAutoTask extends Timer {
 
 	public FullAutoTask(JavaPlugin plugin, WeaponService weaponService, GunWeapon weapon, WeaponRaytracer raytracer,
 	                    Player player, ItemStack weaponItem, Runnable onCancel) {
-		super(plugin, weapon.getProjectileData().getCooldown(), 1L);
+		// Delay 1, not the cooldown: WeaponInteract fires the first round synchronously via run() the moment the
+		// trigger is pulled, and the scheduled ticks continue the cadence table from index 1.
+		super(plugin, 1L, 1L);
 
 		this.plugin        = plugin;
 		this.weaponService = weaponService;

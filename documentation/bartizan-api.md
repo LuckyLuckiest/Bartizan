@@ -79,7 +79,7 @@ public interface BartizanApi {
   `null` for an unknown name.
 - `isSameWeapon(ItemStack a, ItemStack b)` is **read-only**: it resolves each side's configured template and
   compares name/category/material/durability, and never mints or registers a weapon in the runtime's weapon
-  registry (and therefore never writes a database row) as a side effect of the comparison — safe to call once per
+  registry as a side effect of the comparison — safe to call once per
   item from sign/shop similarity code without growing state.
 - `cleanDisplayName(ItemStack item)` reads the item's weapon-name NBT tag, looks up the configured template's
   display name and returns it colored (`&` codes translated). Returns `null` for a stack that carries no weapon

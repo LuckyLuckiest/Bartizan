@@ -8,9 +8,9 @@ import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 
 /**
- * Bartizan's sole {@link NpcWeaponFactory} implementation (bartizan.md §1.6(8)). Resolves a fresh, non-persisted
- * weapon instance via {@link WeaponManager#createTransientWeapon(String)} — matching {@code W/WeaponService.java}'s
- * own fallback path for weapons that never touch the {@code weapon} table (NPCs never own a persisted UUID).
+ * Bartizan's sole {@link NpcWeaponFactory} implementation (bartizan.md §1.6(8)). Resolves a fresh, unregistered
+ * weapon instance via {@link WeaponManager#createTransientWeapon(String)} — NPC weapons never enter the runtime
+ * registry.
  * Constructor matches {@code WiringConfig.npcWeaponFactory(WeaponManager)}'s existing
  * {@code new NpcWeaponFactoryImpl(bartizan, weaponManager)} call exactly (bartizan.md B10 row) — no config-class
  * change needed.

@@ -13,23 +13,18 @@ import org.luckyraven.keystone.command.CommandManager;
 import org.luckyraven.keystone.command.CommandTabCompleter;
 import org.luckyraven.keystone.command.brigadier.BrigadierTabRegistrar;
 import org.luckyraven.keystone.persistence.FileManager;
-import org.luckyraven.keystone.persistence.repository.IRepository;
-import org.luckyraven.keystone.persistence.repository.RepositoryRegistry;
-
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.Set;
 
 /**
  * Single root for Bartizan's wiring — the standalone-plugin twin of Gangland's {@code GanglandContext} with every
- * module concern removed (bartizan.md §2 B8): no {@code ModuleLoader}, no module scans, no {@code hostApi}, no
- * module loop in the repository-republish hook. Owns the only {@link DependencyContainer} and {@link BeanFactory}
- * that exist at runtime and runs the post-bootstrap listener + command scans.
+ * module concern removed (bartizan.md §2 B8): no {@code ModuleLoader}, no module scans, no {@code hostApi}, and —
+ * since Bartizan keeps no database — no repository-republish hook. Owns the only {@link DependencyContainer} and
+ * {@link BeanFactory} that exist at runtime and runs the post-bootstrap listener + command scans.
  *
  * <p>The bootstrap pipeline mirrors {@code GanglandContext}'s: {@code KernelConfig} (KERNEL) produces every
  * bootstrap-critical singleton, {@link #bootstrap()} scans {@code org.luckyraven.bartizan.config} for
  * {@code @Configuration} classes and drives {@link BeanFactory#instantiate()} through
- * KERNEL → FILE → DATABASE → CONFIG → LIFECYCLE → LISTENER → COMMAND, then runs the listener and command scans.
+ * KERNEL → FILE → CONFIG → LIFECYCLE → LISTENER → COMMAND (Keystone's DATABASE phase runs empty), then runs the
+ * listener and command scans.
  */
 @CustomLog
 public final class BartizanContext {
@@ -44,9 +39,6 @@ public final class BartizanContext {
 	private final BeanFactory         beanFactory;
 
 	private final Bartizan bartizan;
-
-	/** Repos already published into the container — guards the per-bean DATABASE hook from double-registering. */
-	private final Set<IRepository<?>> publishedRepositories = Collections.newSetFromMap(new IdentityHashMap<>());
 
 	public BartizanContext(Bartizan bartizan) {
 		this.bartizan = bartizan;
@@ -105,31 +97,11 @@ public final class BartizanContext {
 			}
 		});
 
-		// DATABASE phase: after each database bean, find any RepositoryRegistry in the container and republish
-		// every repository into the container by its concrete class. Idempotent via publishedRepositories identity
-		// set.
-		beanFactory.setPhaseHook(Phase.DATABASE, beans -> publishRepositoriesFromContainer());
-
 		beanFactory.scan(CONFIG_PACKAGE);
 		beanFactory.instantiate();
 
 		runListenerPhase();
 		runCommandPhase();
-	}
-
-	@SuppressWarnings({"unchecked", "rawtypes"})
-	private void publishRepositoriesFromContainer() {
-		RepositoryRegistry registry = container.getInstance(RepositoryRegistry.class);
-		if (registry == null) {
-			return;
-		}
-		for (IRepository<?> repo : registry.getAllRepositories()) {
-			if (!publishedRepositories.add(repo)) {
-				continue;
-			}
-			Class repoClass = repo.getClass();
-			container.registerInstance(repoClass, repo);
-		}
 	}
 
 	private void runListenerPhase() {
@@ -175,9 +147,6 @@ public final class BartizanContext {
 		BrigadierTabRegistrar.registerIfSupported(bartizan, command, commandManager);
 
 		log.debug("Command phase complete: {} command(s) registered", commandManager.commandView().size());
-	}
-	public DependencyContainer getContainer() {
-		return container;
 	}
 
 }

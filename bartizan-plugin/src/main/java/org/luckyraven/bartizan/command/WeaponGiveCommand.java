@@ -53,7 +53,7 @@ class WeaponGiveCommand extends SubArgument {
 	}
 
 	private void weaponGive() {
-		Argument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
+		OptionalArgument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			Player player = (Player) sender;
 
 			String  weaponName = args[2];
@@ -71,7 +71,7 @@ class WeaponGiveCommand extends SubArgument {
 					.stream().map(FileHandler::getName).toList();
 		});
 
-		Argument amount = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
+		OptionalArgument amount = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			Player player = (Player) sender;
 
 			String weaponName = args[2];
@@ -96,6 +96,9 @@ class WeaponGiveCommand extends SubArgument {
 				player.sendMessage(invalidWeapon.replace("%args%", weaponName));
 			}
 		}, sender -> List.of("<amount>"));
+
+		name.setDisplayName("name");
+		amount.setDisplayName("amount");
 
 		name.addSubArgument(amount);
 		this.addSubArgument(name);

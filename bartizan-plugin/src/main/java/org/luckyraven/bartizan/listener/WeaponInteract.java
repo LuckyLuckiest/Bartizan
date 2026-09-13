@@ -479,6 +479,11 @@ public class WeaponInteract implements Listener {
 			return;
 		}
 
+		// The first spray fires inside the event that pulled the trigger; the loop below (a RepeatingTimer skips
+		// its first scheduled run) continues the cadence from the next tick-rate boundary. Empty or broken: nothing
+		// to loop over.
+		if (!action.fireOnce(player)) return;
+
 		WeaponData freshWeaponData = new WeaponData();
 		freshWeaponData.shooting = true;
 		AtomicReference<WeaponData> ref = new AtomicReference<>(freshWeaponData);
@@ -618,7 +623,12 @@ public class WeaponInteract implements Listener {
 
 			continuousFire.put(weaponUuid, weaponDataAtomicReference);
 
+			// Schedule first (so a cancel() from inside run() has a task id to cancel), then fire the first round
+			// synchronously: index 0 of the cadence table is always a shot, and the scheduled ticks continue from
+			// index 1 on the next tick. Previously the task's initial delay was the full cooldown, so every fresh
+			// AUTO press waited that long before its first round.
 			autoTask.start(false);
+			autoTask.run();
 
 			// watchdog timer for AUTO mode
 			long watchdog = weapon.getProjectileData().getCooldown() + 2L;
@@ -657,18 +667,21 @@ public class WeaponInteract implements Listener {
 	}
 
 	private void shoot(Player player, GunWeapon weapon) {
-		// have only multiple shots for when the weapon is burst
-		int numberOfShots = 1;
+		// The first round fires inside the event that pulled the trigger. Routing it through the scheduler (as the
+		// old zero-interval SequenceTimer pair did) lands it on the next tick at the earliest.
+		shootInterval(player, weapon);
 
-		if (weapon.getCurrentSelectiveFire() == SelectiveFire.BURST) numberOfShots = weapon.getProjectileData()
-		                                                                                   .getPerShot();
+		if (weapon.getCurrentSelectiveFire() != SelectiveFire.BURST) return;
+
+		// BURST: the remaining rounds of the sequence, each spaced by the projectile cooldown.
+		int perShot  = weapon.getProjectileData().getPerShot();
+		int cooldown = weapon.getProjectileData().getCooldown();
+
+		if (perShot <= 1) return;
 
 		SequenceTimer sequenceTimer = new SequenceTimer(plugin, 1L, 1L);
 
-		for (int i = 0; i < numberOfShots; ++i) {
-			// logically, the first shot should be instant
-			int cooldown = i == 0 ? 0 : weapon.getProjectileData().getCooldown();
-
+		for (int i = 1; i < perShot; ++i) {
 			sequenceTimer.addIntervalTaskPair(cooldown, time -> shootInterval(player, weapon));
 		}
 

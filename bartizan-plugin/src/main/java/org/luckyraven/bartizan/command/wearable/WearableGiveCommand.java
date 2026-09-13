@@ -47,7 +47,7 @@ class WearableGiveCommand extends SubArgument {
 	}
 
 	private void wearableGive() {
-		Argument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
+		OptionalArgument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			Player player = (Player) sender;
 
 			String  itemName = args[2];
@@ -65,7 +65,7 @@ class WearableGiveCommand extends SubArgument {
 					.stream().toList();
 		});
 
-		Argument amount = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
+		OptionalArgument amount = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			Player player = (Player) sender;
 
 			String itemName = args[2];
@@ -88,6 +88,9 @@ class WearableGiveCommand extends SubArgument {
 				player.sendMessage(BartizanMessages.WEARABLE_INVALID.toString().replace("%name%", itemName));
 			}
 		}, sender -> List.of("<amount>"));
+
+		name.setDisplayName("name");
+		amount.setDisplayName("amount");
 
 		name.addSubArgument(amount);
 		this.addSubArgument(name);

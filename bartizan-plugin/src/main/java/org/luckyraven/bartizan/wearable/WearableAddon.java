@@ -68,6 +68,29 @@ public class WearableAddon extends WearableService implements FileInitializer {
 	}
 
 	/**
+	 * Translates the pre-split {@code Jetpack:} block (Gangland 0.8.4 {@code wearables.yml}) into the
+	 * {@code Extra_Tags:} shape the gadget module reads: the fuel tags Gangland's {@code FuelKey} expects plus the
+	 * lower-cased, {@code jetpack_}-prefixed physics scalars. Defaults mirror the 0.8.4 loader.
+	 * {@code Glide_Descent_Rate} is dropped (dead since 152eba4); {@code Sound:} is carried over as {@code Sounds:}.
+	 */
+	static Map<String, Object> legacyJetpackToExtraTags(ConfigurationSection jetpack) {
+		Map<String, Object> tags    = new LinkedHashMap<>();
+		int                 maxFuel = jetpack.getInt("Max_Fuel", 3600);
+
+		tags.put("fuel", jetpack.getString("Fuel_Key", ""));
+		tags.put("fuel_current", maxFuel);
+		tags.put("fuel_max", maxFuel);
+		tags.put("jetpack_fuel_consumption_rate", jetpack.getInt("Fuel_Consumption_Rate", 2));
+		tags.put("jetpack_ascend_power", jetpack.getDouble("Ascend_Power", 0.35));
+		tags.put("jetpack_max_speed_y", jetpack.getDouble("Max_Speed_Y", 0.8));
+
+		ConfigurationSection sound = jetpack.getConfigurationSection("Sound");
+		if (sound != null) tags.put("Sounds", sectionToMap(sound));
+
+		return tags;
+	}
+
+	/**
 	 * Recursively converts a {@link ConfigurationSection} into a plain {@code Map<String,Object>} so nested blocks
 	 * (e.g. {@code Extra_Tags.Sounds}) come out as real {@code Map} instances rather than {@code MemorySection}
 	 * objects — the shape {@code extraTags()} consumers (gadget's jetpack code, per bartizan.md §1.6(6)) expect.
@@ -144,6 +167,13 @@ public class WearableAddon extends WearableService implements FileInitializer {
 			ConfigurationSection extraSection = section.getConfigurationSection("Extra_Tags");
 			if (extraSection != null) {
 				extraTags = sectionToMap(extraSection);
+			} else if (section.getConfigurationSection("Jetpack") != null) {
+				// A wearables.yml carried over from Gangland 0.8.4 still has the pre-split Jetpack: block. Left
+				// untranslated, extraTags() stays empty, the built item never gets its fuel tags and the gadget
+				// module's isJetpack() check fails silently - the jetpack never activates.
+				extraTags = legacyJetpackToExtraTags(section.getConfigurationSection("Jetpack"));
+				log.warn("Wearable '{}' uses the legacy Jetpack: block - translated to Extra_Tags for this load; " +
+				         "rename it in wearables.yml (see documentation/migration.md).", key);
 			}
 
 			Wearable wearable = Wearable.builder()

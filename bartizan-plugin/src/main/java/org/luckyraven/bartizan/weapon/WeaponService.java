@@ -28,6 +28,13 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 
 	private final WeaponAddon weaponAddon;
 
+	/**
+	 * Live instance per weapon item, keyed by the uuid the item carries in NBT. In-memory only: the item's own tags
+	 * ({@code uuid}, {@code weapon}, {@code ammo-left}, {@code selective-fire}, durability) are the source of truth,
+	 * and {@link #validateAndGetWeapon} rebuilds a missing entry from them on first use after every boot or reload.
+	 */
+	// ponytail: unbounded per-session cache (one entry per distinct item used since boot/reload); evict on player
+	// quit if memory ever matters.
 	@Getter
 	private final Map<UUID, Weapon> weapons;
 
@@ -79,8 +86,8 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		if (weapons.containsKey(weaponUuid)) return true;
 
 		// The uuid may not have been minted into the registry yet: converters, refreshers and shop deliveries build
-		// transient copies so a registry entry (and a database row) is only created once the item is actually used.
-		// Fall back to the configured catalogue so those items are still recognised as weapons.
+		// transient copies so a registry entry is only created once the item is actually used. Fall back to the
+		// configured catalogue so those items are still recognised as weapons.
 		String weaponName = getHeldWeaponName(item);
 
 		return weaponName != null && weaponAddon.getWeapon(weaponName) != null;
@@ -152,8 +159,8 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	 * A fresh, unregistered copy of the {@code type} template carrying a valid uuid.
 	 * <p/>
 	 * Used by item converters, refreshers and anything else that only needs an {@code ItemStack}: the instance stays
-	 * out of {@link #getWeapons()} (and therefore out of the {@code weapon} table) until the item is really picked up,
-	 * at which point {@link #validateAndGetWeapon(Player, ItemStack)} registers it under the uuid the item carries.
+	 * out of {@link #getWeapons()} until the item is really picked up, at which point
+	 * {@link #validateAndGetWeapon(Player, ItemStack)} registers it under the uuid the item carries.
 	 *
 	 * @param type weapon file name.
 	 *
@@ -185,31 +192,25 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	}
 
 	/**
-	 * Getting a weapon from the saved data is a hectic procedure, thus making sure if the weapon is already generated
-	 * would be better for the system.
-	 * <p/>
-	 * It is fine if the weapon wasn't already registered since there can be specific ones that need an uuid attached,
-	 * and these weapons are generated from this function.
+	 * Resolves the live instance for {@code uuid}, minting and registering one from the {@code type} template when
+	 * the registry has none yet. Pure in-memory work — a template clone plus a map put — so it is safe on the shot
+	 * path: an item's first use after a boot or reload costs microseconds, not a round trip anywhere.
 	 *
-	 * @param player Gets the player that called this instruction and can be null if it was a new instance.
-	 * @param uuid Get already saved weapon UUID.
-	 * @param type Can be nullable if the uuid was valid, otherwise use a valid type.
-	 * @param newInstance Changes the data according to the currently held item.
+	 * @param player the player holding the item, or {@code null} for a fresh give.
+	 * @param uuid the uuid the item carries, or {@code null} to mint a new one.
+	 * @param type weapon file name; may be {@code null} only when {@code uuid} is already registered.
+	 * @param newInstance {@code true} to skip syncing runtime state from the player's held item.
 	 *
-	 * @return A weapon from the stored data. There is a chance to return null values in two cases:
-	 * 		<p/>
-	 * 		1) Invalid UUID and null type.
-	 * 		<p/>
-	 * 		2) Invalid UUID and invalid type.
+	 * @return the registered instance, or {@code null} when {@code uuid} is unknown and {@code type} is null or not
+	 * 		a configured weapon.
 	 */
 	@Nullable
 	public Weapon getWeapon(@Nullable Player player, UUID uuid, @Nullable String type, boolean newInstance) {
-		// the weapon is already created
+		// already registered
 		if (uuid != null) {
 			Weapon existing = weapons.get(uuid);
 			if (existing != null) {
 				if (player != null && !newInstance) setWeaponData(existing, player);
-				// when the weapon is already saved
 				return existing;
 			}
 		}
@@ -224,8 +225,7 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 
 		UUID finalUuid = mintUuid(weaponAddon, type, uuid);
 
-		// mostly for new weapons
-		// when the weapon is registered in the system but not tagged with an uuid
+		// first use of this item since boot/reload (or a brand-new give): clone the template under the item's uuid
 		Weapon finalWeapon = weaponAddon.copyWithUUID(finalUuid);
 
 		// Register the weapon first so isWeapon() can find it when setWeaponData

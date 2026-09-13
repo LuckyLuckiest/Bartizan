@@ -7,7 +7,7 @@ install from "Gangland with the weapon module" to "Gangland + Bartizan".
 
 ## 1. What moved
 
-Weapons, ammunition, wearables, their 22+2 YAML definition files, the weapon database table, the recoil NMS
+Weapons, ammunition, wearables, their 22+2 YAML definition files, the recoil NMS
 adapters (`gangland-compatibility/version-*`), and the `/glw weapon` / `/glw ammo` / `/glw item wearable` /
 `/glw debug weapon` commands all leave Gangland and become Bartizan.
 
@@ -17,7 +17,7 @@ adapters (`gangland-compatibility/version-*`), and the `/glw weapon` / `/glw amm
 2. Install **NBT-API** (`NBTAPI.jar`) if not already present — Bartizan `depend`s on it too (M3, gate-GG-review
    final review): Keystone's `NbtBridge.detect()` falls back to a no-op accessor when NBT-API is absent, which
    makes every Bartizan item inert, so this is a hard requirement, not optional.
-3. Drop `Bartizan-0.1.0.jar` into `/plugins`, beside `Keystone-1.9.0.jar`, `NBTAPI.jar` and
+3. Drop `Bartizan-0.2.0.jar` into `/plugins`, beside `Keystone-1.9.0.jar`, `NBTAPI.jar` and
    `Gangland_Warfare-0.9.0.jar`.
 4. Restart the server (Bartizan, like every Keystone-based plugin here, wires its bean graph at `onEnable` — no
    hot-reload of the jar itself).
@@ -97,37 +97,22 @@ jetpack:
 time — Bartizan's default ships both at `3600`, matching the old default). Any other wearable that carries no
 `Jetpack:`/`Extra_Tags:` block needs no edit at all.
 
+Since 0.2.0 a wearable that still has the old `Jetpack:` block (and no `Extra_Tags:`) is translated at load time
+with the 0.8.4 defaults and a `WARN` naming the wearable, so an un-migrated file keeps working; migrate it anyway
+so the warning goes away and the values are visible where the code reads them.
+
 Every other wearable field (`Material`, `Custom_Model_Data`, `Name`, `Base_Damage_Reduction`, `Leather_Color`,
 `Lore`, `Traits:`) is unchanged.
 
-## 4. Database — the weapon table
+## 4. Database — nothing to migrate
 
-### SQLite — automatic, one-shot
+Gangland's `weapon` table only mirrored two values every weapon item already carries in its own NBT: the `uuid`
+and `weapon` tags. Bartizan keeps no database at all — an item is recognised and its runtime instance rebuilt
+from those tags on first use, so Gangland-era items keep working untouched. Leave `gangland.weapon` alone or
+drop it; Bartizan never reads it.
 
-If Bartizan is configured for SQLite (the default), it reads `plugins/Gangland_Warfare/database/gangland.db`'s
-`weapon` table (columns `uuid`, `type` — unchanged) on its first boot, upserts every row into its own
-`plugins/Bartizan/database/bartizan.db`, and writes a marker file:
-
-```
-plugins/Bartizan/.weapon-import-done
-```
-
-The import runs at most once: once the marker exists, Bartizan never re-reads the Gangland database again, even
-if rows there change. **Delete the marker file to force a re-import** (e.g. after fixing a bad copy). If the
-source Gangland database is absent or unreadable, Bartizan logs the failure and still writes the marker — a
-failed import costs re-minted weapon UUIDs on next use, not a boot failure.
-
-### MySQL — manual, one statement
-
-Bartizan does **not** auto-import from MySQL. With both schemas reachable from the same MySQL server, run once:
-
-```sql
-INSERT INTO bartizan.weapon (uuid, type)
-SELECT uuid, type FROM gangland.weapon
-ON DUPLICATE KEY UPDATE type = VALUES(type);
-```
-
-Then drop `gangland.weapon` after confirming the row counts match.
+Bartizan 0.1.0 briefly shipped its own copy of that table (`plugins/Bartizan/database/bartizan.db`) plus a
+`.weapon-import-done` marker. 0.2.0 ignores both; delete them.
 
 ## 5. Permissions — the wearable node rename
 
@@ -145,15 +130,10 @@ Every other Bartizan permission is new and plugin-local (`bartizan.command.main`
 
 ## 6. Settings that moved
 
-Bartizan's `settings.yml` carries only the settings the weapon module actually read, plus the infrastructure
-sections every standalone Keystone plugin needs:
-
-| Key | Meaning |
-|---|---|
-| `Auto_Save.Time` (minutes, default `10`; `<= 0` disables autosave) | Drives `WeaponAutoSaveTask`, which calls `RepositoryRegistry.saveAll()` on every registered repository (weapon UUIDs included) on this cadence, plus once more on plugin disable — **not** the weapon table cleanup schedule (see below). |
-| `Clean_Up.Time` (**days**, default `30`) | How often `WeaponDataCleanupTask` prunes stale weapon rows. Distinct unit and distinct key from `Auto_Save.Time` — do not confuse the two when porting a customised value from Gangland's old settings. |
-| `Block_Regeneration.*` | Unchanged from the old `Block_Regeneration` section. |
-| `Database.*` | Its own `Type` / `MySQL.*` / `SQLite.*` block, independent of Gangland's own database configuration — Bartizan is a separate plugin with a separate database connection, even when both point at the same MySQL server. |
+Bartizan's `settings.yml` carries only the settings the weapon module actually read — `Language`, `Money_Symbol`
+and `Block_Regeneration.*` (unchanged from the old section) — plus a `Debug.Enable` flag. There is no `Auto_Save`,
+`Clean_Up` or `Database` section: Bartizan keeps no database (see §4). A leftover section from a 0.1.0
+`settings.yml` is reported as an unknown key at boot and can be deleted.
 
 ## 7. Commands that moved
 
@@ -175,7 +155,7 @@ generic `[ITEM-BUY]` / `[ITEM-SELL]` sign types with a `weapon:` / `ammo:` / `we
 existing placed signs keep working without the owner re-placing them. This rewrite is not part of Bartizan itself
 — see Gangland 0.9.0's own migration notes for its exact trigger conditions.
 
-## 9. Known limitations (0.1.0)
+## 9. Known limitations (0.2.0)
 
 - **Argument-framework errors are not localised.** Bad-argument / no-permission / not-implemented messages from
   Keystone's command argument tree use the framework's built-in English defaults — Bartizan's own
@@ -189,13 +169,9 @@ existing placed signs keep working without the owner re-placing them. This rewri
 - **Compiled against `spigot-api 1.21.11-R0.1-SNAPSHOT`, not Keystone's 1.16.5 API floor.** The ported weapon code
   uses several 1.21-only Bukkit members (`Enchantment.PROTECTION`, `PotionEffect.INFINITE_DURATION`,
   `Player.isClimbing()`, the 3-arg `Player.sendBlockDamage`, `Particle.BLOCK`). On a pre-1.21 server these throw
-  `NoSuchFieldError` / `NoSuchMethodError` at the call site rather than failing to load — Bartizan 0.1.0 is only
+  `NoSuchFieldError` / `NoSuchMethodError` at the call site rather than failing to load — Bartizan is only
   verified against 1.21.x. Lowering the compile floor to 1.16.5 (XSeries lookups, reflection, or feature-gating)
-  is a later wave, not part of 0.1.0.
+  is a later wave.
 - **bStats plugin id ships as `0`.** Bartizan has not yet been registered on bstats.org; `0` is bStats' no-op id
   (metrics silently do nothing rather than throwing). The `number_of_weapons` chart is wired and will start
   reporting the moment a real id is set.
-- **`WeaponDataCleanupTask`'s period is computed once, at bean construction.** It reads `Clean_Up.Time` into a
-  fixed `Timer` period when `WiringConfig` builds it; `/bartizan reload` re-reads every other setting but does not
-  recreate this timer, so a changed `Clean_Up.Time` only takes effect on the next full restart. Low urgency —
-  30-day cadence — and not fixed as part of the R-B-FINAL review pass (m5).

@@ -1,7 +1,6 @@
 name: Bartizan
 version: ${project.version}
 main: org.luckyraven.bartizan.Bartizan
-database: true
 # Support floor is MC 1.16, matching Keystone's API floor; players on older clients go through ViaVersion/ViaBackwards
 api-version: '1.16'
 depend:
