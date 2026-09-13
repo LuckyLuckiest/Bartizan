@@ -417,31 +417,28 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
-	 * Charge-then-release trigger for beam weapons — mirrors {@link #handleBiologicalCharge}, additionally driving
-	 * {@link BeamAction#startPreview}/{@link BeamAction#stopPreview} around the shared {@link ChargeController}.
+	 * Charge-then-release trigger for beam weapons — mirrors {@link #handleBiologicalCharge}. The charge-preview
+	 * draw ({@link BeamAction#previewTick}) is wired in as the {@link ChargeController}'s
+	 * {@link ChargeController.TickListener}, so it lives and dies with the same charge timer instead of a second
+	 * one this listener would have to remember to stop.
 	 */
 	private void handleBeamCharge(BeamWeapon weapon, Player player) {
 		BeamAction       action     = new BeamAction(plugin, weapon, raytracer, weaponService, effectRunner,
 		                                             blockDamageManager);
 		ChargeController controller = new ChargeController(plugin, weapon, weapon.getCharge(), effectRunner,
-		                                                   activeTasks, level -> action.fire(player, level));
+		                                                   activeTasks, level -> action.fire(player, level),
+		                                                   action::previewTick);
 
-		handleChargeHold(weapon.getUuid(), player, () -> startBeamCharge(weapon, player, controller, action),
-		                 () -> {
-							 action.stopPreview();
-							 controller.release(player);
-						 });
+		handleChargeHold(weapon.getUuid(), player, () -> startBeamCharge(weapon, player, controller),
+		                 () -> controller.release(player));
 	}
 
-	private boolean startBeamCharge(BeamWeapon weapon, Player player, ChargeController controller,
-	                                BeamAction action) {
+	private boolean startBeamCharge(BeamWeapon weapon, Player player, ChargeController controller) {
 		if (weapon.getAmmunitionData() != null && weapon.isMagazineEmpty()) {
 			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 			return false;
 		}
-		boolean started = controller.start(player);
-		if (started) action.startPreview(player, controller);
-		return started;
+		return controller.start(player);
 	}
 
 	/**

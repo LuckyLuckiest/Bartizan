@@ -20,6 +20,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,12 @@ class ChargeControllerTest {
 
 	private ChargeController controller(BiologicalWeapon weapon, ChargeData data, IntConsumer onFire) {
 		return new ChargeController(mock(JavaPlugin.class), weapon, data, effectRunner, activeTasks, onFire);
+	}
+
+	private ChargeController controller(BiologicalWeapon weapon, ChargeData data, IntConsumer onFire,
+	                                    ChargeController.TickListener tickListener) {
+		return new ChargeController(mock(JavaPlugin.class), weapon, data, effectRunner, activeTasks, onFire,
+		                            tickListener);
 	}
 
 	/**
@@ -160,6 +167,27 @@ class ChargeControllerTest {
 		controller.release(player); // the physical RMB-release that follows must be a no-op
 
 		assertEquals(1, fireCount.get());
+	}
+
+	@Test
+	@DisplayName("tickListener is invoked with the current level on every tick while charging, and stops being "
+			+ "called after release")
+	void tickListenerCalledWhileChargingAndStopsAfterRelease() {
+		BiologicalWeapon weapon = WeaponFixtures.biologicalWeapon(10);
+		ChargeData       data   = new ChargeData(5, 3, 1, false);
+
+		List<Integer>    seenLevels = new ArrayList<>();
+		ChargeController.TickListener listener = (p, level, tickCount) -> seenLevels.add(level);
+		ChargeController controller = controller(weapon, data, level -> { }, listener);
+
+		tick(controller, 0L, 1L, 5L); // level -> 1 at tick 0, unchanged at 1, -> 2 at tick 5
+		assertEquals(List.of(1, 1, 2), seenLevels, "invoked every tick with the level reached so far");
+
+		controller.release(player);
+		seenLevels.clear();
+
+		tick(controller, 6L); // simulates a stray tick after release (the real timer would already be stopped)
+		assertEquals(List.of(), seenLevels, "must not be invoked once released");
 	}
 
 }

@@ -75,8 +75,10 @@ Shoot:
          Glow_Particle: END_ROD
          # [Thickness] offset radius, in blocks, for Glow_Particle (and the dust size for Core_Particle).
          Thickness: 0.25
-         # [Step] spacing, in blocks, between drawn points along the axis.
-         Step: 0.25
+         # [Step] spacing, in blocks, between drawn points along the axis. Minimum 0.5 — anything smaller is
+         # rejected (config.range) and falls back to the default; a full-range beam at a tighter step multiplies
+         # spawnParticle calls per tick into the hundreds.
+         Step: 0.5
          # [Duration] ticks the fired beam's render loop redraws for.
          Duration: 8
       Impact:
@@ -101,6 +103,7 @@ Ammunition:
    Ammo_Type: energy_cell
    Capacity: 8
    Consume: 1
+   # Beams ignore Consume - ammo cost is Beam.Ammo_Per_Level * charge level reached instead.
    Restore: 8
 
 Reload:

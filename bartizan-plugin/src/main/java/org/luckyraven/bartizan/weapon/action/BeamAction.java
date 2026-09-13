@@ -12,7 +12,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
-import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.bartizan.api.event.WeaponBeamFireEvent;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
@@ -35,8 +34,10 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Charge-then-release beam weapon action (weapons-roadmap.md gate {@code HC}, §3). Mirrors {@link BiologicalAction}:
  * {@link ChargeController} owns the charge cycle and invokes {@link #fire(Player, int)} as its release callback.
- * Also owns the charge-preview particle loop ({@link #startPreview}/{@link #stopPreview}) since that is
- * beam-specific — biological weapons have no beam shape to preview.
+ * Also owns the charge-preview particle draw ({@link #previewTick}) since that is beam-specific — biological
+ * weapons have no beam shape to preview. The preview piggybacks on {@code ChargeController}'s own timer via
+ * {@link ChargeController.TickListener} rather than running a second timer of its own, so it starts and stops
+ * exactly when the charge itself does.
  */
 public class BeamAction {
 
@@ -46,8 +47,6 @@ public class BeamAction {
 	private final WeaponService      weaponService;
 	private final EffectRunner       effectRunner;
 	private final BlockDamageManager blockDamageManager;
-
-	private RepeatingTimer previewTask;
 
 	public BeamAction(JavaPlugin plugin, BeamWeapon weapon, WeaponRaytracer raytracer, WeaponService weaponService,
 	                  EffectRunner effectRunner, BlockDamageManager blockDamageManager) {
@@ -62,11 +61,10 @@ public class BeamAction {
 	/**
 	 * Resolves the level actually fireable given the current magazine: the largest level whose ammo cost
 	 * ({@code ammoPerLevel * level}) still fits in {@code magazine}, clamped to the requested {@code level}.
-	 * {@code ammoPerLevel <= 0} is treated as free (always affordable at the requested level). Returns {@code 0}
-	 * when even level 1 can't be afforded.
+	 * Returns {@code 0} when even level 1 can't be afforded. {@code ammoPerLevel} is always {@code >= 1} —
+	 * {@code BeamWeaponParser} clamps {@code Beam.Ammo_Per_Level} to that floor.
 	 */
 	static int affordableLevel(int magazine, int ammoPerLevel, int level) {
-		if (ammoPerLevel <= 0) return level;
 		return Math.min(level, magazine / ammoPerLevel);
 	}
 
@@ -98,6 +96,7 @@ public class BeamAction {
 				return;
 			}
 			weapon.setCurrentMagCapacity(weapon.getCurrentMagCapacity() - ammoPerLevel * actualLevel);
+			weaponService.persistHeldWeapon(weapon, player);
 		}
 
 		Location origin    = player.getEyeLocation();
@@ -117,6 +116,9 @@ public class BeamAction {
 
 		double damage = damageForLevel(beamData.getDamage(), actualLevel);
 
+		// Visual/impact endpoint only — always the first solid block, even when Pierce.Blocks > 0 lets the damage
+		// ray (below, via the raytracer's own block-penetration handling) continue past it. The beam's glow and
+		// the ON_BEAM_FIRE hook always land here, not at the ray's actual final stop.
 		World          world    = origin.getWorld();
 		RayTraceResult blockHit = world != null
 		                         ? world.rayTraceBlocks(origin, direction, beamData.getRange(),
@@ -208,32 +210,21 @@ public class BeamAction {
 	}
 
 	/**
-	 * Starts the charge-preview particle loop: a beam segment drawn from the muzzle along the look vector, scaled
-	 * by {@code controller}'s current charge level, redrawn every {@code Preview.Interval} ticks. A no-op if a
-	 * preview is already running.
+	 * {@link ChargeController.TickListener} callback: redraws the charge-preview beam segment — from the muzzle
+	 * along the look vector, scaled by the current charge level — every {@code Preview.Interval} ticks. Lives and
+	 * dies with the charge timer {@code ChargeController} already registers in {@code activeTasks}, so it never
+	 * outlives a weapon swap or keeps drawing past {@code Auto_Fire_At_Max}.
 	 */
-	public void startPreview(Player player, ChargeController controller) {
-		if (previewTask != null) return;
-
-		BeamData.PreviewData preview = weapon.getBeam().getPreview();
-		previewTask = new RepeatingTimer(plugin, Math.max(1, preview.interval()),
-		                                 time -> tickPreview(player, controller));
-		previewTask.start(false);
-	}
-
-	/**
-	 * Stops the loop started by {@link #startPreview}. Idempotent.
-	 */
-	public void stopPreview() {
-		if (previewTask == null) return;
-		previewTask.stop();
-		previewTask = null;
-	}
-
-	private void tickPreview(Player player, ChargeController controller) {
-		int level = controller.currentLevel(weapon.getUuid());
+	public void previewTick(Player player, int level, long tickCount) {
 		if (level <= 0) return;
 
+		BeamData.PreviewData preview = weapon.getBeam().getPreview();
+		if (tickCount % Math.max(1, preview.interval()) != 0) return;
+
+		drawPreview(player, level);
+	}
+
+	private void drawPreview(Player player, int level) {
 		BeamData             beamData = weapon.getBeam();
 		BeamData.PreviewData preview  = beamData.getPreview();
 

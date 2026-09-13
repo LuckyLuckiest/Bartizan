@@ -40,7 +40,10 @@ class BeamRendererTest {
 
 		List<Location> points = BeamRenderer.points(from, to, 3.0);
 
-		assertEquals(5, points.size());
+		// Indexed by i * step, i < (int) (distance / step) = (int) 3.33 = 3: interior points at 0/3/6, plus the
+		// endpoint added afterwards — 4 total, not 5. (The old float-accumulating loop also took the i=3 step
+		// (9 < 10) that this deliberately doesn't; see the points() javadoc for why.)
+		assertEquals(4, points.size());
 		assertEquals(from, points.get(0));
 		assertEquals(to, points.get(points.size() - 1));
 	}

@@ -128,6 +128,22 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	}
 
 	/**
+	 * Pushes an in-memory weapon mutation (ammo, tags, ...) back onto the player's held item, exactly like
+	 * {@code GunAction}/{@code IncendiaryAction} do after consuming ammo. A no-op if the player is no longer
+	 * holding the weapon (already swapped away, item gone).
+	 *
+	 * @param weapon weapon whose in-memory state (e.g. {@link Weapon#getCurrentMagCapacity()}) should be persisted.
+	 * @param player player currently holding it.
+	 */
+	public void persistHeldWeapon(Weapon weapon, Player player) {
+		ItemBuilder heldWeapon = getHeldWeaponItem(player);
+		if (heldWeapon == null) return;
+
+		weapon.updateWeaponData(heldWeapon);
+		weapon.updateWeapon(player, heldWeapon, player.getInventory().getHeldItemSlot());
+	}
+
+	/**
 	 * The shared, read-only catalogue entry for {@code type} exactly as it was parsed from its YAML file.
 	 * <p/>
 	 * Unlike {@link #getWeapon(String)} this never mints a uuid and never registers anything, so it is the correct

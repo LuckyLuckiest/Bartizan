@@ -3,20 +3,16 @@ package org.luckyraven.bartizan.api.weapon.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.luckyraven.keystone.exception.PluginException;
 
 /**
  * {@code Shoot.Beam} config for a {@code Category: beam} weapon (weapons-roadmap.md gate {@code HC}, §3.1) — burst
  * mode only; {@code Mode: sustained} is gate {@code HN}. The charge-then-release cycle itself is the shared
  * {@link ChargeData}, held separately on {@code BeamWeapon}.
- *
- * <p>The four nested records are immutable, so {@link #clone()} shares them by reference across copies — the same
- * pattern {@code BiologicalData} uses for anything that never mutates at runtime.
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class BeamData implements Cloneable {
+public class BeamData {
 
 	private double         range;
 	private double         width;
@@ -26,15 +22,6 @@ public class BeamData implements Cloneable {
 	private PreviewData    preview;
 	private RenderData     render;
 	private boolean        scorchBlocks;
-
-	@Override
-	public BeamData clone() {
-		try {
-			return (BeamData) super.clone();
-		} catch (CloneNotSupportedException exception) {
-			throw new PluginException(exception);
-		}
-	}
 
 	/**
 	 * @param entities entities the beam can pass through before stopping; {@code -1} means unlimited (lowered to

@@ -3,6 +3,7 @@ package org.luckyraven.bartizan.weapon.action;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.keystone.util.ActionBarManager;
 import org.luckyraven.keystone.util.ParticleUtil;
@@ -35,18 +36,31 @@ public class ChargeController {
 	private final EffectRunner              effectRunner;
 	private final Map<UUID, RepeatingTimer> activeTasks;
 	private final IntConsumer               onFire;
+	private final @Nullable TickListener    tickListener;
 
 	private int     level;
 	private boolean released;
 
 	public ChargeController(JavaPlugin plugin, Weapon weapon, ChargeData data, EffectRunner effectRunner,
 	                        Map<UUID, RepeatingTimer> activeTasks, IntConsumer onFire) {
+		this(plugin, weapon, data, effectRunner, activeTasks, onFire, null);
+	}
+
+	/**
+	 * @param tickListener invoked every charge tick (after the level bookkeeping, while still charging) — lets a
+	 *                     category-specific preview (beam) piggyback on this controller's own timer instead of
+	 *                     running a second one that would outlive {@link #release}.
+	 */
+	public ChargeController(JavaPlugin plugin, Weapon weapon, ChargeData data, EffectRunner effectRunner,
+	                        Map<UUID, RepeatingTimer> activeTasks, IntConsumer onFire,
+	                        @Nullable TickListener tickListener) {
 		this.plugin       = plugin;
 		this.weapon       = weapon;
 		this.data         = data;
 		this.effectRunner = effectRunner;
 		this.activeTasks  = activeTasks;
 		this.onFire       = onFire;
+		this.tickListener = tickListener;
 	}
 
 	/**
@@ -82,15 +96,6 @@ public class ChargeController {
 	}
 
 	/**
-	 * Current charge level reached so far, for the given weapon uuid — used by {@link BeamAction#startPreview} to
-	 * scale the beam charge preview. Returns 0 when {@code weaponUuid} doesn't match this controller's own weapon
-	 * (defensive; one controller instance is dedicated to a single charge attempt for one weapon).
-	 */
-	public int currentLevel(UUID weaponUuid) {
-		return weapon.getUuid().equals(weaponUuid) ? level : 0;
-	}
-
-	/**
 	 * One charge tick, delegated to by the {@link RepeatingTimer} started in {@link #start}. Package-private so it
 	 * can be driven directly in a unit test without a scheduler.
 	 */
@@ -111,7 +116,22 @@ public class ChargeController {
 			}
 		}
 
+		// Skipped once released (including an Auto_Fire_At_Max release earlier this same tick) — the listener must
+		// not keep drawing/acting past the point the charge actually ended.
+		if (tickListener != null && !released) tickListener.onTick(player, level, tickCount);
+
 		ParticleUtil.spawnChargeRing(player.getLocation(), level, data.getMaxLevel());
+	}
+
+	/**
+	 * Per-tick callback for a category-specific charge effect (currently: the beam charge preview). Invoked once
+	 * per {@link #tick} while charging, never after {@link #release}.
+	 */
+	@FunctionalInterface
+	public interface TickListener {
+
+		void onTick(Player player, int level, long tickCount);
+
 	}
 
 }

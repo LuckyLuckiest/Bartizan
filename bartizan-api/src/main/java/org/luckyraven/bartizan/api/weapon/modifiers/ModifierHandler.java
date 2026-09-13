@@ -101,8 +101,9 @@ public class ModifierHandler {
 		// Apply damage reduction
 		state.applyPenetrationReduction(penetration.damageReduction());
 
-		// Check if projectile can continue
-		return state.canPenetrateEntity() || state.canPenetrateBlock();
+		// Entity budget only — a remaining block budget doesn't let the ray damage another entity past this one;
+		// blocks are handled separately on the block path (handleBlockPenetration).
+		return state.canPenetrateEntity();
 	}
 
 	/**

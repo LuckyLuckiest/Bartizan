@@ -130,7 +130,10 @@ public class BeamWeaponParser {
 		String     coreColor    = render.get("Core_Color").asString().orDefault("#66CCFF");
 		String     glowParticle = render.get("Glow_Particle").asString().orDefault("END_ROD");
 		double     thickness    = render.get("Thickness").asDouble().min(0).orDefault(0.25);
-		double     step         = render.get("Step").asDouble().min(0.01).orDefault(0.25);
+		// Floor of 0.5: a full-range beam at a smaller step multiplies spawnParticle calls per tick into the
+		// hundreds (weapons-roadmap.md gate HC review) — values below 0.5 fail config.range and fall back to the
+		// default instead of being honoured.
+		double     step         = render.get("Step").asDouble().min(0.5).orDefault(0.25);
 		int        duration     = render.get("Duration").asInt().min(1).orDefault(8);
 
 		NodeReader impact       = NodeReader.of(beam.get("Impact").asMapping().orEmpty(), report);

@@ -52,8 +52,11 @@ public class BeamRenderer {
 					world.spawnParticle(core, point, 1, 0, 0, 0, 0, dust);
 				}
 
-				if (glow != null) {
-					Vector offset = (i % 2 == 0 ? perpA : perpB).clone().multiply(render.thickness());
+				// Glow is only drawn every 4th core point — at Step's old default (0.25) a 60-block beam spawned
+				// ~723 particles/tick between the core line and both glow offsets; this cuts the glow share by 4x
+				// on top of the raised Step floor (weapons-roadmap.md gate HC review).
+				if (glow != null && i % 4 == 0) {
+					Vector offset = (i % 8 == 0 ? perpA : perpB).clone().multiply(render.thickness());
 					world.spawnParticle(glow, point.clone().add(offset), 1, 0, 0, 0, 0, null);
 					world.spawnParticle(glow, point.clone().subtract(offset), 1, 0, 0, 0, 0, null);
 				}
@@ -63,7 +66,10 @@ public class BeamRenderer {
 
 	/**
 	 * Points spaced {@code step} blocks apart along the straight line from {@code from} to {@code to}, inclusive of
-	 * both endpoints. Pure — no Bukkit world interaction — so it is unit-testable without a server, and public so
+	 * both endpoints. Indexed by {@code i * step} rather than accumulating a running {@code double} — float drift
+	 * on a repeated addition could otherwise land the loop's last point a hair short of (or past) {@code distance}
+	 * at an exact multiple of {@code step}, duplicating a particle right on top of the endpoint that gets added
+	 * afterwards. Pure — no Bukkit world interaction — so it is unit-testable without a server, and public so
 	 * {@code BeamAction}'s charge preview can reuse it too.
 	 */
 	public static List<Location> points(Location from, Location to, double step) {
@@ -77,8 +83,9 @@ public class BeamRenderer {
 		}
 
 		Vector direction = to.toVector().subtract(from.toVector()).normalize();
-		for (double travelled = 0; travelled < distance; travelled += step) {
-			result.add(from.clone().add(direction.clone().multiply(travelled)));
+		int    steps     = (int) (distance / step);
+		for (int i = 0; i < steps; i++) {
+			result.add(from.clone().add(direction.clone().multiply(i * step)));
 		}
 		result.add(to.clone());
 

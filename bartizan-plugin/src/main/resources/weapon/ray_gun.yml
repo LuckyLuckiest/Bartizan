@@ -24,9 +24,13 @@ Shoot:
    # uses. Left as-is since both forms parse identically.
    Charge_Time_Per_Level: 15
    Max_Charge_Level: 3
+   # See arc_lance.yml's Shoot.Beam block for what every key below means (weapons-roadmap.md gate HC) - only the
+   # values that differ from it are commented here.
    Beam:
       Mode: burst
+      # [Range] shorter than the Arc Lance's 60.0.
       Range: 35.0
+      # [Width] narrower than the Arc Lance's 0.6.
       Width: 0.5
       Ammo_Per_Level: 1
       Pierce:
@@ -47,14 +51,18 @@ Shoot:
          Guide_Line: false
       Render:
          Core_Particle: DUST
+         # [Core_Color] green, not the Arc Lance's blue.
          Core_Color: "#7CFC00"
          Glow_Particle: END_ROD
          Thickness: 0.25
-         Step: 0.25
+         # [Step] minimum 0.5 - see arc_lance.yml.
+         Step: 0.5
          Duration: 8
       Impact:
          Particle: FLASH
+         # [Sound] elder guardian curse, not the Arc Lance's lightning-impact sound.
          Sound: ENTITY_ELDER_GUARDIAN_CURSE
+         # [Scorch_Blocks] the ray gun never cracks its terminal block, unlike the Arc Lance.
          Scorch_Blocks: false
    Recoil:
       Amount: 0.0
@@ -72,9 +80,10 @@ Shoot:
          Pitch: 1.5
 
 Ammunition:
-   Ammo_Type: pathogen_vial
+   Ammo_Type: energy_cell
    Capacity: 5
    Consume: 1
+   # Beams ignore Consume - ammo cost is Beam.Ammo_Per_Level * charge level reached instead.
    Restore: 5
 
 Reload:
