@@ -1,13 +1,7 @@
-# Charge_Time_Per_Level/Max_Charge_Level below are the legacy Shoot.Charge aliases - still read, still fine to
-# leave as-is. The equivalent block form (also accepts Min_Level_To_Fire/Auto_Fire_At_Max, weapons-roadmap.md
-# gate HB) is:
-#
-# Shoot:
-#    Charge:
-#       Time_Per_Level: 20
-#       Max_Level: 3
-#       Min_Level_To_Fire: 1
-#       Auto_Fire_At_Max: false
+# Old files without Charge:/Status:/Feedback: keep loading: Charge_Time_Per_Level/Max_Charge_Level are read as
+# Shoot.Charge aliases, Cumulative_Levels defaults to false, and Status defaults to a minimal object named after
+# the weapon with a boss bar and hit marker only (weapons-roadmap.md gate HB, §2.1). This file spells out the live
+# keys so the comments double as the reference for every default.
 
 Information:
    Name: "&aSyringe Gun"
@@ -26,19 +20,72 @@ Shoot:
    Selective_Fire: single
    Allowed_Modes:
       - single
-   Charge_Time_Per_Level: 20
-   Max_Charge_Level: 3
+   Charge:
+      Time_Per_Level: 20
+      Max_Level: 3
+      Min_Level_To_Fire: 1
+      Auto_Fire_At_Max: false
    Range: 30.0
    Base_Damage: 4.0
+   # Cumulative_Levels (default false): when true, releasing at level N applies every Effects_Per_Level entry from
+   # 1..N merged (strongest amplifier, longest duration per potion type) instead of only level N's own entry — so
+   # charging to level 3 doesn't silently drop the poison levels 1-2 would have applied.
+   Cumulative_Levels: true
    Effects_Per_Level:
       - "POISON-60-1"
       - "POISON-100-1,SLOWNESS-80-1"
       - "WITHER-60-1,NAUSEA-100-1"
+   # Status: the tracked infection a hit applies — this is what the victim/shooter see and what a killer-less
+   # (poison/wither) death is credited against. Every key below is optional; the comment shows its default.
+   Status:
+      Name: "&2Infected"       # default: the weapon's display name
+      Icon: "☣"                # default: "" (empty)
+      Duration_Per_Level: 200  # ticks per level the status lasts, default 200
+      Stacking: escalate       # refresh | extend | escalate | ignore, default refresh
+      Max_Level: 3             # default: Shoot.Charge.Max_Level
+      Kill_Credit_Window: 200  # ticks after the last hit a killer-less death still credits the shooter, default 200
+      Contagion:
+         Radius: 3.0           # blocks around the carrier a nearby player is rolled against, default 3.0
+         Chance: 0.15          # per-Interval roll chance, default 0.15
+         Interval: 40          # ticks between rolls, default 40
+         Level_Drop: 1         # levels subtracted from the carrier's level on spread (floored at 1), default 1
+      Cure:
+         Items:
+            - MILK_BUCKET      # default: [] (no item cures it)
+         Wearable_Trait: sealed # worn-wearable trait that reduces the incoming level, default: none
+   # Feedback: sugar lowered into Effects: On_Status_Apply/On_Status_Expire hooks (no-merge — a weapon's own
+   # Effects: list for a hook always wins). Boss_Bar/Ambient_* are service-driven (ticked), never lowered into a
+   # hook. With no Feedback: block at all, a default hit-marker sound is still lowered into On_Status_Apply.
+   Feedback:
+      Victim:
+         Title: "&2☣ INFECTED"
+         Subtitle: "&7by %shooter% · %weapon%"
+         Boss_Bar:
+            Text: "&2☣ %status% &7Lv %level% · %seconds%s" # default: "&f%icon% %status% &7Lv %level% · %seconds%s"
+            Color: GREEN                                   # org.bukkit.boss.BarColor name, default WHITE
+            Style: SEGMENTED_10                            # org.bukkit.boss.BarStyle name, default SOLID
+         Ambient_Particle: SPELL_MOB   # default: none (off)
+         Ambient_Color: "#3FA34D"      # DUST-family particles only
+         Ambient_Interval: 10          # ticks between ambient spawns, default 20
+         Sound_Apply: ENTITY_ZOMBIE_VILLAGER_CURE
+         Sound_Expire: ENTITY_EXPERIENCE_ORB_PICKUP
+         Message_Expire: "&aThe infection has passed."
+      Shooter:
+         Hit_Marker_Sound: ENTITY_EXPERIENCE_ORB_PICKUP
+         Action_Bar: "&2☣ %victim% &7infected · Lv %level%"
+         Message_Spread: "&2☣ %victim% &7caught it from &2%carrier%"
    Recoil:
       Amount: 0.0
       Push: 0.04
       Power_Up: 0.0
       Pattern: []
+   # Charge_Feedback: shared with beam weapons (gate HC). Tracer_Color additionally defaults Modifiers.Tracer when
+   # the weapon declares no explicit tracer of its own, so the released shot draws a coloured line.
+   Charge_Feedback:
+      Sound_Level_Up: BLOCK_NOTE_BLOCK_PLING
+      Pitch_Per_Level: 0.25
+      Sound_Full: BLOCK_BEACON_ACTIVATE
+      Tracer_Color: "#3FA34D"
    Sound:
       Default_Sound:
          Sound: ENTITY_ARROW_SHOOT

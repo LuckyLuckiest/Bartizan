@@ -97,6 +97,28 @@ the charge-then-release config `BiologicalData#getCharge()` and `BeamWeapon#getC
 `traits()`/`traitLevel(String)`; jetpack-style extra data via `extraTags()` — NBT keys `fuel`/`fuel_current`/
 `fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code needs no edit),
 `BartizanItemPredicates.WEARABLE`.
+`weapon.Weapon` and its five subclasses (`GunWeapon`, `MeleeWeapon`, `BiologicalWeapon`, `IncendiaryWeapon`,
+`ThrowableWeapon`), `weapon.{WeaponType, ThrowableType, SelectiveFire, WeaponTag, ProjectileType, ProjectileState}`,
+the `weapon.dto.*` records (including `ChargeData` — `timePerLevel`, `maxLevel`, `minLevelToFire`,
+`autoFireAtMax` — the charge-then-release config `BiologicalData#getCharge()` carries since gate `HB`, and beam
+weapons will carry at gate `HC`), `ammo.Ammunition`, `wearable.Wearable` (string trait keys via
+`traits()`/`traitLevel(String)` — including the gate-`HB` `sealed` trait, which reduces the incoming level of a
+biological status rather than a damage/duration percentage; jetpack-style extra data via `extraTags()` — NBT keys
+`fuel`/`fuel_current`/`fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code
+needs no edit), `BartizanItemPredicates.WEARABLE`.
+
+### Biological status (`weapon.dto.StatusData`, gate `HB`)
+
+`BiologicalData#getStatus()` (never `null`) is the tracked status — infection, radiation, whatever the weapon
+names it — a biological weapon's hit applies, and `BiologicalData#isCumulativeLevels()` controls whether a release
+at charge level N applies just that level's `Effects_Per_Level` entry or every entry from `1..N` merged (strongest
+amplifier, longest duration per potion type). `StatusData` carries `name`/`icon`, `durationPerLevel` (ticks),
+`stacking` (`Stacking`: `REFRESH`/`EXTEND`/`ESCALATE`/`IGNORE`), `maxLevel`, `killCreditWindow` (ticks),
+`@Nullable contagion` (`ContagionData`: `radius`, `chance`, `interval`, `levelDrop`), `cure` (`CureData`: `items`
+material names, `@Nullable wearableTrait`), `bossBar` (`BossBarData`: `text`/`color`/`style` — `color`/`style` are
+`org.bukkit.boss.BarColor`/`BarStyle` names, resolved by `bartizan-plugin`'s `StatusEffectService`), and the
+ambient-particle/`messageSpread` fields the service ticks. The runtime that owns live statuses
+(`status.StatusEffectService`, `status.ActiveStatus`, `status.StatusListener`) lives in `bartizan-plugin`.
 
 ### Effects (`weapon.dto.{EffectHook, EffectSpec, EffectsData}`)
 
@@ -120,6 +142,13 @@ weapon's own `Effects:` list for a hook still replaces the lowered entry entirel
 ricochet counters still advance), `WeaponEntityDamageEvent`, `WeaponKillEntityEvent`, `WeaponReloadEvent` /
 `WeaponReloadStartEvent` / `WeaponReloadCompleteEvent`, `WeaponChangeSelectiveFireEvent`, `WeaponChargeLevelEvent`,
 `WeaponBeamFireEvent`.
+`WeaponStatusApplyEvent`, `WeaponStatusExpireEvent`.
+
+`WeaponStatusApplyEvent` (weapon, `@Nullable` shooter, victim, `level`; cancellable) fires before
+`StatusEffectService` (re)applies a biological status — cancelling suppresses the whole application: no stacking,
+no feedback, no potion payload. `WeaponStatusExpireEvent` (weapon, victim, `reason`; not cancellable) fires
+whenever a status stops being active — `reason` is `EXPIRED`, `CURED` (a `Status.Cure.Items`-listed item
+consumed), `DEATH`, or `QUIT` (weapons-roadmap.md gate `HB`, §2.2).
 
 `WeaponChargeLevelEvent` (weapon, player, `level`, `maxLevel`; not cancellable) fires on every charge-level
 increment for a charge-then-release weapon — `bartizan-plugin`'s `ChargeController` (biological and beam, gate

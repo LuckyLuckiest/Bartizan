@@ -60,7 +60,8 @@ public class Wearable {
 			Map.entry("fire_resistant", new double[]{2, 0.25}),
 			Map.entry("reactive", new double[]{3, 0.02}),
 			Map.entry("lightweight", new double[]{2, 0.0}),
-			Map.entry("fuel_efficient", new double[]{2, 0.10})
+			Map.entry("fuel_efficient", new double[]{2, 0.10}),
+			Map.entry("sealed", new double[]{3, 0})
 	);
 
 	private final Material             material;

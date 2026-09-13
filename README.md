@@ -50,6 +50,7 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                                                 WeaponEntityDamageEvent, WeaponKillEntityEvent,
                                                                 WeaponReloadEvent/Start/Complete, WeaponChangeSelectiveFireEvent,
                                                                 WeaponChargeLevelEvent, WeaponBeamFireEvent
+                                                                WeaponChargeLevelEvent, WeaponStatusApplyEvent, WeaponStatusExpireEvent
                                        .item                   WeaponItemApi
                                        .npc                    NpcWeaponFactory, NpcWeaponController
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
@@ -79,6 +80,8 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
                                                                 BeamRenderer, RaytraceContext, WeaponVisualSpawner
+                                                                RaytraceContext, WeaponVisualSpawner
+                                       .status                 StatusEffectService, ActiveStatus, StatusListener
                                        .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser
                                        .weapon(.action)        WeaponService, WeaponManager, GunAction/FullAutoTask/MeleeAction/...,
                                                                 ChargeController (shared charge-then-release timer), BeamAction

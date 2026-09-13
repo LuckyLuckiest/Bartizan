@@ -10,6 +10,7 @@ import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.BiologicalData;
 import org.luckyraven.bartizan.api.weapon.dto.ChargeData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
+import org.luckyraven.bartizan.api.weapon.dto.StatusData;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 
 import java.util.EnumSet;
@@ -32,12 +33,15 @@ public class BiologicalWeaponParser {
 			throw new InvalidConfigurationException("Shoot section not found for biological weapon");
 		}
 
-		ChargeData   charge          = ChargeSectionParser.parse(shoot, report);
-		double       range           = shoot.get("Range").asDouble().min(0).orDefault(30.0);
-		double       baseDamage      = shoot.get("Base_Damage").asDouble().min(0).orDefault(4.0);
-		List<String> effectsPerLevel = shoot.get("Effects_Per_Level").asList().ofStrings().orEmpty();
+		ChargeData   charge           = ChargeSectionParser.parse(shoot, report);
+		double       range            = shoot.get("Range").asDouble().min(0).orDefault(30.0);
+		double       baseDamage       = shoot.get("Base_Damage").asDouble().min(0).orDefault(4.0);
+		List<String> effectsPerLevel  = shoot.get("Effects_Per_Level").asList().ofStrings().orEmpty();
+		boolean      cumulativeLevels = shoot.get("Cumulative_Levels").asBool().orDefault(false);
+		StatusData   status           = StatusSectionParser.parse(shoot, report, base.displayName(), charge.getMaxLevel());
 
-		BiologicalData biologicalData = new BiologicalData(charge, effectsPerLevel, range, baseDamage);
+		BiologicalData biologicalData = new BiologicalData(charge, effectsPerLevel, range, baseDamage, status,
+		                                                    cumulativeLevels);
 		ParsedAmmo     parsed         = ammoParser.parse(root, report);
 		ReloadData     reloadData     = parsed != null ? parsed.reload() : null;
 		AmmunitionData ammunitionData = parsed != null ? parsed.ammo() : null;

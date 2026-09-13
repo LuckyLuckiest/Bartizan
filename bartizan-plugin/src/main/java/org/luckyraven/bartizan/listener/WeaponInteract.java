@@ -32,6 +32,7 @@ import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.weapon.action.BeamAction;
 import org.luckyraven.bartizan.api.weapon.BeamWeapon;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
+import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.action.BiologicalAction;
 import org.luckyraven.bartizan.weapon.action.ChargeController;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
@@ -54,7 +55,7 @@ import java.util.function.BooleanSupplier;
 
 @ListenerHandler
 @AutowireTarget({WeaponService.class, WeaponRaytracer.class, PluginFireRegistry.class, CombatEligibility.class,
-                EffectRunner.class, BlockDamageManager.class})
+                EffectRunner.class, BlockDamageManager.class, StatusEffectService.class})
 public class WeaponInteract implements Listener {
 
 	/**
@@ -86,6 +87,7 @@ public class WeaponInteract implements Listener {
 	private final CombatEligibility  combatEligibility;
 	private final EffectRunner       effectRunner;
 	private final BlockDamageManager blockDamageManager;
+	private final StatusEffectService statusService;
 
 	private final Map<UUID, AtomicReference<WeaponData>> continuousFire;
 	/**
@@ -131,7 +133,8 @@ public class WeaponInteract implements Listener {
 
 	public WeaponInteract(JavaPlugin plugin, WeaponService weaponService, WeaponRaytracer raytracer,
 	                      PluginFireRegistry fireRegistry, CombatEligibility combatEligibility,
-	                      EffectRunner effectRunner, BlockDamageManager blockDamageManager) {
+	                      EffectRunner effectRunner, BlockDamageManager blockDamageManager,
+	                      StatusEffectService statusService) {
 		this.plugin             = plugin;
 		this.weaponService      = weaponService;
 		this.raytracer          = raytracer;
@@ -139,6 +142,7 @@ public class WeaponInteract implements Listener {
 		this.combatEligibility  = combatEligibility;
 		this.effectRunner       = effectRunner;
 		this.blockDamageManager = blockDamageManager;
+		this.statusService      = statusService;
 		this.continuousFire     = new ConcurrentHashMap<>();
 		this.pressLockUntilTick = new ConcurrentHashMap<>();
 		this.pressHoldState     = new ConcurrentHashMap<>();
@@ -448,7 +452,7 @@ public class WeaponInteract implements Listener {
 	 * {@code BiologicalAction#start}, which only ran on the same press).
 	 */
 	private void handleBiologicalCharge(BiologicalWeapon weapon, Player player) {
-		BiologicalAction action     = new BiologicalAction(weapon, raytracer, effectRunner);
+		BiologicalAction action     = new BiologicalAction(weapon, raytracer, effectRunner, statusService);
 		ChargeController controller = new ChargeController(plugin, weapon, weapon.getBiologicalData().getCharge(),
 		                                                   effectRunner, activeTasks, level -> action.fire(player, level));
 

@@ -12,17 +12,21 @@ import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
 import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
+import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.file.BartizanMessages;
+import org.luckyraven.bartizan.status.ActiveStatus;
+import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -61,15 +65,18 @@ public class WeaponDeathListener implements Listener {
 	 */
 	private static final long THROWABLE_CLAIM_TTL_MS = 5000L;
 
-	private final WeaponManager weaponManager;
-	private final EffectRunner  effectRunner;
+	private final WeaponManager       weaponManager;
+	private final EffectRunner        effectRunner;
+	private final StatusEffectService statusService;
 
 	/** {@code victimUuid -> (weaponName, recordedAtMillis)}. Private to this listener — never a static. */
 	private final Map<UUID, RecordedKill> recentThrowableKills = new ConcurrentHashMap<>();
 
-	public WeaponDeathListener(WeaponManager weaponManager, EffectRunner effectRunner) {
+	public WeaponDeathListener(WeaponManager weaponManager, EffectRunner effectRunner,
+	                           StatusEffectService statusService) {
 		this.weaponManager = weaponManager;
 		this.effectRunner  = effectRunner;
+		this.statusService = statusService;
 	}
 
 	/**
@@ -113,7 +120,12 @@ public class WeaponDeathListener implements Listener {
 		RecordedKill recorded = recentThrowableKills.remove(victim.getUniqueId());
 
 		Player killer = victim.getKiller();
-		if (killer == null) return;
+		if (killer == null) {
+			// No entity dealt the final blow — the common shape of a poison/wither status death. Ask the status
+			// service whether a shooter is still owed the kill (weapons-roadmap.md gate HB §2.2 "Kill credit").
+			creditStatusKill(event, victim);
+			return;
+		}
 
 		// A recorded throwable claim takes priority over whatever the killer currently holds — they may have
 		// switched items since throwing.
@@ -154,6 +166,41 @@ public class WeaponDeathListener implements Listener {
 		event.setDeathMessage(BartizanChatUtil.color(template.replace("%killer%", killer.getName())
 		                                                     .replace("%victim%", victim.getName())
 		                                                     .replace("%item%", itemName)));
+	}
+
+	/**
+	 * Poison/wither death kill credit (weapons-roadmap.md gate {@code HB} §2.2): a death with no attributable
+	 * killer still credits the shooter of an active biological status when the last application landed within
+	 * {@code Status.Kill_Credit_Window} ticks and that shooter is still online.
+	 */
+	private void creditStatusKill(PlayerDeathEvent event, Player victim) {
+		Optional<ActiveStatus> statusOptional = statusService.activeOn(victim.getUniqueId());
+		if (statusOptional.isEmpty()) return;
+
+		ActiveStatus status = statusOptional.get();
+		if (status.getShooterId() == null) return;
+
+		BiologicalWeapon weapon = status.getWeapon();
+		long             window = weapon.getBiologicalData().getStatus().getKillCreditWindow();
+		if (statusService.currentTick() - status.getAppliedTick() > window) return;
+
+		Player shooter = Bukkit.getPlayer(status.getShooterId());
+		if (shooter == null || !shooter.isOnline()) return;
+
+		String template = weapon.pickDeathMessage().orElse(null);
+		if (template == null) template = pickRandomGlobalMessage(BartizanMessages.DEAD_USING_WEAPON.toStringList());
+		if (template == null) return;
+
+		WeaponKillEntityEvent killEvent = new WeaponKillEntityEvent(weapon, shooter, victim);
+		Bukkit.getPluginManager().callEvent(killEvent);
+		if (killEvent.isCancelled()) return;
+
+		EffectContext ctx = EffectContext.builder().weapon(weapon).source(shooter).victim(victim).build();
+		effectRunner.run(weapon, EffectHook.ON_KILL, ctx);
+
+		event.setDeathMessage(BartizanChatUtil.color(template.replace("%killer%", shooter.getName())
+		                                                     .replace("%victim%", victim.getName())
+		                                                     .replace("%item%", weapon.getDisplayName())));
 	}
 
 	private boolean isExpired(RecordedKill recorded) {

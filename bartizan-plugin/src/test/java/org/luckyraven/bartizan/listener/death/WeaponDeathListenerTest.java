@@ -10,11 +10,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
+import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.BiologicalData;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.api.weapon.dto.StatusData;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.file.BartizanSettings;
+import org.luckyraven.bartizan.status.ActiveStatus;
+import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
@@ -44,7 +49,7 @@ class WeaponDeathListenerTest {
 			+ "untouched — the weapon path never even inspects the killer")
 	void onPlayerDeath_nullDeathMessage_neverOverridden() {
 		WeaponManager        weaponManager = mock(WeaponManager.class);
-		WeaponDeathListener  listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class));
+		WeaponDeathListener  listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
 
 		Player          victim = mock(Player.class);
 		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
@@ -62,7 +67,7 @@ class WeaponDeathListenerTest {
 			+ "cannot resurface and misattribute a later, unrelated death for the same player")
 	void onPlayerDeath_noKiller_stillClearsRecordedThrowableKillForLaterDeath() {
 		WeaponManager       weaponManager = mock(WeaponManager.class);
-		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class));
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
 
 		Player victim = mock(Player.class);
 		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -109,7 +114,7 @@ class WeaponDeathListenerTest {
 
 		WeaponManager       weaponManager = mock(WeaponManager.class);
 		EffectRunner        effectRunner  = mock(EffectRunner.class);
-		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner, mock(StatusEffectService.class));
 
 		Player victim = mock(Player.class);
 		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -158,7 +163,7 @@ class WeaponDeathListenerTest {
 	void onPlayerDeath_cancelledKillEvent_leavesVanillaMessage() {
 		WeaponManager       weaponManager = mock(WeaponManager.class);
 		EffectRunner        effectRunner  = mock(EffectRunner.class);
-		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner, mock(StatusEffectService.class));
 
 		Player victim = mock(Player.class);
 		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -198,7 +203,7 @@ class WeaponDeathListenerTest {
 			+ "claim, so the death message comes from the killer's actually-held weapon")
 	void onWeaponEntityDamage_directKind_doesNotRecordClaim() {
 		WeaponManager       weaponManager = mock(WeaponManager.class);
-		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class));
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
 
 		Player victim = mock(Player.class);
 		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
@@ -238,6 +243,103 @@ class WeaponDeathListenerTest {
 		// Never even consulted the "grenade" throwable template — the DIRECT hit left no claim to resolve.
 		verify(weaponManager, never()).getWeaponTemplate(any());
 		verify(event).setDeathMessage("Killer killed Victim with Pistol");
+	}
+
+	@Test
+	@DisplayName("gate HB: a killer-less death with an active status inside the kill-credit window credits the "
+			+ "shooter — the weapon's Death_Messages, ON_KILL, and WeaponKillEntityEvent")
+	void onPlayerDeath_statusCreditWithinWindow_creditsShooter() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		EffectRunner        effectRunner  = mock(EffectRunner.class);
+		StatusEffectService statusService = mock(StatusEffectService.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner, statusService);
+
+		Player victim   = mock(Player.class);
+		UUID   victimId = UUID.randomUUID();
+		when(victim.getUniqueId()).thenReturn(victimId);
+		when(victim.getName()).thenReturn("Victim");
+		when(victim.getKiller()).thenReturn(null);
+
+		Player shooter   = mock(Player.class);
+		UUID   shooterId = UUID.randomUUID();
+		when(shooter.getUniqueId()).thenReturn(shooterId);
+		when(shooter.getName()).thenReturn("Shooter");
+		when(shooter.isOnline()).thenReturn(true);
+
+		BiologicalWeapon weapon = mock(BiologicalWeapon.class);
+		when(weapon.getDisplayName()).thenReturn("Syringe Gun");
+		when(weapon.pickDeathMessage()).thenReturn(Optional.of("%killer% infected %victim% with %item%"));
+
+		StatusData statusData = mock(StatusData.class);
+		when(statusData.getKillCreditWindow()).thenReturn(200);
+
+		BiologicalData biologicalData = mock(BiologicalData.class);
+		when(biologicalData.getStatus()).thenReturn(statusData);
+		when(weapon.getBiologicalData()).thenReturn(biologicalData);
+
+		ActiveStatus status = new ActiveStatus(victimId, shooterId, weapon, 2, 1000L, 1400L);
+		when(statusService.activeOn(victimId)).thenReturn(Optional.of(status));
+		when(statusService.currentTick()).thenReturn(1150L); // 150 ticks since appliedTick(1000) <= window(200)
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+			bukkit.when(() -> Bukkit.getPlayer(shooterId)).thenReturn(shooter);
+
+			listener.onPlayerDeath(event);
+
+			ArgumentCaptor<WeaponKillEntityEvent> captor = ArgumentCaptor.forClass(WeaponKillEntityEvent.class);
+			verify(pluginManager).callEvent(captor.capture());
+			assertEquals(shooter, captor.getValue().getKiller());
+			assertEquals(victim, captor.getValue().getKilled());
+		}
+
+		verify(event).setDeathMessage("Shooter infected Victim with Syringe Gun");
+
+		ArgumentCaptor<EffectHook> hookCaptor = ArgumentCaptor.forClass(EffectHook.class);
+		verify(effectRunner).run(eq(weapon), hookCaptor.capture(), any(EffectContext.class));
+		assertEquals(EffectHook.ON_KILL, hookCaptor.getValue());
+	}
+
+	@Test
+	@DisplayName("gate HB: an active status outside the kill-credit window is not credited")
+	void onPlayerDeath_statusOutsideWindow_noCredit() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		EffectRunner        effectRunner  = mock(EffectRunner.class);
+		StatusEffectService statusService = mock(StatusEffectService.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner, statusService);
+
+		Player victim   = mock(Player.class);
+		UUID   victimId = UUID.randomUUID();
+		when(victim.getUniqueId()).thenReturn(victimId);
+		when(victim.getKiller()).thenReturn(null);
+
+		UUID             shooterId = UUID.randomUUID();
+		BiologicalWeapon weapon    = mock(BiologicalWeapon.class);
+
+		StatusData statusData = mock(StatusData.class);
+		when(statusData.getKillCreditWindow()).thenReturn(200);
+
+		BiologicalData biologicalData = mock(BiologicalData.class);
+		when(biologicalData.getStatus()).thenReturn(statusData);
+		when(weapon.getBiologicalData()).thenReturn(biologicalData);
+
+		ActiveStatus status = new ActiveStatus(victimId, shooterId, weapon, 2, 1000L, 1400L);
+		when(statusService.activeOn(victimId)).thenReturn(Optional.of(status));
+		when(statusService.currentTick()).thenReturn(1300L); // 300 ticks since appliedTick(1000) > window(200)
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		listener.onPlayerDeath(event);
+
+		verify(event, never()).setDeathMessage(any());
+		verify(effectRunner, never()).run(any(), any(), any());
 	}
 
 	/**

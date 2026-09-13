@@ -155,6 +155,32 @@ public class WearableService implements WearableCatalog {
 	}
 
 	/**
+	 * Sums the {@code trait} level across every worn armor piece (mirrors {@link #reduceFireTicks}'s iteration) — used
+	 * by {@code StatusEffectService} for the {@code sealed} trait, which reduces the incoming level of a biological
+	 * status rather than a damage/duration percentage (weapons-roadmap.md gate {@code HB} §2.2 "Cure").
+	 *
+	 * @param target the entity wearing the armor
+	 * @param trait lower-case trait key
+	 *
+	 * @return the summed raw trait level across worn pieces (0 if none carry it)
+	 */
+	public int traitLevel(LivingEntity target, String trait) {
+		EntityEquipment equipment = target.getEquipment();
+		if (equipment == null) return 0;
+
+		int total = 0;
+		for (EquipmentSlot slot : ARMOR_SLOTS) {
+			ItemStack item = equipment.getItem(slot);
+			if (item.getType().isAir()) continue;
+
+			Wearable wearable = resolveWearable(item);
+			if (wearable != null) total += wearable.traitLevel(trait);
+		}
+
+		return total;
+	}
+
+	/**
 	 * Reduces the number of fire ticks to be applied to the target, based on the {@code fire_resistant} trait and the
 	 * vanilla {@code FIRE_PROTECTION} enchantment across all worn armor pieces.
 	 *

@@ -199,3 +199,23 @@ existing placed signs keep working without the owner re-placing them. This rewri
   reissued or converted.
 - New `arc_lance.yml` (`Category: beam`) and a new `energy_cell` ammo type in `items/ammunition.yml`. `WeaponType`
   gains `BEAM` (`Category: beam` / `laser`).
+
+## 11. 0.3.0 (gate HB) — biological status effects
+
+- A biological weapon's hit is now a tracked **status** (`BiologicalData#getStatus()`, never `null`), owned by the
+  new `status.StatusEffectService`: a boss bar and ambient particles the victim's allies can see, a shooter hit
+  marker and action bar, a contagion roll that can spread the status to nearby players, and a consumed-item or
+  worn-wearable (`sealed` trait) cure. Old files without `Shoot.Status:`/`Shoot.Feedback:` keep loading — they get
+  a minimal status named after the weapon with a boss bar and hit marker only, no config edit required.
+- `Shoot.Cumulative_Levels: true` (default `false`) makes a release at charge level N apply every
+  `Effects_Per_Level` entry from `1..N` merged (strongest amplifier, longest duration per potion type) instead of
+  only level N's own entry, so charging to the top level no longer silently drops the earlier levels' effects.
+- `WeaponDeathListener` now credits a killer-less death (the common shape of a poison/wither finish) to the last
+  shooter who applied the victim's active status, provided the last application landed within
+  `Status.Kill_Credit_Window` ticks and that shooter is still online — same `WeaponKillEntityEvent` /
+  `Death_Messages` / `On_Kill` path a direct kill already used.
+- New api types: `weapon.dto.StatusData` (+ nested `Stacking`, `ContagionData`, `CureData`, `BossBarData`),
+  `event.WeaponStatusApplyEvent` (cancellable), `event.WeaponStatusExpireEvent`. New `wearable.Wearable` trait:
+  `sealed` — reduces the incoming level of a biological status rather than a damage/duration percentage.
+- `Shoot.Charge_Feedback.Tracer_Color` now also defaults `Modifiers.Tracer` when the weapon declares no explicit
+  tracer of its own, so a released biological shot draws a coloured line without any other config change.

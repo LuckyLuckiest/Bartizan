@@ -10,6 +10,7 @@ import org.luckyraven.bartizan.api.weapon.dto.IncendiaryData;
 import org.luckyraven.bartizan.api.weapon.dto.MeleeData;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
+import org.luckyraven.bartizan.api.weapon.dto.StatusData;
 import org.luckyraven.bartizan.api.weapon.dto.ThrowableData;
 import org.luckyraven.bartizan.api.weapon.ProjectileType;
 import org.luckyraven.bartizan.api.weapon.reload.ReloadType;
@@ -101,10 +102,21 @@ public final class WeaponFixtures {
 
 	public static BiologicalWeapon biologicalWeapon(int maxMag) {
 		BiologicalData biological = new BiologicalData(new ChargeData(20, 3, 1, false),
-		                                               List.of("BLINDNESS-100-1"), 30.0, 4.0);
+		                                               List.of("BLINDNESS-100-1"), 30.0, 4.0, statusData(), false);
 		return new BiologicalWeapon(UUID.randomUUID(), "test_biogun", "&fTest Biogun", WeaponType.BIOLOGICAL,
 		                            Material.IRON_HOE, 0, (short) 100, List.of(), false, null, biological,
 		                            instantReload(), ammoData(maxMag, 1, maxMag));
+	}
+
+	/**
+	 * A minimal {@code StatusData} matching {@code StatusSectionParser}'s defaults for an unconfigured
+	 * {@code Shoot.Status:} block (weapons-roadmap.md gate {@code HB} §2.1).
+	 */
+	public static StatusData statusData() {
+		return new StatusData("&fTest Biogun", "", 200, StatusData.Stacking.REFRESH, 3, 200, null,
+		                      new StatusData.CureData(List.of(), null),
+		                      new StatusData.BossBarData("&f%icon% %status% &7Lv %level% · %seconds%s", "WHITE", "SOLID"),
+		                      null, null, 20, null);
 	}
 
 }

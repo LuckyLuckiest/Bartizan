@@ -3,6 +3,7 @@ package org.luckyraven.bartizan.weapon.action;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.luckyraven.keystone.util.ActionBarManager;
 import org.luckyraven.bartizan.api.weapon.dto.BiologicalData;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
@@ -10,10 +11,13 @@ import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
+import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Charged single-shot raytrace weapon. Charging (the timer, the level, the action-bar meter, the release trigger)
@@ -22,14 +26,17 @@ import java.util.List;
  */
 public class BiologicalAction {
 
-	private final BiologicalWeapon weapon;
-	private final WeaponRaytracer  raytracer;
-	private final EffectRunner     effectRunner;
+	private final BiologicalWeapon    weapon;
+	private final WeaponRaytracer     raytracer;
+	private final EffectRunner        effectRunner;
+	private final StatusEffectService statusService;
 
-	public BiologicalAction(BiologicalWeapon weapon, WeaponRaytracer raytracer, EffectRunner effectRunner) {
-		this.weapon       = weapon;
-		this.raytracer    = raytracer;
-		this.effectRunner = effectRunner;
+	public BiologicalAction(BiologicalWeapon weapon, WeaponRaytracer raytracer, EffectRunner effectRunner,
+	                        StatusEffectService statusService) {
+		this.weapon        = weapon;
+		this.raytracer     = raytracer;
+		this.effectRunner  = effectRunner;
+		this.statusService = statusService;
 	}
 
 	/**
@@ -53,14 +60,15 @@ public class BiologicalAction {
 			weapon.applyPush(player);
 		}
 
-		List<PotionEffect> effects = effectsForLevel(data, level);
+		List<PotionEffect> effects = data.isCumulativeLevels() ? cumulativeEffectsForLevel(data, level)
+		                                                      : effectsForLevel(data, level);
 
 		double flatBonus = weapon.getModifiersData().hasFlatDamage() ?
 		                   weapon.getModifiersData().getFlatDamage().bonus() :
 		                   0.0;
 		double damage = data.getBaseDamage() * level + flatBonus;
 
-		if (!fireRay(player, damage, effects, data)) {
+		if (!fireRay(player, damage, effects, level)) {
 			effectRunner.run(weapon, EffectHook.ON_MISS, shootCtx);
 		}
 
@@ -83,24 +91,50 @@ public class BiologicalAction {
 	}
 
 	/**
+	 * {@code Shoot.Cumulative_Levels: true} variant of {@link #effectsForLevel}: merges every entry from level 1
+	 * through {@code level} (list indices {@code [0..level-1]}, clamped to the list's size) instead of only the
+	 * current level's — so charging to level 3 doesn't silently drop levels 1-2's effects. Per potion type, the
+	 * merged effect keeps the strongest amplifier and the longest duration across the merged entries.
+	 */
+	static List<PotionEffect> cumulativeEffectsForLevel(BiologicalData data, int level) {
+		List<String> perLevel = data.getEffectsPerLevel();
+		if (perLevel == null || perLevel.isEmpty() || level < 1) return List.of();
+
+		Map<PotionEffectType, PotionEffect> merged = new LinkedHashMap<>();
+		int upTo = Math.min(level, perLevel.size());
+
+		for (int i = 0; i < upTo; i++) {
+			for (PotionEffect effect : PotionEffectParser.parseList(List.of(perLevel.get(i)))) {
+				merged.merge(effect.getType(), effect,
+				            (a, b) -> new PotionEffect(a.getType(), Math.max(a.getDuration(), b.getDuration()),
+				                                       Math.max(a.getAmplifier(), b.getAmplifier())));
+			}
+		}
+
+		return List.copyOf(merged.values());
+	}
+
+	/**
 	 * Fires one ray through the unified raytracer. The {@link RaytraceRequest#getImpactHandler() impact handler}
-	 * applies the parsed potion effects to a single living target — non-living hits are ignored beyond the standard
-	 * {@code WeaponRaytraceImpactEvent} that the raytracer fires automatically.
+	 * applies the tracked status (feedback, stacking, kill-credit window) and then the parsed potion effects to a
+	 * single living target — non-living hits are ignored beyond the standard {@code WeaponRaytraceImpactEvent} that
+	 * the raytracer fires automatically.
 	 *
 	 * @return {@code true} if a living entity took the hit — see {@code WeaponRaytracer#fireInstant}.
 	 */
-	private boolean fireRay(Player player, double damage, List<PotionEffect> effects, BiologicalData data) {
+	private boolean fireRay(Player player, double damage, List<PotionEffect> effects, int level) {
 		RaytraceRequest request = RaytraceRequest.builder()
 		                                         .shooter(player)
 		                                         .weapon(weapon)
 		                                         .origin(player.getEyeLocation())
 		                                         .direction(player.getEyeLocation().getDirection().normalize())
-		                                         .maxDistance(data.getRange())
+		                                         .maxDistance(weapon.getBiologicalData().getRange())
 		                                         .baseDamage(damage)
 		                                         .hitboxExpansion(0.3)
 		                                         .maxIterations(1)
 		                                         .impactHandler(event -> {
 													 if (event.getHitEntity() instanceof LivingEntity target) {
+														 statusService.apply(target, player, weapon, level);
 														 for (PotionEffect effect : effects) {
 															 target.addPotionEffect(effect);
 														 }

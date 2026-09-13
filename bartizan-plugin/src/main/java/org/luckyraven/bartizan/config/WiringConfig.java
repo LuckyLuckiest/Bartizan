@@ -20,6 +20,7 @@ import org.luckyraven.bartizan.file.WeaponBlockRegenerationSettings;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.npc.NpcWeaponFactoryImpl;
 import org.luckyraven.bartizan.raytrace.WeaponRaytracerImpl;
+import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.wearable.WearableAddon;
@@ -29,6 +30,8 @@ import org.luckyraven.keystone.bean.Configuration;
 import org.luckyraven.keystone.bean.SettingsLookup;
 import org.luckyraven.keystone.bean.autowire.DependencyContainer;
 import org.luckyraven.keystone.command.CommandManager;
+
+import java.util.Random;
 
 /**
  * CONFIG-phase wiring for the weapon system — the standalone-plugin twin of Gangland's {@code WeaponModuleConfig}
@@ -108,6 +111,20 @@ public final class WiringConfig {
 	@Bean
 	public PluginFireRegistry pluginFireRegistry() {
 		return new PluginFireRegistry();
+	}
+
+	/**
+	 * Tracks live biological statuses and drives their boss bar/ambient/contagion/expiry feedback
+	 * (weapons-roadmap.md gate {@code HB}, §2.2). Spigot has no public "current tick" accessor
+	 * (that's Paper-only), so the clock is a wall-clock-derived tick-equivalent — the same 50ms-per-tick conversion
+	 * {@code WeaponInteract}'s press-lock gate already relies on.
+	 */
+	@Bean
+	public StatusEffectService statusEffectService(EffectRunner effectRunner, WearableService wearableService) {
+		StatusEffectService service = new StatusEffectService(bartizan, effectRunner, wearableService,
+		                                                       () -> System.currentTimeMillis() / 50L, new Random());
+		service.start();
+		return service;
 	}
 
 	// ---------------------------------------------------------------------------------------------------------------

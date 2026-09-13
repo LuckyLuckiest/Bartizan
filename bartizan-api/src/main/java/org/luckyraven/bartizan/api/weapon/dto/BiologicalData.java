@@ -24,6 +24,17 @@ public class BiologicalData implements Cloneable {
 	 * {@code N * baseDamage}).
 	 */
 	private double       baseDamage;
+	/**
+	 * The tracked status a hit applies — never {@code null}; a weapon with no {@code Shoot.Status:} block still gets
+	 * a minimal default (weapons-roadmap.md gate {@code HB} §2.1).
+	 */
+	private StatusData   status;
+	/**
+	 * {@code Shoot.Cumulative_Levels}: when {@code true}, a hit at charge level N applies every potion effect from
+	 * levels {@code 1..N} merged (strongest amplifier, longest duration per potion type) instead of just level N's
+	 * entry.
+	 */
+	private boolean       cumulativeLevels;
 
 	@Override
 	public BiologicalData clone() {
@@ -31,6 +42,7 @@ public class BiologicalData implements Cloneable {
 			BiologicalData clone = (BiologicalData) super.clone();
 			clone.effectsPerLevel = new ArrayList<>(effectsPerLevel);
 			clone.charge = charge != null ? charge.clone() : null;
+			clone.status = status != null ? status.clone() : null;
 			return clone;
 		} catch (CloneNotSupportedException exception) {
 			throw new PluginException(exception);

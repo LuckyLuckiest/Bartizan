@@ -13,6 +13,7 @@ import org.luckyraven.keystone.persistence.config.FileHandlerReader;
 import org.luckyraven.keystone.persistence.config.MappingNode;
 import org.luckyraven.keystone.persistence.config.NodeReader;
 import org.luckyraven.bartizan.api.weapon.BeamWeapon;
+import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
@@ -248,6 +249,13 @@ public class WeaponAddon {
 		if (weapon instanceof BeamWeapon) {
 			BeamWeaponParser.lowerImpactEffects(shoot, effectsData);
 		}
+
+		if (weapon instanceof BiologicalWeapon biological) {
+			StatusData statusData = biological.getBiologicalData().getStatus();
+			StatusSectionParser.lowerFeedback(shoot, effectsData, statusData.getName(), statusData.getIcon());
+			StatusSectionParser.lowerTracer(shoot, weapon.getModifiersData());
+		}
+
 		weapon.setEffects(effectsData);
 	}
 
