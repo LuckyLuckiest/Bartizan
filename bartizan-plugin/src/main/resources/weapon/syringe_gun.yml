@@ -56,24 +56,29 @@ Shoot:
    # Feedback: sugar lowered into Effects: On_Status_Apply/On_Status_Expire hooks (no-merge — a weapon's own
    # Effects: list for a hook always wins). Boss_Bar/Ambient_* are service-driven (ticked), never lowered into a
    # hook. With no Feedback: block at all, a default hit-marker sound is still lowered into On_Status_Apply.
+   # Feedback.Victim.Title/Subtitle/Message_Expire and Feedback.Shooter.Action_Bar accept %status%/%icon% (baked in
+   # at load time) and %shooter% (rewritten to %player% at load time, then resolved at fire time to the shooter's
+   # name — empty on Message_Expire, since no shooter is known at expiry), plus the runtime %victim%/%weapon%/
+   # %level% placeholders. Feedback.Shooter.Message_Spread is different: it is never lowered into an Effects: hook
+   # (the contagion roll formats and sends it directly) and accepts only %victim%/%carrier%.
    Feedback:
       Victim:
-         Title: "&2☣ INFECTED"
-         Subtitle: "&7by %shooter% · %weapon%"
+         Title: "&2☣ INFECTED"                # lowered into On_Status_Apply's title (Target: victim)
+         Subtitle: "&7by %shooter% · %weapon%" # %weapon% is the weapon's display name
          Boss_Bar:
             Text: "&2☣ %status% &7Lv %level% · %seconds%s" # default: "&f%icon% %status% &7Lv %level% · %seconds%s"
             Color: GREEN                                   # org.bukkit.boss.BarColor name, default WHITE
             Style: SEGMENTED_10                            # org.bukkit.boss.BarStyle name, default SOLID
-         Ambient_Particle: SPELL_MOB   # default: none (off)
-         Ambient_Color: "#3FA34D"      # DUST-family particles only
-         Ambient_Interval: 10          # ticks between ambient spawns, default 20
-         Sound_Apply: ENTITY_ZOMBIE_VILLAGER_CURE
-         Sound_Expire: ENTITY_EXPERIENCE_ORB_PICKUP
-         Message_Expire: "&aThe infection has passed."
+         Ambient_Particle: DUST         # default: none (off); a Color-typed particle (e.g. ENTITY_EFFECT) also works
+         Ambient_Color: "#3FA34D"       # DUST/Color-family particles only
+         Ambient_Interval: 10           # ticks between ambient spawns, default 20
+         Sound_Apply: ENTITY_ZOMBIE_VILLAGER_CURE     # played to the victim when the status (re)applies
+         Sound_Expire: ENTITY_EXPERIENCE_ORB_PICKUP   # played to the victim when the status expires
+         Message_Expire: "&aThe infection has passed." # chat line sent to the victim on expiry
       Shooter:
-         Hit_Marker_Sound: ENTITY_EXPERIENCE_ORB_PICKUP
-         Action_Bar: "&2☣ %victim% &7infected · Lv %level%"
-         Message_Spread: "&2☣ %victim% &7caught it from &2%carrier%"
+         Hit_Marker_Sound: ENTITY_EXPERIENCE_ORB_PICKUP           # played to the shooter on a landed hit
+         Action_Bar: "&2☣ %victim% &7infected · Lv %level%"       # shown to the shooter on a landed hit
+         Message_Spread: "&2☣ %victim% &7caught it from &2%carrier%" # chat line to the shooter on a contagion spread
    Recoil:
       Amount: 0.0
       Push: 0.04

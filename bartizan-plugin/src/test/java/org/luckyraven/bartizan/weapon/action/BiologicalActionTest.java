@@ -103,9 +103,13 @@ class BiologicalActionTest {
 			+ "entry instead of throwing")
 	void cumulative_levelBeyondListSize_clampsToEveryEntry() {
 		// Deliberately a single-entry list: two-or-more DISTINCT PotionEffectType mocks would be needed to prove
-		// the merge combiner keeps the strongest amplifier/longest duration per type, but PotionEffectType cannot
-		// be touched (mocked or real) in this environment — see cumulative_levelOne_returnsFirstEntry's comment.
-		// The merge combiner (Map.merge) only runs on a key collision, so a single distinct entry stays safe.
+		// the merge combiner (extracted as BiologicalAction.strongest, still not independently unit-tested here)
+		// keeps the strongest amplifier/longest duration per type, but PotionEffectType cannot be touched (mocked
+		// or real) in this environment — confirmed empirically: even mock(PotionEffectType.class) crashes its own
+		// <clinit> (a Guava HashBiMap "value already present: null" during the registry bootstrap), so no test
+		// double for it — subclassed, mocked, or real — can be constructed at all. See
+		// cumulative_levelOne_returnsFirstEntry's comment. The merge combiner (Map.merge) only runs on a key
+		// collision, so a single distinct entry stays safe.
 		BiologicalData data = dataWith(List.of("POISON-60-1"));
 
 		try (MockedStatic<PotionEffectParser> parser = mockStatic(PotionEffectParser.class)) {

@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.status;
 
+import com.cryptomorin.xseries.XMaterial;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -52,7 +53,8 @@ public class StatusListener implements Listener {
 		StatusData data = status.get().getWeapon().getBiologicalData().getStatus();
 		ItemStack  item = event.getItem();
 
-		boolean cures = data.getCure().items().stream().anyMatch(name -> name.equalsIgnoreCase(item.getType().name()));
+		boolean cures = data.getCure().items().stream()
+		                    .anyMatch(name -> XMaterial.matchXMaterial(name).map(x -> x.isSimilar(item)).orElse(false));
 		if (cures) statusService.cure(player.getUniqueId(), Reason.CURED);
 	}
 

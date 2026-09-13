@@ -30,17 +30,32 @@ public class ActiveStatus {
 	 * Absolute tick the status disappears at.
 	 */
 	private long expiryTick;
+	/**
+	 * Tick the ambient particle / contagion roll last fired, initialised to {@link #appliedTick}. Checked as
+	 * {@code now - last >= interval} rather than {@code now % interval == 0} — the tick clock is wall-clock derived
+	 * and sampled every 10 ticks, so a modulo check can drift past the exact multiple and never fire again
+	 * (weapons-roadmap.md gate {@code HB} review item 3).
+	 */
+	private long lastAmbientTick;
+	private long lastContagionTick;
 	@Nullable
 	private BossBar bossBar;
+	/**
+	 * Set once {@link StatusEffectService#tick()} has logged a failure ticking this status, so a persistently
+	 * throwing per-tick body (e.g. a misconfigured ambient particle) warns once instead of every tick.
+	 */
+	private boolean tickFailureWarned;
 
 	public ActiveStatus(UUID victimId, @Nullable UUID shooterId, BiologicalWeapon weapon, int level, long appliedTick,
 	                    long expiryTick) {
-		this.victimId    = victimId;
-		this.shooterId   = shooterId;
-		this.weapon      = weapon;
-		this.level       = level;
-		this.appliedTick = appliedTick;
-		this.expiryTick  = expiryTick;
+		this.victimId          = victimId;
+		this.shooterId         = shooterId;
+		this.weapon            = weapon;
+		this.level             = level;
+		this.appliedTick       = appliedTick;
+		this.expiryTick        = expiryTick;
+		this.lastAmbientTick   = appliedTick;
+		this.lastContagionTick = appliedTick;
 	}
 
 }

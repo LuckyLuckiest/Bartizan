@@ -49,15 +49,15 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .event                  WeaponEvent, WeaponShootEvent, WeaponRaytraceImpactEvent,
                                                                 WeaponEntityDamageEvent, WeaponKillEntityEvent,
                                                                 WeaponReloadEvent/Start/Complete, WeaponChangeSelectiveFireEvent,
-                                                                WeaponChargeLevelEvent, WeaponBeamFireEvent
-                                                                WeaponChargeLevelEvent, WeaponStatusApplyEvent, WeaponStatusExpireEvent
+                                                                WeaponChargeLevelEvent, WeaponBeamFireEvent,
+                                                                WeaponStatusApplyEvent, WeaponStatusExpireEvent
                                        .item                   WeaponItemApi
                                        .npc                    NpcWeaponFactory, NpcWeaponController
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
                                        .weapon                 Weapon + 6 subclasses (incl. BeamWeapon), WeaponType, ThrowableType,
                                                                 SelectiveFire, WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
-                                       .weapon.dto              20 config records (AmmunitionData, ChargeData, BeamData,
-                                                                DamageData, EffectHook, EffectSpec, EffectsData, ...)
+                                       .weapon.dto              21 config records (AmmunitionData, ChargeData, BeamData,
+                                                                StatusData, DamageData, EffectHook, EffectSpec, EffectsData, ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager + action/*
                                        .weapon.recoil            RecoilManager
@@ -79,8 +79,7 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .metrics                WeaponMetrics
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
-                                                                BeamRenderer, RaytraceContext, WeaponVisualSpawner
-                                                                RaytraceContext, WeaponVisualSpawner
+                                                                BeamRenderer
                                        .status                 StatusEffectService, ActiveStatus, StatusListener
                                        .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser
                                        .weapon(.action)        WeaponService, WeaponManager, GunAction/FullAutoTask/MeleeAction/...,

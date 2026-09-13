@@ -1,7 +1,9 @@
 package org.luckyraven.bartizan.status;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -92,7 +94,7 @@ class StatusEffectServiceTest {
 	private static StatusData statusData(StatusData.Stacking stacking, int durationPerLevel, int maxLevel,
 	                                     StatusData.ContagionData contagion) {
 		return new StatusData("Infected", "", durationPerLevel, stacking, maxLevel, 200, contagion,
-		                      new StatusData.CureData(List.of("MILK_BUCKET"), null),
+		                      new StatusData.CureData(List.of("MILK_BUCKET"), "sealed"),
 		                      new StatusData.BossBarData("%status% Lv %level%", "WHITE", "SOLID"), null, null, 20,
 		                      "%victim% caught it from %carrier%");
 	}
@@ -208,7 +210,7 @@ class StatusEffectServiceTest {
 		clock[0] = 1200L;
 
 		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
-			bukkit.when(() -> Bukkit.getPlayer(victim.getUniqueId())).thenReturn(victim);
+			bukkit.when(() -> Bukkit.getEntity(victim.getUniqueId())).thenReturn(victim);
 
 			service.tick();
 			service.tick(); // already removed -> no double fire
@@ -233,7 +235,7 @@ class StatusEffectServiceTest {
 		}
 
 		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
-			bukkit.when(() -> Bukkit.getPlayer(victim.getUniqueId())).thenReturn(victim);
+			bukkit.when(() -> Bukkit.getEntity(victim.getUniqueId())).thenReturn(victim);
 
 			service.cure(victim.getUniqueId(), Reason.CURED);
 
@@ -275,7 +277,8 @@ class StatusEffectServiceTest {
 	}
 
 	@Test
-	@DisplayName("a contagion roll under a seeded Random spreads to a nearby player at level - Level_Drop")
+	@DisplayName("contagion respects the last-roll interval (not an exact multiple of it) and the List.copyOf "
+			+ "snapshot survives a mid-tick insertion")
 	void tick_contagionRollSucceeds_spreadsAtDroppedLevel() {
 		Random random = mock(Random.class);
 		when(random.nextDouble()).thenReturn(0.05); // < Chance (0.15) -> succeeds
@@ -285,20 +288,36 @@ class StatusEffectServiceTest {
 		StatusData.ContagionData contagionData = new StatusData.ContagionData(3.0, 0.15, 40, 1);
 		BiologicalWeapon         weapon        = weapon(statusData(StatusData.Stacking.REFRESH, 200, 3, contagionData));
 
-		Player carrier = player();
+		World  world      = mock(World.class);
+		Player carrier    = player();
 		when(carrier.getName()).thenReturn("Carrier");
+		when(carrier.getLocation()).thenReturn(new Location(world, 0, 0, 0));
 		Player shooter = player();
 		when(shooter.getName()).thenReturn("Shooter");
 		Player target = player();
 		when(target.getName()).thenReturn("Target");
+		when(target.getLocation()).thenReturn(new Location(world, 1, 0, 0)); // 1 block away, well within Radius(3.0)
 		when(carrier.getNearbyEntities(3.0, 3.0, 3.0)).thenReturn(List.<Entity>of(target));
 
+		// A second, unrelated victim so tick()'s List.copyOf(active.values()) snapshot actually holds more than
+		// one entry: with only the carrier active, iteration would already be over by the time the contagion roll
+		// inserts `target` mid-loop, so that single-entry shape never proves the snapshot survives a live-map
+		// mutation while still iterating (weapons-roadmap.md gate HB review item 12).
+		Player other = player();
+
 		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
-			service.apply(carrier, shooter, weapon, 3); // level 3
+			service.apply(carrier, shooter, weapon, 3); // level 3, appliedTick = lastContagionTick = 1000
+			service.apply(other, null, weapon, 1);
 		}
 
-		clock[0] = 1040L; // Interval (40) boundary
+		clock[0] = 1030L; // 30 ticks since apply — under Interval(40) -> must not fire yet
+		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
+			bukkit.when(() -> Bukkit.getPlayer(carrier.getUniqueId())).thenReturn(carrier);
+			service.tick();
+		}
+		assertTrue(service.activeOn(target.getUniqueId()).isEmpty());
 
+		clock[0] = 1041L; // 41 ticks since apply — not an exact multiple of Interval(40), still fires
 		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
 			bukkit.when(() -> Bukkit.getPlayer(carrier.getUniqueId())).thenReturn(carrier);
 			bukkit.when(() -> Bukkit.getPlayer(shooter.getUniqueId())).thenReturn(shooter);

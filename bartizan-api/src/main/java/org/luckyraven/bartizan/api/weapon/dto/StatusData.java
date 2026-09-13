@@ -19,23 +19,23 @@ import java.util.List;
 @AllArgsConstructor
 public class StatusData implements Cloneable {
 
-	private String   name;
-	private String   icon;
-	private int      durationPerLevel;
-	private Stacking stacking;
-	private int      maxLevel;
-	private int      killCreditWindow;
+	private String        name;
+	private String        icon;
+	private int           durationPerLevel;
+	private Stacking      stacking;
+	private int           maxLevel;
+	private int           killCreditWindow;
 	@Nullable
 	private ContagionData contagion;
 	private CureData      cure;
 	private BossBarData   bossBar;
 	@Nullable
-	private String ambientParticle;
+	private String        ambientParticle;
 	@Nullable
-	private String ambientColor;
-	private int    ambientInterval;
+	private String        ambientColor;
+	private int           ambientInterval;
 	@Nullable
-	private String messageSpread;
+	private String        messageSpread;
 
 	public enum Stacking {
 		REFRESH,

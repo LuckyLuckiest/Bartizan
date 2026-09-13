@@ -14,6 +14,7 @@ import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
+import org.luckyraven.bartizan.weapon.WeaponService;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,13 +31,15 @@ public class BiologicalAction {
 	private final WeaponRaytracer     raytracer;
 	private final EffectRunner        effectRunner;
 	private final StatusEffectService statusService;
+	private final WeaponService       weaponService;
 
 	public BiologicalAction(BiologicalWeapon weapon, WeaponRaytracer raytracer, EffectRunner effectRunner,
-	                        StatusEffectService statusService) {
+	                        StatusEffectService statusService, WeaponService weaponService) {
 		this.weapon        = weapon;
 		this.raytracer     = raytracer;
 		this.effectRunner  = effectRunner;
 		this.statusService = statusService;
+		this.weaponService = weaponService;
 	}
 
 	/**
@@ -46,6 +49,7 @@ public class BiologicalAction {
 	public void fire(Player player, int level) {
 		if (level <= 0) return;
 		if (!weapon.consumeShot()) return;
+		weaponService.persistHeldWeapon(weapon, player);
 
 		BiologicalData data = weapon.getBiologicalData();
 
@@ -105,13 +109,20 @@ public class BiologicalAction {
 
 		for (int i = 0; i < upTo; i++) {
 			for (PotionEffect effect : PotionEffectParser.parseList(List.of(perLevel.get(i)))) {
-				merged.merge(effect.getType(), effect,
-				            (a, b) -> new PotionEffect(a.getType(), Math.max(a.getDuration(), b.getDuration()),
-				                                       Math.max(a.getAmplifier(), b.getAmplifier())));
+				merged.merge(effect.getType(), effect, BiologicalAction::strongest);
 			}
 		}
 
 		return List.copyOf(merged.values());
+	}
+
+	/**
+	 * Merge combiner for {@link #cumulativeEffectsForLevel}: keeps the longer duration and the higher amplifier
+	 * (independently) of two same-type potion effects.
+	 */
+	static PotionEffect strongest(PotionEffect a, PotionEffect b) {
+		return new PotionEffect(a.getType(), Math.max(a.getDuration(), b.getDuration()),
+		                        Math.max(a.getAmplifier(), b.getAmplifier()));
 	}
 
 	/**
@@ -134,9 +145,11 @@ public class BiologicalAction {
 		                                         .maxIterations(1)
 		                                         .impactHandler(event -> {
 													 if (event.getHitEntity() instanceof LivingEntity target) {
-														 statusService.apply(target, player, weapon, level);
-														 for (PotionEffect effect : effects) {
-															 target.addPotionEffect(effect);
+														 boolean applied = statusService.apply(target, player, weapon, level);
+														 if (applied) {
+															 for (PotionEffect effect : effects) {
+																 target.addPotionEffect(effect);
+															 }
 														 }
 													 }
 												 })

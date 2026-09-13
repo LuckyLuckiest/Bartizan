@@ -176,7 +176,7 @@ existing placed signs keep working without the owner re-placing them. This rewri
   (metrics silently do nothing rather than throwing). The `number_of_weapons` chart is wired and will start
   reporting the moment a real id is set.
 
-## 10. 0.3.0 (gates HA–HC) — the effects engine, and beam weapons
+## 10. 0.3.0 (gates HA–HC) — the effects engine, beam weapons, biological status
 
 - Shot, impact, empty-magazine, scope and reload-start/end sounds are no longer played by `bartizan-api` directly.
   The loader (`EffectsSectionParser.lowerLegacySounds`) lowers each configured `Shoot.Sound.*`/`Reload.Sound.*`
@@ -199,9 +199,6 @@ existing placed signs keep working without the owner re-placing them. This rewri
   reissued or converted.
 - New `arc_lance.yml` (`Category: beam`) and a new `energy_cell` ammo type in `items/ammunition.yml`. `WeaponType`
   gains `BEAM` (`Category: beam` / `laser`).
-
-## 11. 0.3.0 (gate HB) — biological status effects
-
 - A biological weapon's hit is now a tracked **status** (`BiologicalData#getStatus()`, never `null`), owned by the
   new `status.StatusEffectService`: a boss bar and ambient particles the victim's allies can see, a shooter hit
   marker and action bar, a contagion roll that can spread the status to nearby players, and a consumed-item or

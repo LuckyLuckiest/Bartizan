@@ -94,14 +94,6 @@ ProjectileType, ProjectileState}` (`WeaponType.BEAM`, aliases `"beam"`/`"laser"`
 the charge-then-release config `BiologicalData#getCharge()` and `BeamWeapon#getCharge()` both carry, and
 `BeamData` — `range`, `width`, `ammoPerLevel`, `pierce`/`damage`/`preview`/`render` nested records, `scorchBlocks`
 — `BeamWeapon#getBeam()`'s config since gate `HC`), `ammo.Ammunition`, `wearable.Wearable` (string trait keys via
-`traits()`/`traitLevel(String)`; jetpack-style extra data via `extraTags()` — NBT keys `fuel`/`fuel_current`/
-`fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code needs no edit),
-`BartizanItemPredicates.WEARABLE`.
-`weapon.Weapon` and its five subclasses (`GunWeapon`, `MeleeWeapon`, `BiologicalWeapon`, `IncendiaryWeapon`,
-`ThrowableWeapon`), `weapon.{WeaponType, ThrowableType, SelectiveFire, WeaponTag, ProjectileType, ProjectileState}`,
-the `weapon.dto.*` records (including `ChargeData` — `timePerLevel`, `maxLevel`, `minLevelToFire`,
-`autoFireAtMax` — the charge-then-release config `BiologicalData#getCharge()` carries since gate `HB`, and beam
-weapons will carry at gate `HC`), `ammo.Ammunition`, `wearable.Wearable` (string trait keys via
 `traits()`/`traitLevel(String)` — including the gate-`HB` `sealed` trait, which reduces the incoming level of a
 biological status rather than a damage/duration percentage; jetpack-style extra data via `extraTags()` — NBT keys
 `fuel`/`fuel_current`/`fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code

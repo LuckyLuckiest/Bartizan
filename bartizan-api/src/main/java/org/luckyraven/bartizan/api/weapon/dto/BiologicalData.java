@@ -34,7 +34,7 @@ public class BiologicalData implements Cloneable {
 	 * levels {@code 1..N} merged (strongest amplifier, longest duration per potion type) instead of just level N's
 	 * entry.
 	 */
-	private boolean       cumulativeLevels;
+	private boolean      cumulativeLevels;
 
 	@Override
 	public BiologicalData clone() {

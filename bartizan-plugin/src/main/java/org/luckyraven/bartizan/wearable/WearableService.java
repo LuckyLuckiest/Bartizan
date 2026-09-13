@@ -155,18 +155,24 @@ public class WearableService implements WearableCatalog {
 	}
 
 	/**
-	 * Sums the {@code trait} level across every worn armor piece (mirrors {@link #reduceFireTicks}'s iteration) — used
-	 * by {@code StatusEffectService} for the {@code sealed} trait, which reduces the incoming level of a biological
-	 * status rather than a damage/duration percentage (weapons-roadmap.md gate {@code HB} §2.2 "Cure").
+	 * Sums the {@code trait} level across every worn armor piece (mirrors {@link #reduceFireTicks}'s iteration),
+	 * capping each piece's contribution and the total at the trait's {@link Wearable#traitMaxLevel(String)} — used
+	 * by {@code StatusEffectService} to read a resistance trait (e.g. {@code sealed}) at status-apply time, which
+	 * reduces the incoming level of a biological status rather than a damage/duration percentage
+	 * (weapons-roadmap.md gate {@code HB} §2.2). Without the cap, several pieces each carrying the trait (or one
+	 * piece configured past the trait's intended max) could sum to an effectively unlimited reduction.
 	 *
 	 * @param target the entity wearing the armor
 	 * @param trait lower-case trait key
 	 *
-	 * @return the summed raw trait level across worn pieces (0 if none carry it)
+	 * @return the summed trait level across worn pieces, capped at the trait's max level (0 for an unknown trait)
 	 */
 	public int traitLevel(LivingEntity target, String trait) {
 		EntityEquipment equipment = target.getEquipment();
 		if (equipment == null) return 0;
+
+		int max = Wearable.traitMaxLevel(trait);
+		if (max <= 0) return 0;
 
 		int total = 0;
 		for (EquipmentSlot slot : ARMOR_SLOTS) {
@@ -174,10 +180,10 @@ public class WearableService implements WearableCatalog {
 			if (item.getType().isAir()) continue;
 
 			Wearable wearable = resolveWearable(item);
-			if (wearable != null) total += wearable.traitLevel(trait);
+			if (wearable != null) total += Math.min(wearable.traitLevel(trait), max);
 		}
 
-		return total;
+		return Math.min(total, max);
 	}
 
 	/**

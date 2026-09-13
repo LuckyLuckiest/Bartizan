@@ -1,9 +1,13 @@
 package org.luckyraven.bartizan.configuration.parser;
 
+import com.cryptomorin.xseries.particles.XParticle;
 import org.bukkit.Color;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.keystone.persistence.config.Severity;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.EffectSpec;
 import org.luckyraven.bartizan.api.weapon.dto.EffectsData;
@@ -50,9 +54,11 @@ public final class StatusSectionParser {
 
 		StatusData.ContagionData contagion = parseContagion(status);
 		StatusData.CureData      cure      = parseCure(status);
-		StatusData.BossBarData   bossBar   = parseBossBar(feedbackVictim);
+		StatusData.BossBarData   bossBar   = parseBossBar(feedbackVictim, report);
 
 		String ambientParticle = feedbackVictim != null ? feedbackVictim.get("Ambient_Particle").asString().orNull() : null;
+		if (ambientParticle != null) validateParticle(feedbackVictim, ambientParticle, report);
+
 		String ambientColor    = feedbackVictim != null ? feedbackVictim.get("Ambient_Color").asString().orNull() : null;
 		int ambientInterval = feedbackVictim != null ? feedbackVictim.get("Ambient_Interval").asInt().min(1).orDefault(20)
 		                                             : 20;
@@ -194,13 +200,48 @@ public final class StatusSectionParser {
 		return new StatusData.CureData(items, wearableTrait);
 	}
 
-	private static StatusData.BossBarData parseBossBar(@Nullable NodeReader feedbackVictim) {
+	private static StatusData.BossBarData parseBossBar(@Nullable NodeReader feedbackVictim, ConfigReport report) {
 		NodeReader bossBar = section(feedbackVictim, "Boss_Bar");
 		String     text    = bossBar != null ? bossBar.get("Text").asString().orDefault(DEFAULT_BOSS_BAR_TEXT)
 		                                     : DEFAULT_BOSS_BAR_TEXT;
 		String color = bossBar != null ? bossBar.get("Color").asString().orDefault("WHITE") : "WHITE";
 		String style = bossBar != null ? bossBar.get("Style").asString().orDefault("SOLID") : "SOLID";
+
+		if (bossBar != null) {
+			validateEnum(bossBar, "Color", color, BarColor.class, report);
+			validateEnum(bossBar, "Style", style, BarStyle.class, report);
+		}
+
 		return new StatusData.BossBarData(text, color, style);
+	}
+
+	/**
+	 * Warns (never fails the load) when a {@code Boss_Bar.Color}/{@code Style} value doesn't resolve to the
+	 * matching Bukkit enum — {@code StatusEffectService}'s own {@code parseEnum} fallback stays in place either
+	 * way, so a typo silently falls back to the default rather than breaking the boss bar.
+	 */
+	private static <T extends Enum<T>> void validateEnum(NodeReader section, String key, String value,
+	                                                      Class<T> type, ConfigReport report) {
+		try {
+			Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException exception) {
+			report.add(Severity.WARNING, section.mapping().location(), section.mapping().path() + "." + key,
+			          "'" + value + "' is not a valid " + type.getSimpleName() + " — falling back to the default",
+			          "status.invalid_" + key.toLowerCase(Locale.ROOT));
+		}
+	}
+
+	/**
+	 * Warns when {@code Ambient_Particle} doesn't resolve through {@link XParticle} — the ambient tick simply skips
+	 * spawning it at runtime, so this is diagnostic only.
+	 */
+	private static void validateParticle(NodeReader feedbackVictim, String particleName, ConfigReport report) {
+		if (XParticle.of(particleName).isPresent()) return;
+
+		report.add(Severity.WARNING, feedbackVictim.mapping().location(),
+		          feedbackVictim.mapping().path() + ".Ambient_Particle",
+		          "'" + particleName + "' is not a recognised particle — ambient particles will be skipped",
+		          "status.invalid_ambient_particle");
 	}
 
 	@Nullable

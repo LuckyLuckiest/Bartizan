@@ -4,6 +4,7 @@ import com.cryptomorin.xseries.particles.XParticle;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Particle;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.weapon.dto.EffectSpec;
 import org.luckyraven.bartizan.effect.Effect;
 import org.luckyraven.bartizan.effect.EffectContext;
@@ -46,11 +47,28 @@ public class ParticleHookEffect implements Effect {
 	}
 
 	private Particle.DustOptions dustOptions(EffectSpec spec) {
-		String hex = spec.arg("Color", "#FFFFFF").replace("#", "").trim();
+		return dustOptions(spec.arg("Color", "#FFFFFF"));
+	}
+
+	/**
+	 * Parses a {@code #RRGGBB} (or bare {@code RRGGBB}) hex string into a {@code DUST}-family particle's data,
+	 * falling back to white on a missing/malformed value. Shared with {@code StatusEffectService}'s ambient
+	 * particle, which needs the same hex parsing for its own {@code Ambient_Color}.
+	 */
+	public static Particle.DustOptions dustOptions(@Nullable String hex) {
+		return new Particle.DustOptions(parseColor(hex), 1.0F);
+	}
+
+	/**
+	 * The {@link #dustOptions(String)} color, unwrapped — used for particles whose data type is a bare
+	 * {@link Color} (e.g. {@code ENTITY_EFFECT} on 1.20.5+) rather than {@code DustOptions}.
+	 */
+	public static Color parseColor(@Nullable String hex) {
+		String cleaned = (hex == null ? "FFFFFF" : hex.replace("#", "")).trim();
 		try {
-			return new Particle.DustOptions(Color.fromRGB(Integer.parseInt(hex, 16)), 1.0F);
+			return Color.fromRGB(Integer.parseInt(cleaned, 16));
 		} catch (NumberFormatException exception) {
-			return new Particle.DustOptions(Color.WHITE, 1.0F);
+			return Color.WHITE;
 		}
 	}
 

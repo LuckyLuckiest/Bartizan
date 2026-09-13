@@ -243,6 +243,17 @@ public class Wearable {
 		return traits == null ? 0 : traits.getOrDefault(key, 0);
 	}
 
+	/**
+	 * The configured max level for {@code key} in {@link #TRAIT_TABLE}, or {@code 0} for an unknown trait — the cap
+	 * a trait-summing service (e.g. {@code WearableService#traitLevel}) applies per piece and to the total when
+	 * summing a trait across a full set of armor (e.g. {@code sealed}, which several pieces could otherwise stack
+	 * past its intended ceiling).
+	 */
+	public static int traitMaxLevel(String key) {
+		double[] definition = TRAIT_TABLE.get(key);
+		return definition == null ? 0 : (int) definition[0];
+	}
+
 	/** Arbitrary extra data parsed from {@code Extra_Tags:} - see the field javadoc above. Never {@code null}. */
 	public Map<String, Object> extraTags() {
 		return extraTags == null ? Collections.emptyMap() : extraTags;

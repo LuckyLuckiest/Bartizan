@@ -433,16 +433,8 @@ public class WeaponInteract implements Listener {
 		                                                   activeTasks, level -> action.fire(player, level),
 		                                                   action::previewTick);
 
-		handleChargeHold(weapon.getUuid(), player, () -> startBeamCharge(weapon, player, controller),
+		handleChargeHold(weapon.getUuid(), player, () -> startCharge(weapon, player, controller),
 		                 () -> controller.release(player));
-	}
-
-	private boolean startBeamCharge(BeamWeapon weapon, Player player, ChargeController controller) {
-		if (weapon.getAmmunitionData() != null && weapon.isMagazineEmpty()) {
-			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
-			return false;
-		}
-		return controller.start(player);
 	}
 
 	/**
@@ -452,15 +444,20 @@ public class WeaponInteract implements Listener {
 	 * {@code BiologicalAction#start}, which only ran on the same press).
 	 */
 	private void handleBiologicalCharge(BiologicalWeapon weapon, Player player) {
-		BiologicalAction action     = new BiologicalAction(weapon, raytracer, effectRunner, statusService);
+		BiologicalAction action     = new BiologicalAction(weapon, raytracer, effectRunner, statusService,
+		                                                   weaponService);
 		ChargeController controller = new ChargeController(plugin, weapon, weapon.getBiologicalData().getCharge(),
 		                                                   effectRunner, activeTasks, level -> action.fire(player, level));
 
-		handleChargeHold(weapon.getUuid(), player, () -> startBiologicalCharge(weapon, player, controller),
+		handleChargeHold(weapon.getUuid(), player, () -> startCharge(weapon, player, controller),
 		                 () -> controller.release(player));
 	}
 
-	private boolean startBiologicalCharge(BiologicalWeapon weapon, Player player, ChargeController controller) {
+	/**
+	 * Empty-magazine gate shared by the biological and beam charge-then-release triggers — both only touch
+	 * {@link Weapon} members, so one helper covers both weapon categories.
+	 */
+	private boolean startCharge(Weapon weapon, Player player, ChargeController controller) {
 		if (weapon.getAmmunitionData() != null && weapon.isMagazineEmpty()) {
 			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 			return false;
