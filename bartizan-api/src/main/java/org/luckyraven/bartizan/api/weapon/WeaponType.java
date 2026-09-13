@@ -7,6 +7,7 @@ public enum WeaponType {
 	THROWABLE,
 	INCENDIARY,
 	BIOLOGICAL,
+	BEAM,
 	OTHER;
 
 	public static WeaponType getType(String type) {
@@ -16,6 +17,7 @@ public enum WeaponType {
 			case "throwable", "throw", "grenade", "projectile", "proj" -> THROWABLE;
 			case "incendiary", "fire" -> INCENDIARY;
 			case "biological", "biology", "bio" -> BIOLOGICAL;
+			case "beam", "laser" -> BEAM;
 			default -> OTHER;
 		};
 	}

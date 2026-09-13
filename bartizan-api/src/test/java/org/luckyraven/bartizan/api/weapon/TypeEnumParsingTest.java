@@ -39,6 +39,8 @@ class TypeEnumParsingTest {
 		assertSame(WeaponType.BIOLOGICAL, WeaponType.getType("biological"));
 		assertSame(WeaponType.BIOLOGICAL, WeaponType.getType("biology"));
 		assertSame(WeaponType.BIOLOGICAL, WeaponType.getType("bio"));
+		assertSame(WeaponType.BEAM, WeaponType.getType("beam"));
+		assertSame(WeaponType.BEAM, WeaponType.getType("LASER"));
 	}
 
 	@Test

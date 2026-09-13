@@ -49,13 +49,13 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .event                  WeaponEvent, WeaponShootEvent, WeaponRaytraceImpactEvent,
                                                                 WeaponEntityDamageEvent, WeaponKillEntityEvent,
                                                                 WeaponReloadEvent/Start/Complete, WeaponChangeSelectiveFireEvent,
-                                                                WeaponChargeLevelEvent
+                                                                WeaponChargeLevelEvent, WeaponBeamFireEvent
                                        .item                   WeaponItemApi
                                        .npc                    NpcWeaponFactory, NpcWeaponController
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
-                                       .weapon                 Weapon + 5 subclasses, WeaponType, ThrowableType, SelectiveFire,
-                                                                WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
-                                       .weapon.dto              19 config records (AmmunitionData, ChargeData,
+                                       .weapon                 Weapon + 6 subclasses (incl. BeamWeapon), WeaponType, ThrowableType,
+                                                                SelectiveFire, WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
+                                       .weapon.dto              20 config records (AmmunitionData, ChargeData, BeamData,
                                                                 DamageData, EffectHook, EffectSpec, EffectsData, ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager + action/*
@@ -69,7 +69,7 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .bootstrap              BartizanContext, DefaultListenerService
                                        .command(.data|.wearable) WeaponCommand/Give/Info/List, Ammunition*, Wearable*, DebugCommand
                                        .config                 KernelConfig, FilesConfig, WiringConfig, ItemConfig
-                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 11 YAML section parsers
+                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 12 YAML section parsers (incl. BeamWeaponParser)
                                        .effect(.impl)          Effect, EffectContext, EffectRunner + 15 *HookEffect
                                        .file                   BartizanSettings, BartizanMessages, WeaponLoader
                                        .fire                   PluginFireRegistry
@@ -78,10 +78,10 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .metrics                WeaponMetrics
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
-                                                                RaytraceContext, WeaponVisualSpawner
+                                                                BeamRenderer, RaytraceContext, WeaponVisualSpawner
                                        .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser
                                        .weapon(.action)        WeaponService, WeaponManager, GunAction/FullAutoTask/MeleeAction/...,
-                                                                ChargeController (shared charge-then-release timer)
+                                                                ChargeController (shared charge-then-release timer), BeamAction
                                        .wearable               WearableAddon, WearableService
 ```
 

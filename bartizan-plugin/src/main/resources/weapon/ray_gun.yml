@@ -4,7 +4,7 @@
 
 Information:
    Name: "&dRay Gun&r"
-   Category: biological
+   Category: beam
    Material: RECOVERY_COMPASS
    Durability:
       Base: 100
@@ -20,14 +20,42 @@ Shoot:
    Selective_Fire: single
    Allowed_Modes:
       - single
+   # Legacy Shoot.Charge aliases (weapons-roadmap.md gate HB) - equivalent to the Shoot.Charge block arc_lance.yml
+   # uses. Left as-is since both forms parse identically.
    Charge_Time_Per_Level: 15
    Max_Charge_Level: 3
-   Range: 35.0
-   Base_Damage: 5.0
-   Effects_Per_Level:
-      - "GLOWING-200-0,NAUSEA-100-0"
-      - "GLOWING-300-0,LEVITATION-60-1,WEAKNESS-200-1"
-      - "WITHER-120-2,LEVITATION-100-2,GLOWING-400-0,BLINDNESS-160-0"
+   Beam:
+      Mode: burst
+      Range: 35.0
+      Width: 0.5
+      Ammo_Per_Level: 1
+      Pierce:
+         Entities: -1
+         Blocks: 0
+         Damage_Multiplier_Per_Target: 0.85
+      Damage:
+         # Lower than the Arc Lance - the ray gun trades raw damage for its radiation flavour/lore.
+         Base: 3.0
+         Per_Level: 3.0
+         Head: 2.0
+         Knockback: 0.4
+         Fire_Ticks: 0
+      Preview:
+         Particle: END_ROD
+         Length_Per_Level: 1.5
+         Interval: 2
+         Guide_Line: false
+      Render:
+         Core_Particle: DUST
+         Core_Color: "#7CFC00"
+         Glow_Particle: END_ROD
+         Thickness: 0.25
+         Step: 0.25
+         Duration: 8
+      Impact:
+         Particle: FLASH
+         Sound: ENTITY_ELDER_GUARDIAN_CURSE
+         Scorch_Blocks: false
    Recoil:
       Amount: 0.0
       Push: 0.06

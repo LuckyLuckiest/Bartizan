@@ -87,11 +87,13 @@ public interface BartizanApi {
 
 ### Domain types a consumer may name
 
-`weapon.Weapon` and its five subclasses (`GunWeapon`, `MeleeWeapon`, `BiologicalWeapon`, `IncendiaryWeapon`,
-`ThrowableWeapon`), `weapon.{WeaponType, ThrowableType, SelectiveFire, WeaponTag, ProjectileType, ProjectileState}`,
-the `weapon.dto.*` records (including `ChargeData` — `timePerLevel`, `maxLevel`, `minLevelToFire`,
-`autoFireAtMax` — the charge-then-release config `BiologicalData#getCharge()` carries since gate `HB`, and beam
-weapons will carry at gate `HC`), `ammo.Ammunition`, `wearable.Wearable` (string trait keys via
+`weapon.Weapon` and its six subclasses (`GunWeapon`, `MeleeWeapon`, `BiologicalWeapon`, `IncendiaryWeapon`,
+`ThrowableWeapon`, `BeamWeapon` — gate `HC`), `weapon.{WeaponType, ThrowableType, SelectiveFire, WeaponTag,
+ProjectileType, ProjectileState}` (`WeaponType.BEAM`, aliases `"beam"`/`"laser"`, added at gate `HC`), the
+`weapon.dto.*` records (including `ChargeData` — `timePerLevel`, `maxLevel`, `minLevelToFire`, `autoFireAtMax` —
+the charge-then-release config `BiologicalData#getCharge()` and `BeamWeapon#getCharge()` both carry, and
+`BeamData` — `range`, `width`, `ammoPerLevel`, `pierce`/`damage`/`preview`/`render` nested records, `scorchBlocks`
+— `BeamWeapon#getBeam()`'s config since gate `HC`), `ammo.Ammunition`, `wearable.Wearable` (string trait keys via
 `traits()`/`traitLevel(String)`; jetpack-style extra data via `extraTags()` — NBT keys `fuel`/`fuel_current`/
 `fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code needs no edit),
 `BartizanItemPredicates.WEARABLE`.
@@ -116,11 +118,18 @@ weapon's own `Effects:` list for a hook still replaces the lowered entry entirel
 
 `WeaponEvent`, `WeaponShootEvent`, `WeaponRaytraceImpactEvent` (cancelling suppresses damage only — penetration and
 ricochet counters still advance), `WeaponEntityDamageEvent`, `WeaponKillEntityEvent`, `WeaponReloadEvent` /
-`WeaponReloadStartEvent` / `WeaponReloadCompleteEvent`, `WeaponChangeSelectiveFireEvent`, `WeaponChargeLevelEvent`.
+`WeaponReloadStartEvent` / `WeaponReloadCompleteEvent`, `WeaponChangeSelectiveFireEvent`, `WeaponChargeLevelEvent`,
+`WeaponBeamFireEvent`.
 
 `WeaponChargeLevelEvent` (weapon, player, `level`, `maxLevel`; not cancellable) fires on every charge-level
-increment for a charge-then-release weapon — `bartizan-plugin`'s `ChargeController` (biological now, beam at gate
+increment for a charge-then-release weapon — `bartizan-plugin`'s `ChargeController` (biological and beam, gate
 `HC`) raises it alongside the `On_Charge_Level`/`On_Charge_Full` effect hooks.
+
+`WeaponBeamFireEvent` (weapon, player, `level`, `origin`, `direction`; cancellable — cancelling suppresses the shot
+but does not refund ammo already consumed) fires just before a beam's ray is cast, gate `HC`. It deviates from
+weapons-roadmap.md §3.2's description of an event that "carries level and the ordered target list": the beam ray
+streams hits one at a time through `RaytraceRequest`'s impact handler rather than pre-computing a target list
+before firing, so there is no target list to carry — only `level`, `origin` and `direction` at fire time.
 
 `WeaponReloadCompleteEvent#isInterrupted()` (new at gate `HA`) is `true` when the completion was raised by a
 swap-cancelled reload (`Reload#endReloading(Player, boolean)`) rather than a normal reload finishing — Bartizan's

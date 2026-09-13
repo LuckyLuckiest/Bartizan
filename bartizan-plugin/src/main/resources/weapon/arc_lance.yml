@@ -1,0 +1,116 @@
+# +-------------------+ #
+# |     Arc Lance     | #
+# +-------------------+ #
+#
+# Beam weapon (weapons-roadmap.md gate HC): hold right-click to charge, release to fire a piercing burst beam.
+# Charge and beam mechanics are shared with biological weapons through ChargeController — see syringe_gun.yml
+# for the charge-only version of this pattern.
+
+Information:
+   Name: "&bArc Lance"
+   Category: beam
+   Material: SPYGLASS
+   Durability:
+      Base: 100
+      Change:
+         On_Shot: 0
+   Lore:
+      - "&bExperimental particle-beam weapon.&r"
+      - "&7Hold right-click to charge.&r"
+      - "&7Release to fire a piercing beam.&r"
+   Drop_Hologram: false
+
+Shoot:
+   Charge:
+      # [Time_Per_Level] ticks held per charge level increment.
+      Time_Per_Level: 8
+      # [Max_Level] highest charge level reachable.
+      Max_Level: 4
+      # [Min_Level_To_Fire] releasing below this level cancels the charge instead of firing.
+      Min_Level_To_Fire: 1
+      # [Auto_Fire_At_Max] fire automatically the instant Max_Level is reached, without waiting for release.
+      Auto_Fire_At_Max: false
+   Beam:
+      # [Mode] only 'burst' is implemented (gate HC). Anything else logs a warning and falls back to burst.
+      Mode: burst
+      # [Range] maximum beam length, in blocks.
+      Range: 60.0
+      # [Width] hitbox expansion around the beam axis used for entity detection, in blocks.
+      Width: 0.6
+      # [Ammo_Per_Level] ammo consumed = Ammo_Per_Level * charge level reached.
+      Ammo_Per_Level: 1
+      Pierce:
+         # [Entities] entities the beam can pass through before stopping. -1 = unlimited.
+         Entities: -1
+         # [Blocks] penetrable blocks (glass, leaves, ...) the beam can pass through.
+         Blocks: 0
+         # [Damage_Multiplier_Per_Target] damage carried into the next target, per entity already hit.
+         Damage_Multiplier_Per_Target: 0.85
+      Damage:
+         # [Base] damage at charge level 1.
+         Base: 6.0
+         # [Per_Level] damage added per level above 1.
+         Per_Level: 5.0
+         # [Head] bonus damage added on a headshot.
+         Head: 4.0
+         # [Knockback] velocity magnitude applied along the beam direction on a hit.
+         Knockback: 0.8
+         # [Fire_Ticks] fire ticks applied on a hit. 0 = none.
+         Fire_Ticks: 0
+      Preview:
+         # [Particle] particle drawn from the muzzle while charging.
+         Particle: END_ROD
+         # [Length_Per_Level] preview beam length per charge level, in blocks.
+         Length_Per_Level: 1.5
+         # [Interval] ticks between preview redraws.
+         Interval: 2
+         # [Guide_Line] also draw a faint dotted line out to Range, to help aim the pierce.
+         Guide_Line: false
+      Render:
+         # [Core_Particle] particle drawn along the fired beam's axis.
+         Core_Particle: DUST
+         # [Core_Color] #RRGGBB used when Core_Particle resolves to a DUST-shaped particle.
+         Core_Color: "#66CCFF"
+         # [Glow_Particle] particle drawn offset around the axis.
+         Glow_Particle: END_ROD
+         # [Thickness] offset radius, in blocks, for Glow_Particle (and the dust size for Core_Particle).
+         Thickness: 0.25
+         # [Step] spacing, in blocks, between drawn points along the axis.
+         Step: 0.25
+         # [Duration] ticks the fired beam's render loop redraws for.
+         Duration: 8
+      Impact:
+         # [Particle] particle spawned at the beam's impact point (lowered to an On_Beam_Fire effect).
+         Particle: FLASH
+         # [Sound] sound played at the beam's impact point (lowered to an On_Beam_Fire effect).
+         Sound: ENTITY_LIGHTNING_BOLT_IMPACT
+         # [Scorch_Blocks] crack (never break) the terminal block the beam hits.
+         Scorch_Blocks: true
+   Recoil:
+      Amount: 1.5
+      Push: 0.2
+      Power_Up: 0.0
+      Pattern: []
+   Sound:
+      Default_Sound:
+         Sound: ENTITY_GUARDIAN_ATTACK
+         Volume: 1.0
+         Pitch: 0.8
+
+Ammunition:
+   Ammo_Type: energy_cell
+   Capacity: 8
+   Consume: 1
+   Restore: 8
+
+Reload:
+   Cooldown: 3
+   Type: instant
+
+Modifiers:
+   Break_Blocks:
+      - "glass-1-DESTROY"
+
+Death_Messages:
+   - "&c%victim% was cut down by %killer%'s Arc Lance."
+   - "&c%killer% pierced %victim% with a particle beam."

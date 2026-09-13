@@ -29,6 +29,9 @@ import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
+import org.luckyraven.bartizan.weapon.action.BeamAction;
+import org.luckyraven.bartizan.api.weapon.BeamWeapon;
+import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
 import org.luckyraven.bartizan.weapon.action.BiologicalAction;
 import org.luckyraven.bartizan.weapon.action.ChargeController;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
@@ -51,7 +54,7 @@ import java.util.function.BooleanSupplier;
 
 @ListenerHandler
 @AutowireTarget({WeaponService.class, WeaponRaytracer.class, PluginFireRegistry.class, CombatEligibility.class,
-                EffectRunner.class})
+                EffectRunner.class, BlockDamageManager.class})
 public class WeaponInteract implements Listener {
 
 	/**
@@ -82,6 +85,7 @@ public class WeaponInteract implements Listener {
 	private final PluginFireRegistry fireRegistry;
 	private final CombatEligibility  combatEligibility;
 	private final EffectRunner       effectRunner;
+	private final BlockDamageManager blockDamageManager;
 
 	private final Map<UUID, AtomicReference<WeaponData>> continuousFire;
 	/**
@@ -127,14 +131,15 @@ public class WeaponInteract implements Listener {
 
 	public WeaponInteract(JavaPlugin plugin, WeaponService weaponService, WeaponRaytracer raytracer,
 	                      PluginFireRegistry fireRegistry, CombatEligibility combatEligibility,
-	                      EffectRunner effectRunner) {
-		this.plugin            = plugin;
-		this.weaponService     = weaponService;
-		this.raytracer         = raytracer;
-		this.fireRegistry      = fireRegistry;
-		this.combatEligibility = combatEligibility;
-		this.effectRunner      = effectRunner;
-		this.continuousFire    = new ConcurrentHashMap<>();
+	                      EffectRunner effectRunner, BlockDamageManager blockDamageManager) {
+		this.plugin             = plugin;
+		this.weaponService      = weaponService;
+		this.raytracer          = raytracer;
+		this.fireRegistry       = fireRegistry;
+		this.combatEligibility  = combatEligibility;
+		this.effectRunner       = effectRunner;
+		this.blockDamageManager = blockDamageManager;
+		this.continuousFire     = new ConcurrentHashMap<>();
 		this.pressLockUntilTick = new ConcurrentHashMap<>();
 		this.pressHoldState     = new ConcurrentHashMap<>();
 		this.releaseCallbacks   = new ConcurrentHashMap<>();
@@ -406,7 +411,37 @@ public class WeaponInteract implements Listener {
 			}
 		} else if (weapon instanceof BiologicalWeapon biological) {
 			if (rightClick) handleBiologicalCharge(biological, player);
+		} else if (weapon instanceof BeamWeapon beam) {
+			if (rightClick) handleBeamCharge(beam, player);
 		}
+	}
+
+	/**
+	 * Charge-then-release trigger for beam weapons — mirrors {@link #handleBiologicalCharge}, additionally driving
+	 * {@link BeamAction#startPreview}/{@link BeamAction#stopPreview} around the shared {@link ChargeController}.
+	 */
+	private void handleBeamCharge(BeamWeapon weapon, Player player) {
+		BeamAction       action     = new BeamAction(plugin, weapon, raytracer, weaponService, effectRunner,
+		                                             blockDamageManager);
+		ChargeController controller = new ChargeController(plugin, weapon, weapon.getCharge(), effectRunner,
+		                                                   activeTasks, level -> action.fire(player, level));
+
+		handleChargeHold(weapon.getUuid(), player, () -> startBeamCharge(weapon, player, controller, action),
+		                 () -> {
+							 action.stopPreview();
+							 controller.release(player);
+						 });
+	}
+
+	private boolean startBeamCharge(BeamWeapon weapon, Player player, ChargeController controller,
+	                                BeamAction action) {
+		if (weapon.getAmmunitionData() != null && weapon.isMagazineEmpty()) {
+			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
+			return false;
+		}
+		boolean started = controller.start(player);
+		if (started) action.startPreview(player, controller);
+		return started;
 	}
 
 	/**

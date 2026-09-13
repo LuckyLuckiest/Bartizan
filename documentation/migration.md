@@ -176,7 +176,7 @@ existing placed signs keep working without the owner re-placing them. This rewri
   (metrics silently do nothing rather than throwing). The `number_of_weapons` chart is wired and will start
   reporting the moment a real id is set.
 
-## 10. 0.3.0 (gate HA) — the effects engine
+## 10. 0.3.0 (gates HA–HC) — the effects engine, and beam weapons
 
 - Shot, impact, empty-magazine, scope and reload-start/end sounds are no longer played by `bartizan-api` directly.
   The loader (`EffectsSectionParser.lowerLegacySounds`) lowers each configured `Shoot.Sound.*`/`Reload.Sound.*`
@@ -187,3 +187,15 @@ existing placed signs keep working without the owner re-placing them. This rewri
   finishing normally, so a listener can tell a cancelled reload apart from a completed one.
 - `WeaponRaytracer#fireInstant(RaytraceRequest)` now returns `boolean` — whether a living entity took the hit. The
   raytracer no longer fires `ON_MISS` itself; the firing action decides off this return value instead.
+- **`ray_gun.yml` is re-categorised from `Category: biological` to `Category: beam` (gate `HC`)** — it becomes a
+  `BeamWeapon` template instead of a `BiologicalWeapon` one, trading its potion payload for a piercing damage beam
+  with the same charge-then-release feel. Existing ray gun items already in players' inventories keep working with
+  no item edit needed: a weapon item's identity is its `weapon` NBT tag (the registry file name, `"ray_gun"` —
+  see `WeaponItemSerializer#extract` and `Weapon.WeaponTag.WEAPON`), not its category. `WeaponService#getWeapon`
+  resolves that tag against the *currently loaded* template (`WeaponAddon#getWeapon(type)`) and mints a fresh
+  `copyWithUUID` of whatever type backs it today — now `BeamWeapon` — while ammo-left, durability and
+  selective-fire all sync from the item's NBT tags generically, regardless of subclass. So the day this update
+  ships, a player's existing ray gun item is simply reinterpreted as a beam weapon on next use; nothing needs to be
+  reissued or converted.
+- New `arc_lance.yml` (`Category: beam`) and a new `energy_cell` ammo type in `items/ammunition.yml`. `WeaponType`
+  gains `BEAM` (`Category: beam` / `laser`).

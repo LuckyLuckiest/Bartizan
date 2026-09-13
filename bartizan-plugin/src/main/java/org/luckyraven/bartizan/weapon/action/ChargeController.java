@@ -82,6 +82,15 @@ public class ChargeController {
 	}
 
 	/**
+	 * Current charge level reached so far, for the given weapon uuid — used by {@link BeamAction#startPreview} to
+	 * scale the beam charge preview. Returns 0 when {@code weaponUuid} doesn't match this controller's own weapon
+	 * (defensive; one controller instance is dedicated to a single charge attempt for one weapon).
+	 */
+	public int currentLevel(UUID weaponUuid) {
+		return weapon.getUuid().equals(weaponUuid) ? level : 0;
+	}
+
+	/**
 	 * One charge tick, delegated to by the {@link RepeatingTimer} started in {@link #start}. Package-private so it
 	 * can be driven directly in a unit test without a scheduler.
 	 */

@@ -12,6 +12,7 @@ import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.FileHandlerReader;
 import org.luckyraven.keystone.persistence.config.MappingNode;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.bartizan.api.weapon.BeamWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
@@ -104,6 +105,7 @@ public class WeaponAddon {
 			case MELEE -> new MeleeWeaponParser(ammunitionManager).parse(root, shoot, report, base);
 			case INCENDIARY -> new IncendiaryWeaponParser(ammunitionManager).parse(root, shoot, report, base);
 			case BIOLOGICAL -> new BiologicalWeaponParser(ammunitionManager).parse(root, shoot, report, base);
+			case BEAM -> new BeamWeaponParser(ammunitionManager).parse(root, shoot, report, base);
 		};
 
 		/* apply shared post-parse sections */
@@ -115,6 +117,9 @@ public class WeaponAddon {
 		applyOptionalShootConfig(shoot, weapon, report);
 		applyScope(root, weapon, report);
 		ModifiersSectionParser.apply(root, weapon, report);
+		if (weapon instanceof BeamWeapon beamWeapon) {
+			BeamWeaponParser.lowerPierce(beamWeapon);
+		}
 		applyEffects(root, shoot, weapon, report);
 
 		// hand the placeholder resolver to the weapon instance so its rendering path can resolve
@@ -240,6 +245,9 @@ public class WeaponAddon {
 		EffectsData effectsData = EffectsSectionParser.parse(effects, report);
 		EffectsSectionParser.lowerLegacySounds(weapon.getSoundData(), effectsData);
 		ChargeSectionParser.lowerChargeFeedback(shoot, effectsData);
+		if (weapon instanceof BeamWeapon) {
+			BeamWeaponParser.lowerImpactEffects(shoot, effectsData);
+		}
 		weapon.setEffects(effectsData);
 	}
 
