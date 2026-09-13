@@ -14,6 +14,8 @@ import org.luckyraven.keystone.util.ParticleUtil;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
+import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
+import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
 import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
 import org.luckyraven.bartizan.api.weapon.modifiers.ModifierHandler;
@@ -22,6 +24,7 @@ import org.luckyraven.bartizan.api.weapon.modifiers.action.RicochetModifier;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.TracerModifier;
 import org.luckyraven.bartizan.api.weapon.ProjectileState;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.api.weapon.WeaponType;
 import org.luckyraven.bartizan.api.raytrace.RaytraceContext;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
@@ -402,7 +405,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 				}
 			}
 			damage = ModifierHandler.calculateArmorPiercingDamage(damage, living, weapon);
-			damage = wearableService.applyWearableReduction(damage, living, true);
+			damage = wearableService.applyWearableReduction(damage, living, weapon.getCategory() == WeaponType.GUN);
 			damage = ModifierHandler.applyFlatDamage(damage, weapon);
 
 			if (weapon instanceof GunWeapon gun
@@ -456,6 +459,15 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 			                        && living.getHealth() >= healthBefore;
 			if (damageBlocked) {
 				return;
+			}
+
+			// Fire the canonical WeaponEntityDamageEvent for the default (non-short-circuited) pipeline too, so one
+			// listener (WeaponDeathListener) sees weapon damage regardless of which action fired the ray. Only a
+			// player-attributed shot can be described as a WeaponEntityDamageEvent shooter.
+			if (shooter instanceof Player player) {
+				Bukkit.getPluginManager().callEvent(
+						new WeaponEntityDamageEvent(weapon, living, event.getDamage(), player, weapon.getName(),
+						                            DamageKind.DIRECT));
 			}
 
 			if (weapon instanceof GunWeapon gun) {

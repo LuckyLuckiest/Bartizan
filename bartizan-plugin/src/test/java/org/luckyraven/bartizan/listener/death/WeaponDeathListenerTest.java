@@ -1,19 +1,31 @@
 package org.luckyraven.bartizan.listener.death;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.plugin.PluginManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
+import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
+import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.file.BartizanSettings;
 import org.luckyraven.bartizan.weapon.WeaponManager;
+import org.mockito.ArgumentCaptor;
+import org.mockito.MockedStatic;
 
+import java.lang.reflect.Field;
+import java.util.Optional;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -83,6 +95,104 @@ class WeaponDeathListenerTest {
 		// Pre-fix, the remove() sat after the killer == null early return, so the first (unattributed) death never
 		// cleared the "grenade" entry — it survived to wrongly claim this second, unrelated death.
 		verify(later, never()).setDeathMessage(any());
+	}
+
+	@Test
+	@DisplayName("HA §0.1: a credited kill fires WeaponKillEntityEvent with the killer/victim/weapon before the "
+			+ "death message is applied")
+	void onPlayerDeath_creditedKill_firesWeaponKillEntityEventBeforeMessage() throws ReflectiveOperationException {
+		primeMoneySymbol();
+
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager);
+
+		Player victim = mock(Player.class);
+		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
+		when(victim.getName()).thenReturn("Victim");
+
+		Player          killer    = mock(Player.class);
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		when(killer.getInventory()).thenReturn(inventory);
+		when(inventory.getItemInMainHand()).thenReturn(mock(ItemStack.class));
+		when(killer.getName()).thenReturn("Killer");
+		when(victim.getKiller()).thenReturn(killer);
+
+		Weapon weapon = mock(Weapon.class);
+		when(weapon.getDisplayName()).thenReturn("Big Gun");
+		when(weapon.pickDeathMessage()).thenReturn(Optional.of("%killer% killed %victim% with %item%"));
+		when(weaponManager.validateAndGetWeapon(eq(killer), any())).thenReturn(weapon);
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			listener.onPlayerDeath(event);
+
+			ArgumentCaptor<WeaponKillEntityEvent> captor = ArgumentCaptor.forClass(WeaponKillEntityEvent.class);
+			verify(pluginManager).callEvent(captor.capture());
+
+			WeaponKillEntityEvent killEvent = captor.getValue();
+			assertEquals(weapon, killEvent.getWeapon());
+			assertEquals(killer, killEvent.getKiller());
+			assertEquals(victim, killEvent.getKilled());
+		}
+
+		verify(event).setDeathMessage("Killer killed Victim with Big Gun");
+	}
+
+	@Test
+	@DisplayName("a cancelled WeaponKillEntityEvent leaves the vanilla death message untouched")
+	void onPlayerDeath_cancelledKillEvent_leavesVanillaMessage() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager);
+
+		Player victim = mock(Player.class);
+		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
+
+		Player          killer    = mock(Player.class);
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		when(killer.getInventory()).thenReturn(inventory);
+		when(inventory.getItemInMainHand()).thenReturn(mock(ItemStack.class));
+		when(victim.getKiller()).thenReturn(killer);
+
+		Weapon weapon = mock(Weapon.class);
+		when(weapon.pickDeathMessage()).thenReturn(Optional.of("%killer% killed %victim% with %item%"));
+		when(weaponManager.validateAndGetWeapon(eq(killer), any())).thenReturn(weapon);
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+			doAnswer(invocation -> {
+				WeaponKillEntityEvent killEvent = invocation.getArgument(0);
+				killEvent.setCancelled(true);
+				return null;
+			}).when(pluginManager).callEvent(any());
+
+			listener.onPlayerDeath(event);
+		}
+
+		verify(event, never()).setDeathMessage(any());
+	}
+
+	/**
+	 * {@code BartizanSettings.moneySymbol} is only ever set by {@code BartizanSettings#init()}, which reads
+	 * {@code settings.yml} through Keystone's file pipeline — not available in a plain unit test. Priming it
+	 * directly is the same shortcut {@code BartizanChatUtil.color()}'s only other unit-test caller would need: the
+	 * static field is package-private-by-convention config state, not something worth standing up a fake
+	 * {@code FileManager} for.
+	 */
+	private static void primeMoneySymbol() throws ReflectiveOperationException {
+		Field field = BartizanSettings.class.getDeclaredField("moneySymbol");
+		field.setAccessible(true);
+		field.set(null, "$");
 	}
 
 }

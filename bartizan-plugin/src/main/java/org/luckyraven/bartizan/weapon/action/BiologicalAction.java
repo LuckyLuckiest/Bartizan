@@ -112,8 +112,7 @@ public class BiologicalAction {
 			weapon.applyPush(player);
 		}
 
-		List<PotionEffect> effects = PotionEffectParser.parseList(
-				List.of(data.getEffectsPerLevel().get(Math.min(level, data.getEffectsPerLevel().size()) - 1)));
+		List<PotionEffect> effects = effectsForLevel(data, level);
 
 		double flatBonus = weapon.getModifiersData().hasFlatDamage() ?
 		                   weapon.getModifiersData().getFlatDamage().bonus() :
@@ -123,6 +122,21 @@ public class BiologicalAction {
 		fireRay(player, damage, effects, data);
 
 		ActionBarManager.send(player, "&aReleased at charge level " + level);
+	}
+
+	/**
+	 * Resolves the potion effects for a charge level from {@code Effects_Per_Level}. A level beyond the list's size
+	 * clamps to the last configured entry (rather than throwing); a null/empty list or a level below 1 yields no
+	 * effects.
+	 */
+	static List<PotionEffect> effectsForLevel(BiologicalData data, int level) {
+		List<String> perLevel = data.getEffectsPerLevel();
+		if (perLevel == null || perLevel.isEmpty() || level < 1) {
+			return List.of();
+		}
+
+		int index = Math.min(level, perLevel.size()) - 1;
+		return PotionEffectParser.parseList(List.of(perLevel.get(index)));
 	}
 
 	/**

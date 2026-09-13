@@ -1,6 +1,7 @@
 package org.luckyraven.bartizan.listener.death;
 
 import lombok.CustomLog;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -9,6 +10,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
+import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.file.BartizanMessages;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
@@ -127,6 +129,14 @@ public class WeaponDeathListener implements Listener {
 		if (template == null) return;
 
 		String itemName = weapon != null ? weapon.getDisplayName() : throwableName;
+
+		// Fire the kill event before crediting the death message — a listener that cancels it should see the kill
+		// go unclaimed, leaving Gangland's own (LOWEST-priority) vanilla message in place.
+		WeaponKillEntityEvent killEvent = new WeaponKillEntityEvent(weapon, killer, victim);
+		Bukkit.getPluginManager().callEvent(killEvent);
+		if (killEvent.isCancelled()) {
+			return;
+		}
 
 		event.setDeathMessage(BartizanChatUtil.color(template.replace("%killer%", killer.getName())
 		                                                     .replace("%victim%", victim.getName())
