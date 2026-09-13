@@ -21,8 +21,11 @@ import static org.mockito.Mockito.when;
 
 /**
  * Installs a minimal {@link Server} so that Bukkit API which resolves through {@link Registry} works in a plain
- * unit test — most importantly {@link org.bukkit.Material#isAir()} and XSeries lookups such as
- * {@code XAttribute.ARMOR.get()}.
+ * unit test — most importantly {@link org.bukkit.Material#isAir()}, XSeries lookups such as
+ * {@code XAttribute.ARMOR.get()}, and any code path that merely needs {@code Bukkit.getItemFactory()} to be
+ * non-null to avoid an NPE — {@code Weapon#buildItem}'s {@code ItemBuilder} calls route display-name/lore/
+ * durability writes through {@code ItemStack.getItemMeta()} even when nothing in the test cares about the
+ * resulting meta.
  *
  * <p><b>Why this is needed.</b> On the 1.21 API {@code Material.isAir()} is no longer a plain switch — it resolves
  * {@code asBlockType()}, which reads the static {@code Registry.BLOCK}. {@code Registry}'s static initialiser calls
@@ -51,11 +54,8 @@ import static org.mockito.Mockito.when;
  * <p><b>Upstream candidate:</b> this belongs in {@code keystone-testkit} beside {@code BukkitStatics}; it lives
  * here only to avoid a Keystone version bump mid-initiative.
  *
- * <p><b>Bartizan port note (bartizan.md §1.2/§3, B19):</b> the checklist's §1.2 file table names
- * {@code bartizan-plugin/src/test/.../testsupport/BukkitRegistryFixture.java} as the target, but its only consumer,
- * {@code ModifierHandlerTest}, is placed in {@code bartizan-api} by §3's own module table (the class under test,
- * {@code ModifierHandler}, lives in {@code bartizan-api}). A plugin-module test class is not on the api module's
- * test classpath, so the fixture is copied here instead — recorded as a deviation in bartizan.md §7 (B19).
+ * <p><b>Single source of truth (roadmap §0.1 item 5):</b> published from {@code bartizan-api}'s test-jar and
+ * consumed by both modules — {@code bartizan-plugin} no longer keeps its own copy.
  */
 public final class BukkitRegistryFixture {
 
@@ -79,7 +79,11 @@ public final class BukkitRegistryFixture {
 		// Bukkit.setServer logs a banner through these before returning.
 		when(server.getLogger()).thenReturn(Logger.getLogger("gangland-test"));
 		when(server.getName()).thenReturn("TestServer");
-		when(server.getVersion()).thenReturn("test");
+		// XSeries' XMaterial.Data static initialiser regex-parses "MC: <major>.<minor>" out of this string the
+		// moment anything touches XMaterial with a non-null Bukkit.getServer() — a plain "test" throws
+		// IllegalArgumentException out of the class's <clinit>, which (like the Registry trap above) then
+		// NoClassDefFoundError's every later touch in the same fork.
+		when(server.getVersion()).thenReturn("git-Spigot-test (MC: 1.21)");
 		when(server.getBukkitVersion()).thenReturn("1.21.11-R0.1-SNAPSHOT");
 
 		// Lazy on purpose — see trap (1) in the class javadoc.
@@ -166,12 +170,19 @@ public final class BukkitRegistryFixture {
 		                              new Class<?>[]{ItemFactory.class}, handler);
 	}
 
-	/** Proxies must return a non-null value for primitive return types. */
+	/**
+	 * Proxies must return a non-null value for primitive return types, boxed as the EXACT wrapper the method
+	 * declares — {@code Proxy}'s invocation contract does not widen/narrow a mismatched boxed numeric type (e.g.
+	 * {@code Material#getMaxDurability()} returns {@code short}; a boxed {@code Integer} 0 throws
+	 * {@code ClassCastException} at the call site, not here).
+	 */
 	private static Object defaultValue(Class<?> returnType) {
 		if (!returnType.isPrimitive()) return null;
 		if (returnType == boolean.class) return false;
 		if (returnType == void.class) return null;
 		if (returnType == char.class) return (char) 0;
+		if (returnType == byte.class) return (byte) 0;
+		if (returnType == short.class) return (short) 0;
 		if (returnType == long.class) return 0L;
 		if (returnType == float.class) return 0f;
 		if (returnType == double.class) return 0d;

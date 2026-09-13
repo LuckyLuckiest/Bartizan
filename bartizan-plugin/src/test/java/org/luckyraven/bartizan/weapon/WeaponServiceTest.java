@@ -4,7 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
-import org.luckyraven.bartizan.support.WeaponFixtures;
+import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;

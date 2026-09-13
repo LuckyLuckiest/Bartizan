@@ -39,7 +39,7 @@ public class WeaponAddon {
 		this.placeholder = placeholder;
 	}
 
-	public void registerWeapon(AmmunitionManager ammunitionManager, FileHandler fileHandler) throws
+	public ConfigReport registerWeapon(AmmunitionManager ammunitionManager, FileHandler fileHandler) throws
 			InvalidConfigurationException {
 		String       fileName = fileHandler.getName().toLowerCase();
 		ConfigReport report   = new ConfigReport();
@@ -47,7 +47,7 @@ public class WeaponAddon {
 
 		String configVersion = root.get("Config_Version").asString().orNull();
 		if (configVersion != null) {
-			return;
+			return report;
 		}
 
 		/* information section */
@@ -123,6 +123,7 @@ public class WeaponAddon {
 		if (!report.isEmpty()) report.log(log);
 
 		weapons.put(fileName, weapon);
+		return report;
 	}
 
 	@Nullable

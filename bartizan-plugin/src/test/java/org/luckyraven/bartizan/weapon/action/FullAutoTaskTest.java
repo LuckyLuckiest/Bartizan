@@ -7,7 +7,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
-import org.luckyraven.bartizan.support.WeaponFixtures;
+import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.weapon.WeaponService;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
