@@ -6,7 +6,7 @@ installed on any Keystone-powered server, not just Gangland's.
 
 ## Install
 
-Drop `Bartizan-0.2.0.jar` beside `Keystone-1.9.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
+Drop `Bartizan-0.3.0.jar` beside `Keystone-1.9.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
 Keystone and NBT-API — both must already be installed and enabled, or Bartizan fails to load (Keystone's
 `NbtBridge.detect()` falls back to a no-op accessor when NBT-API is absent, which makes every Bartizan item inert,
 so it is a hard `depend:`, not a `softdepend:`). Soft-depends on `ViaVersion`, `PlaceholderAPI`.
@@ -30,7 +30,7 @@ Bartizan keeps no database. A weapon item's identity and state live in its own N
 | Artifact | Purpose |
 |---|---|
 | `bartizan-api` | The weapon/ammo/wearable model and service contracts (`BartizanApi`, `WeaponCatalog`, events, `NpcRangedAttack` SPI impl surface). `provided` scope in every consumer; zero `net.minecraft`, zero `org.bukkit.craftbukkit`, zero `org.luckyraven.gangland` symbols. |
-| `bartizan-plugin` | The runtime: services, listeners, commands, item vocabulary. Shaded into `Bartizan-0.2.0.jar`. Never a dependency of anything else. |
+| `bartizan-plugin` | The runtime: services, listeners, commands, item vocabulary. Shaded into `Bartizan-0.3.0.jar`. Never a dependency of anything else. |
 
 Consumers (e.g. Gangland Warfare's `gangland-features/*` modules) depend on `bartizan-api` at `provided` scope and
 discover `BartizanApi` through Bukkit's `ServicesManager` at runtime — Bartizan never names a consumer's types, and
@@ -89,7 +89,7 @@ Bartizan's own `NpcWeaponControllerImpl`. `RaytraceContext` and `WeaponVisualSpa
 ## Build
 
 ```
-mvn clean install            # bartizan-plugin/target/Bartizan-0.2.0.jar
+mvn clean install            # bartizan-plugin/target/Bartizan-0.3.0.jar
 mvn clean install -DskipTests
 ```
 
