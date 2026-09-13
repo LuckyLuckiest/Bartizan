@@ -21,7 +21,6 @@ import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.api.weapon.ProjectileState;
-import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.ThrowableType;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
@@ -83,15 +82,7 @@ public class ThrowableAction {
 		Vector throwVec = eyeLoc.getDirection().normalize().multiply(1.2).add(new Vector(0, 0.2, 0));
 		grenade.setVelocity(throwVec);
 
-		EffectContext shootCtx = EffectContext.builder()
-		                                      .weapon(weapon)
-		                                      .source(player)
-		                                      .muzzle(WeaponMuzzle.compute(player, eyeLoc.getDirection()))
-		                                      .ammoLeft(weapon.getAmmunitionData() != null
-		                                                ? weapon.getCurrentMagCapacity() : 0)
-		                                      .ammoMax(weapon.getAmmunitionData() != null
-		                                               ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
-		                                      .build();
+		EffectContext shootCtx = EffectContext.shot(weapon, player, eyeLoc.getDirection()).build();
 		effectRunner.run(weapon, EffectHook.ON_SHOOT, shootCtx);
 
 		if (weapon.getRecoilData() != null) {

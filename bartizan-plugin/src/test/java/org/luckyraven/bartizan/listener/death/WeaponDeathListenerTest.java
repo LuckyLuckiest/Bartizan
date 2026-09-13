@@ -71,6 +71,7 @@ class WeaponDeathListenerTest {
 		WeaponEntityDamageEvent damageEvent = mock(WeaponEntityDamageEvent.class);
 		when(damageEvent.getEntity()).thenReturn(victim);
 		when(damageEvent.weaponName()).thenReturn("grenade");
+		when(damageEvent.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.EXPLOSION);
 		listener.onWeaponEntityDamage(damageEvent);
 
 		// First death for that player: no attributable killer (environmental finish / self-detonation).
@@ -190,6 +191,53 @@ class WeaponDeathListenerTest {
 
 		verify(event, never()).setDeathMessage(any());
 		verify(effectRunner, never()).run(any(), any(), any());
+	}
+
+	@Test
+	@DisplayName("gate HA: a DIRECT WeaponEntityDamageEvent (fired on every gun hit since HA) does not record a "
+			+ "claim, so the death message comes from the killer's actually-held weapon")
+	void onWeaponEntityDamage_directKind_doesNotRecordClaim() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class));
+
+		Player victim = mock(Player.class);
+		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
+		when(victim.getName()).thenReturn("Victim");
+
+		// A gun hit fires WeaponEntityDamageEvent with DamageKind.DIRECT via the raytracer's default pipeline.
+		WeaponEntityDamageEvent damageEvent = mock(WeaponEntityDamageEvent.class);
+		when(damageEvent.getEntity()).thenReturn(victim);
+		when(damageEvent.weaponName()).thenReturn("rifle");
+		when(damageEvent.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.DIRECT);
+		listener.onWeaponEntityDamage(damageEvent);
+
+		Player          killer    = mock(Player.class);
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		ItemStack       heldItem  = mock(ItemStack.class);
+		when(killer.getInventory()).thenReturn(inventory);
+		when(inventory.getItemInMainHand()).thenReturn(heldItem);
+		when(killer.getName()).thenReturn("Killer");
+		when(victim.getKiller()).thenReturn(killer);
+
+		Weapon heldWeapon = mock(Weapon.class);
+		when(heldWeapon.getDisplayName()).thenReturn("Pistol");
+		when(heldWeapon.pickDeathMessage()).thenReturn(Optional.of("%killer% killed %victim% with %item%"));
+		when(weaponManager.validateAndGetWeapon(eq(killer), eq(heldItem))).thenReturn(heldWeapon);
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			listener.onPlayerDeath(event);
+		}
+
+		// Never even consulted the "grenade" throwable template — the DIRECT hit left no claim to resolve.
+		verify(weaponManager, never()).getWeaponTemplate(any());
+		verify(event).setDeathMessage("Killer killed Victim with Pistol");
 	}
 
 	/**

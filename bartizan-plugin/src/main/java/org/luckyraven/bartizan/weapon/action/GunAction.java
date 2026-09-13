@@ -10,7 +10,6 @@ import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
-import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.raytrace.WeaponShooting;
 import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
@@ -70,7 +69,7 @@ public class GunAction {
 			return;
 		}
 
-		WeaponShooting.fire(plugin, raytracer, shooter, weapon, effectRunner);
+		boolean hitEntity = WeaponShooting.fire(plugin, raytracer, shooter, weapon, effectRunner);
 
 		weapon.updateWeaponData(heldWeapon);
 
@@ -88,15 +87,13 @@ public class GunAction {
 		}
 
 		// shooting feedback — echoes to nearby players via the configured On_Shoot effects
-		EffectContext ctx = EffectContext.builder()
-		                                 .weapon(weapon)
-		                                 .source(shooter)
-		                                 .muzzle(WeaponMuzzle.compute(shooter, shooter.getEyeLocation().getDirection()))
-		                                 .ammoLeft(weapon.getAmmunitionData() != null ? weapon.getCurrentMagCapacity() : 0)
-		                                 .ammoMax(weapon.getAmmunitionData() != null
-		                                          ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
-		                                 .build();
+		EffectContext ctx = EffectContext.shot(weapon, shooter, shooter.getEyeLocation().getDirection()).build();
 		effectRunner.run(weapon, EffectHook.ON_SHOOT, ctx);
+
+		// ON_MISS: only for hitscan rays — a slow projectile's hit resolves later, asynchronously.
+		if (!hitEntity && WeaponShooting.isHitscan(weapon.getProjectileData().getType())) {
+			effectRunner.run(weapon, EffectHook.ON_MISS, ctx);
+		}
 	}
 
 }

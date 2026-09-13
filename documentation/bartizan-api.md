@@ -100,16 +100,25 @@ Gate `HA`'s feedback engine model, added at the api layer so a consumer can read
 depending on `bartizan-plugin`. `EffectHook` is the v1 set of ~21 feedback hooks (`ON_SHOOT`, `ON_HIT`, `ON_KILL`,
 `ON_CRITICAL`, …); `key()`/`fromKey(String)` round-trip the `Capitalized_Underscore` YAML spelling (`On_Shoot`).
 `EffectSpec` is an immutable `(type, args)` record for one configured effect entry, with typed arg accessors (`arg`,
-`intArg`, `doubleArg`, `boolArg`). `EffectsData` is the hook → effect-list table (`forHook`, `has`, `put`, `empty()`).
+`intArg`, `doubleArg`). `EffectsData` is the hook → effect-list table (`forHook`, `has`, `put`, `empty()`).
 `Weapon#getEffects()` exposes a weapon's parsed `Effects:` section (never `null`, empty when none configured). The
 runtime engine that reads these (`effect.EffectRunner` and its 15 hook effects) lives in `bartizan-plugin` and is
-wired into every firing action, listener and NPC controller (weapons-roadmap.md gate `HA`).
+wired into every firing action, listener and NPC controller (weapons-roadmap.md gate `HA`), including `On_Critical`
+on a critical hit.
+
+Since gate `HA`, the legacy `Shoot.Sound.*`/`Reload.Sound.*` slots are lowered into their `Effects:` hook by the
+loader and played by `EffectRunner`/the plugin's listeners rather than by `bartizan-api`'s `Reload` itself — a
+weapon's own `Effects:` list for a hook still replaces the lowered entry entirely, never merges with it.
 
 ### Events (`org.luckyraven.bartizan.api.event`)
 
 `WeaponEvent`, `WeaponShootEvent`, `WeaponRaytraceImpactEvent` (cancelling suppresses damage only — penetration and
 ricochet counters still advance), `WeaponEntityDamageEvent`, `WeaponKillEntityEvent`, `WeaponReloadEvent` /
 `WeaponReloadStartEvent` / `WeaponReloadCompleteEvent`, `WeaponChangeSelectiveFireEvent`.
+
+`WeaponReloadCompleteEvent#isInterrupted()` (new at gate `HA`) is `true` when the completion was raised by a
+swap-cancelled reload (`Reload#endReloading(Player, boolean)`) rather than a normal reload finishing — Bartizan's
+own `WeaponReloadListener` skips `ON_RELOAD_END` in that case, since `ON_RELOAD_CANCEL` is the feedback hook for it.
 
 `WeaponEntityDamageEvent.weaponName()` / `.kind()` replace the old `ThrowableAction` static maps
 (`pendingKillerWeapon`, `pendingVehicleExplosionDamage`) — the firing action stamps both at construction time, so a
@@ -129,6 +138,10 @@ raytracer implementation sets around its own `LivingEntity#damage` call, so a li
 interface's own signature; `WeaponShooting`, `WeaponMuzzle` and `SteppedProjectileTask` are **not** part of the api
 — they moved to `bartizan-plugin`'s `org.luckyraven.bartizan.raytrace` package at gate GD once their only external
 caller (a Gangland NPC combat delegate) became Bartizan's own `NpcWeaponControllerImpl`.
+
+Since gate `HA`, `fireInstant` returns `boolean` — `hitEntity`, whether a living entity took the hit (the impact
+event was not cancelled and, on the default damage path, the damage was not blocked). The raytracer itself no
+longer fires `ON_MISS`; the firing action decides whether and when to run it off this return value.
 
 ## Item vocabulary (`weapon:` / `ammo:` / `wearable:` strings)
 

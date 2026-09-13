@@ -28,7 +28,7 @@ public class InstantReload extends Reload {
 		if (timer == null || timer.isCancelled()) return;
 
 		if (isReloading()) {
-			super.endReloading(getCurrentPlayer());
+			super.endReloading(getCurrentPlayer(), true);
 		}
 
 		timer.stop();
@@ -63,6 +63,7 @@ public class InstantReload extends Reload {
 			}
 
 			if (player != null) {
+				// Per-shell mid sound intentionally stays direct here — no On_Reload_Mid hook in v1.
 				SoundEffect.playSounds(player, getWeapon().getSoundData().getReloadCustomMid(), null);
 			}
 		});

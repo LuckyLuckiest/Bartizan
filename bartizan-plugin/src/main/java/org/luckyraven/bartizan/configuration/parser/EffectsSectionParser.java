@@ -69,6 +69,38 @@ public final class EffectsSectionParser {
 	}
 
 	/**
+	 * The three feedback entries {@code settings.yml} ships under {@code Default_Effects:} (weapons-roadmap.md
+	 * gate {@code HA}, follow-up review item C), mirrored here in code for {@code BartizanSettings} to fall back
+	 * to when the root {@code Default_Effects:} key is entirely absent from the loaded file — Keystone never
+	 * merges a missing section into an upgraded pre-HA server's file, so crit/deny/explosion feedback would
+	 * otherwise go silent rather than falling back to these.
+	 */
+	public static EffectsData builtInDefaults() {
+		EffectsData data = EffectsData.empty();
+
+		Map<String, String> critical = new LinkedHashMap<>();
+		critical.put("Sound", "ITEM_SHIELD_BREAK");
+		critical.put("Volume", "1.0");
+		critical.put("Pitch", "1.0");
+		critical.put("Target", "source");
+		data.put(EffectHook.ON_CRITICAL, List.of(new EffectSpec("sound", critical)));
+
+		Map<String, String> deny = new LinkedHashMap<>();
+		deny.put("Text", "&c%deny_reason%");
+		deny.put("Target", "source");
+		data.put(EffectHook.ON_DENY, List.of(new EffectSpec("action_bar", deny)));
+
+		Map<String, String> explode = new LinkedHashMap<>();
+		explode.put("Sound", "ENTITY_GENERIC_EXPLODE");
+		explode.put("Volume", "2.0");
+		explode.put("Pitch", "1.0");
+		explode.put("At", "impact");
+		data.put(EffectHook.ON_EXPLODE, List.of(new EffectSpec("sound", explode)));
+
+		return data;
+	}
+
+	/**
 	 * Lowers the legacy {@code Shoot.Sound.*} / {@code Reload.Sound.*} slots into their {@link EffectHook}
 	 * equivalents, but only for a hook the weapon declared no {@code Effects:} list for — a weapon's own list always
 	 * wins, no merging.
@@ -76,38 +108,40 @@ public final class EffectsSectionParser {
 	public static void lowerLegacySounds(@Nullable SoundData sounds, EffectsData effects) {
 		if (sounds == null) return;
 
+		// Keystone's SoundEffect.playSounds(player, custom, vanilla) played exactly ONE sound: custom when
+		// present, else vanilla — never both. At/Target below reproduce which shots broadcast vs play privately
+		// pre-HA: shot keeps a broadcast At (the gun path already was); impact broadcasts at the hit; empty-mag,
+		// scope and reload start/end had no location and played privately to the shooter only (no At).
 		lowerPair(effects, EffectHook.ON_SHOOT, sounds.getShotDefault(), sounds.getShotCustom(), "source", "source");
 		lowerPair(effects, EffectHook.ON_EMPTY, sounds.getEmptyMagDefault(), sounds.getEmptyMagCustom(), "source",
-		         "source");
+		         null);
 		lowerPair(effects, EffectHook.ON_HIT, sounds.getImpactDefault(), sounds.getImpactCustom(), "source",
 		         "impact");
 		lowerPair(effects, EffectHook.ON_SCOPE_IN, sounds.getScopeDefault(), sounds.getScopeCustom(), "source",
-		         "source");
+		         null);
 		lowerPair(effects, EffectHook.ON_RELOAD_START, sounds.getReloadDefaultBefore(), sounds.getReloadCustomStart(),
-		         "source", "source");
+		         "source", null);
 		lowerPair(effects, EffectHook.ON_RELOAD_END, sounds.getReloadDefaultAfter(), sounds.getReloadCustomEnd(),
-		         "source", "source");
+		         "source", null);
 	}
 
 	private static void lowerPair(EffectsData effects, EffectHook hook, @Nullable SoundEffect vanilla,
-	                              @Nullable SoundEffect custom, String target, String at) {
+	                              @Nullable SoundEffect custom, String target, @Nullable String at) {
 		if (effects.has(hook)) return;
-		if (vanilla == null && custom == null) return;
 
-		List<EffectSpec> specs = new ArrayList<>(2);
-		if (vanilla != null) specs.add(soundSpec("sound", vanilla, target, at));
-		if (custom != null) specs.add(soundSpec("custom_sound", custom, target, at));
+		SoundEffect chosen = custom != null ? custom : vanilla;
+		if (chosen == null) return;
 
-		effects.put(hook, specs);
+		effects.put(hook, List.of(soundSpec(custom != null ? "custom_sound" : "sound", chosen, target, at)));
 	}
 
-	private static EffectSpec soundSpec(String type, SoundEffect sound, String target, String at) {
+	private static EffectSpec soundSpec(String type, SoundEffect sound, String target, @Nullable String at) {
 		Map<String, String> args = new LinkedHashMap<>();
 		args.put("Sound", sound.sound());
 		args.put("Volume", String.valueOf(sound.volume()));
 		args.put("Pitch", String.valueOf(sound.pitch()));
 		args.put("Target", target);
-		args.put("At", at);
+		if (at != null) args.put("At", at);
 		return new EffectSpec(type, args);
 	}
 

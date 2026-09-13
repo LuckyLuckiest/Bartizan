@@ -39,26 +39,45 @@ public final class WeaponShooting {
 	}
 
 	/**
-	 * Fires the given gun weapon from the given shooter through the unified raytracer.
+	 * @return {@code true} for the two hitscan projectile types ({@link ProjectileType#BULLET},
+	 * 		{@link ProjectileType#SPREAD}) that resolve their hit synchronously via {@link WeaponRaytracer#fireInstant}
+	 * 		— {@code false} for {@link ProjectileType#ROCKET}/{@link ProjectileType#FLARE}, whose hit resolves later
+	 * 		through {@code SteppedProjectileTask}. Callers use this to decide whether firing {@code ON_MISS} off
+	 * 		{@link #fire}'s return value makes sense for a given weapon.
 	 */
-	public static void fire(JavaPlugin plugin, WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon,
+	public static boolean isHitscan(ProjectileType type) {
+		return type == ProjectileType.BULLET || type == ProjectileType.SPREAD;
+	}
+
+	/**
+	 * Fires the given gun weapon from the given shooter through the unified raytracer.
+	 *
+	 * @return {@code true} if a living entity took the hit (always {@code false} for the slow-projectile path —
+	 * 		its hit resolves later, asynchronously, via {@code SteppedProjectileTask}).
+	 */
+	public static boolean fire(JavaPlugin plugin, WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon,
 	                        EffectRunner effectRunner) {
 		ProjectileData projectileData = weapon.getProjectileData();
 		ProjectileType type           = projectileData.getType();
 
-		switch (type) {
+		return switch (type) {
 			case BULLET, SPREAD -> fireHitscan(raytracer, shooter, weapon, projectileData, type);
-			case ROCKET, FLARE -> fireSlow(plugin, raytracer, shooter, weapon, projectileData, type, effectRunner);
-		}
+			case ROCKET, FLARE -> {
+				fireSlow(plugin, raytracer, shooter, weapon, projectileData, type, effectRunner);
+				yield false;
+			}
+		};
 	}
 
-	private static void fireHitscan(WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon,
+	private static boolean fireHitscan(WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon,
 	                                ProjectileData projectileData, ProjectileType type) {
 		int      pelletCount = type == ProjectileType.SPREAD ? SPREAD_PELLET_COUNT : 1;
 		Vector   aimDir      = shooter.getEyeLocation().getDirection();
 		Location origin      = shooter.getEyeLocation();
 		double   distance    = projectileData.getDistance();
 		double   baseDamage  = projectileData.getDamage();
+
+		boolean hitEntity = false;
 
 		for (int i = 0; i < pelletCount; i++) {
 			Vector pelletDir = weapon.getSpread().applySpread(aimDir.clone()).normalize();
@@ -74,8 +93,10 @@ public final class WeaponShooting {
 			                                         .projectileSpeed(projectileData.getSpeed())
 			                                         .build();
 
-			raytracer.fireInstant(request);
+			if (raytracer.fireInstant(request)) hitEntity = true;
 		}
+
+		return hitEntity;
 	}
 
 	private static void fireSlow(JavaPlugin plugin, WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon,

@@ -7,10 +7,14 @@ import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
 import org.luckyraven.bartizan.api.testsupport.BukkitRegistryFixture;
+import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.api.weapon.dto.SoundData;
 import org.luckyraven.keystone.persistence.FileHandler;
 import org.luckyraven.keystone.persistence.FileManager;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.ConfigIssue;
+import org.luckyraven.keystone.persistence.config.Severity;
 import org.luckyraven.keystone.testkit.PluginMocks;
 
 import java.io.File;
@@ -28,6 +32,8 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Regression net for roadmap §0.1 item 4: loads every YAML bundled under {@code src/main/resources/weapon/}
@@ -74,6 +80,26 @@ class WeaponAddonTest {
 						.collect(Collectors.joining("\n"));
 				assertFalse(report.hasErrors(),
 				            weaponFile.getName() + " produced ConfigReport errors:\n" + issues);
+
+				// gate HA follow-up item H: EffectsSectionParser problems are WARNING severity, so hasErrors()
+				// alone can't catch them.
+				boolean anyEffectsWarning = report.issues().stream().anyMatch(
+						issue -> issue.severity() == Severity.WARNING && issue.code().startsWith("effects."));
+				assertFalse(anyEffectsWarning, weaponFile.getName() + " produced effects.* warnings:\n" + issues);
+
+				String key    = weaponFile.getName().replaceFirst("\\.yml$", "").toLowerCase();
+				Weapon weapon = weaponAddon.getWeapon(key);
+				assertNotNull(weapon, "no weapon registered for " + weaponFile.getName());
+
+				// the legacy Shoot.Sound.* lowering (EffectsSectionParser.lowerLegacySounds) must have actually
+				// run into exactly one ON_SHOOT spec whenever the weapon configures a shot sound.
+				SoundData sounds = weapon.getSoundData();
+				if (sounds != null && (sounds.getShotDefault() != null || sounds.getShotCustom() != null)) {
+					assertTrue(weapon.getEffects().has(EffectHook.ON_SHOOT),
+					           weaponFile.getName() + " has a shoot sound but no lowered ON_SHOOT effect");
+					assertEquals(1, weapon.getEffects().forHook(EffectHook.ON_SHOOT).size(),
+					             weaponFile.getName() + " should lower to exactly one ON_SHOOT spec");
+				}
 			});
 		}
 		assertAll("every bundled weapon YAML", perFileChecks);

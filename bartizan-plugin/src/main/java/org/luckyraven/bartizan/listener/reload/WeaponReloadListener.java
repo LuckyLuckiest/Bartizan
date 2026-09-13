@@ -43,6 +43,11 @@ public class WeaponReloadListener implements Listener {
 	public void onReloadEnd(WeaponReloadCompleteEvent event) {
 		reloadingPlayers.remove(event.getPlayer().getUniqueId());
 
+		// A swap-cancelled reload (InstantReload/NumberedReload#stopReloading) also raises this event so state
+		// stays consistent, but ON_RELOAD_CANCEL (below, via onHeldSlotChange) is the feedback hook for that case
+		// — running ON_RELOAD_END too would double-fire the reload-complete cue.
+		if (event.isInterrupted()) return;
+
 		EffectContext ctx = EffectContext.builder().weapon(event.getWeapon()).source(event.getPlayer()).build();
 		effectRunner.run(event.getWeapon(), EffectHook.ON_RELOAD_END, ctx);
 	}

@@ -96,6 +96,14 @@ public abstract class Reload implements Cloneable {
 	}
 
 	protected void endReloading(Player player) {
+		endReloading(player, false);
+	}
+
+	/**
+	 * @param interrupted {@code true} when this completion is raised by a swap-cancelled reload — see
+	 *                    {@link WeaponReloadCompleteEvent#isInterrupted()}.
+	 */
+	protected void endReloading(Player player, boolean interrupted) {
 		// set the weapon as not reloading
 		this.reloading.set(false);
 		this.currentPlayer = null;
@@ -105,7 +113,7 @@ public abstract class Reload implements Cloneable {
 		// un-scope the player to resume the showdown
 		weapon.unScope(player, true);
 
-		Bukkit.getPluginManager().callEvent(new WeaponReloadCompleteEvent(weapon, player));
+		Bukkit.getPluginManager().callEvent(new WeaponReloadCompleteEvent(weapon, player, interrupted));
 	}
 
 	/**

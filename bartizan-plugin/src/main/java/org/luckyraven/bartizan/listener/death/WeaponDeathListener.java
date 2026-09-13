@@ -10,6 +10,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
+import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
 import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
@@ -38,9 +39,10 @@ import java.util.concurrent.ThreadLocalRandom;
  * (this listener) with {@link WeaponEntityDamageEvent#weaponName()}/{@link WeaponEntityDamageEvent#kind()} — there
  * is no longer any reference to inject. Instead this listener carries its own {@code @EventHandler} on
  * {@link WeaponEntityDamageEvent}, recording {@code victimUuid -> weaponName} with a short TTL, and reads that map
- * in its {@link PlayerDeathEvent} handler. Per the orchestrator: {@code WeaponEntityDamageEvent} is currently only
- * ever fired with {@code DamageKind.EXPLOSION} (both of {@code ThrowableAction}'s two fire sites, B13's row) — this
- * listener does not assume any other kind is live; it simply records whatever kind arrives.
+ * in its {@link PlayerDeathEvent} handler. Since gate {@code HA}, {@code WeaponRaytracerImpl}'s default damage
+ * pipeline also fires this event with {@code DamageKind.DIRECT} on every gun hit, so {@link #onWeaponEntityDamage}
+ * only records a claim when {@code event.kind() == DamageKind.EXPLOSION} — otherwise a gun hit would override the
+ * killer's actually-held weapon for the whole {@link #THROWABLE_CLAIM_TTL_MS} window.
  *
  * <p>{@code EventPriority.HIGH} is deliberate (§1.6(4)): Gangland's {@code PlayerDeathListener.onPlayerDeath} runs
  * at {@code EventPriority.LOWEST}, so this handler runs <b>after</b> it and this class's
@@ -83,6 +85,7 @@ public class WeaponDeathListener implements Listener {
 		// rather than adding a repeating Timer for what is, at steady state, a handful of entries.
 		recentThrowableKills.values().removeIf(this::isExpired);
 
+		if (event.kind() != DamageKind.EXPLOSION) return;
 		if (!(event.getEntity() instanceof Player victim)) return;
 
 		recentThrowableKills.put(victim.getUniqueId(), new RecordedKill(event.weaponName(), System.currentTimeMillis()));

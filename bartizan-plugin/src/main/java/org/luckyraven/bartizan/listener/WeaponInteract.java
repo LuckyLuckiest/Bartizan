@@ -171,8 +171,12 @@ public class WeaponInteract implements Listener {
 			if (scopingIn) weapon.scope(player, true);
 			else weapon.unScope(player, true);
 
-			EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).build();
-			effectRunner.run(weapon, scopingIn ? EffectHook.ON_SCOPE_IN : EffectHook.ON_SCOPE_OUT, ctx);
+			// A scopeless weapon (scopeData == null) still reaches this branch (validateScope defaults to true)
+			// but has no ON_SCOPE_IN/ON_SCOPE_OUT of its own to fire.
+			if (scopeData != null) {
+				EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).build();
+				effectRunner.run(weapon, scopingIn ? EffectHook.ON_SCOPE_IN : EffectHook.ON_SCOPE_OUT, ctx);
+			}
 			return;
 		}
 

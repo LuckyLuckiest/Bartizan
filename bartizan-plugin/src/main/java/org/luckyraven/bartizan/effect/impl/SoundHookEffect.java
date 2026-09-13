@@ -1,15 +1,17 @@
 package org.luckyraven.bartizan.effect.impl;
 
 import org.bukkit.Location;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
 import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.bartizan.api.weapon.dto.EffectSpec;
 import org.luckyraven.bartizan.effect.Effect;
 import org.luckyraven.bartizan.effect.EffectContext;
 
 /**
- * {@code Sound}: {@code Sound, Volume (1.0), Pitch (1.0), Target (source), At (source)} — plays a vanilla
- * {@link SoundEffect} broadcast at the {@code At} location ({@code At} falls back to {@code Target} when unset, so
- * the shared default resolves to the same spot either way).
+ * {@code Sound}: {@code Sound, Volume (1.0), Pitch (1.0), Target (source|victim|nearby), At (source|muzzle|impact|
+ * victim)} — with an explicit {@code At} the vanilla {@link SoundEffect} is broadcast once at that location;
+ * otherwise it is played privately to each player resolved from {@code Target} (non-players are skipped).
  */
 public class SoundHookEffect implements Effect {
 
@@ -21,11 +23,19 @@ public class SoundHookEffect implements Effect {
 		float volume = (float) spec.doubleArg("Volume", 1.0);
 		float pitch  = (float) spec.doubleArg("Pitch", 1.0);
 
-		String   at       = spec.arg("At", spec.arg("Target", "source"));
-		Location location = ctx.at(at);
-		if (location == null) return;
+		SoundEffect sound = new SoundEffect(soundType(), soundName, volume, pitch);
 
-		new SoundEffect(soundType(), soundName, volume, pitch).playAtLocation(location);
+		String at = spec.arg("At");
+		if (at != null) {
+			Location location = ctx.at(at);
+			if (location != null) sound.playAtLocation(location);
+			return;
+		}
+
+		double radius = spec.doubleArg("Radius", 0);
+		for (LivingEntity target : ctx.targets(spec.arg("Target", "source"), radius)) {
+			if (target instanceof Player player) sound.playSound(player);
+		}
 	}
 
 	protected SoundEffect.SoundType soundType() {

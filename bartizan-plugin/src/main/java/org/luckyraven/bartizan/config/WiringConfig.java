@@ -74,10 +74,13 @@ public final class WiringConfig {
 
 	/**
 	 * The one feedback engine every hook fires through (weapons-roadmap.md gate {@code HA}, §1).
+	 * {@code BartizanSettings} is an ordering-only parameter — the bean-graph edge that keeps this after settings
+	 * load (house rule {@code feedback_bean_ordering_via_params}); {@link EffectRunner#run} reads
+	 * {@code BartizanSettings.getDefaultEffects()} directly, a static getter.
 	 */
 	@Bean
 	public EffectRunner effectRunner(BartizanSettings settings) {
-		return new EffectRunner(bartizan, settings);
+		return new EffectRunner(bartizan);
 	}
 
 	/**

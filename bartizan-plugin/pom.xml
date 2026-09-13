@@ -68,8 +68,7 @@
         </dependency>
         <!-- bartizan-api's test-jar: shares WeaponFixtures / BukkitRegistryFixture instead of duplicating them
              (roadmap §0.1 item 5). Reactor-only; resolves once bartizan-api has reached `package` — a plain
-             `mvn test` from the root can fail on a clean tree even though `mvn verify`/`mvn install` work, see
-             CLAUDE.md Testing. -->
+             `mvn test` from the root can fail on a clean tree even though `mvn verify`/`mvn install` work. -->
         <dependency>
             <groupId>org.luckyraven.bartizan</groupId>
             <artifactId>bartizan-api</artifactId>

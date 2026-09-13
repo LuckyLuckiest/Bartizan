@@ -14,7 +14,6 @@ import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
-import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -133,20 +132,16 @@ public class MeleeAction {
 		ParticleUtil.spawnSlashArc(player.getLocation(), lookDir, range * 0.6);
 
 		// swing feedback and recoil always apply on swing
-		EffectContext shootCtx = EffectContext.builder()
-		                                      .weapon(weapon)
-		                                      .source(player)
-		                                      .muzzle(WeaponMuzzle.compute(player, lookDir))
-		                                      .ammoLeft(weapon.getAmmunitionData() != null
-		                                                ? weapon.getCurrentMagCapacity() : 0)
-		                                      .ammoMax(weapon.getAmmunitionData() != null
-		                                               ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
-		                                      .build();
+		EffectContext shootCtx = EffectContext.shot(weapon, player, lookDir).build();
 		effectRunner.run(weapon, EffectHook.ON_SHOOT, shootCtx);
 
 		if (weapon.getRecoilData() != null) {
 			weapon.getRecoil().applyRecoil(player);
 			weapon.applyPush(player);
+		}
+
+		if (!hit) {
+			effectRunner.run(weapon, EffectHook.ON_MISS, shootCtx);
 		}
 
 		return hit;

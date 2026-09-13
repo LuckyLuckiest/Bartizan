@@ -14,7 +14,6 @@ import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.listener.WeaponInteract;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
-import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
@@ -116,15 +115,8 @@ public class BiologicalAction {
 		BiologicalData data = weapon.getBiologicalData();
 
 		// release feedback and recoil
-		EffectContext shootCtx = EffectContext.builder()
-		                                      .weapon(weapon)
-		                                      .source(player)
-		                                      .muzzle(WeaponMuzzle.compute(player, player.getEyeLocation().getDirection()))
+		EffectContext shootCtx = EffectContext.shot(weapon, player, player.getEyeLocation().getDirection())
 		                                      .level(level)
-		                                      .ammoLeft(weapon.getAmmunitionData() != null
-		                                                ? weapon.getCurrentMagCapacity() : 0)
-		                                      .ammoMax(weapon.getAmmunitionData() != null
-		                                               ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
 		                                      .build();
 		effectRunner.run(weapon, EffectHook.ON_SHOOT, shootCtx);
 
@@ -140,7 +132,9 @@ public class BiologicalAction {
 		                   0.0;
 		double damage = data.getBaseDamage() * level + flatBonus;
 
-		fireRay(player, damage, effects, data);
+		if (!fireRay(player, damage, effects, data)) {
+			effectRunner.run(weapon, EffectHook.ON_MISS, shootCtx);
+		}
 
 		ActionBarManager.send(player, "&aReleased at charge level " + level);
 	}
@@ -164,8 +158,10 @@ public class BiologicalAction {
 	 * Fires one ray through the unified raytracer. The {@link RaytraceRequest#getImpactHandler() impact handler}
 	 * applies the parsed potion effects to a single living target — non-living hits are ignored beyond the standard
 	 * {@code WeaponRaytraceImpactEvent} that the raytracer fires automatically.
+	 *
+	 * @return {@code true} if a living entity took the hit — see {@code WeaponRaytracer#fireInstant}.
 	 */
-	private void fireRay(Player player, double damage, List<PotionEffect> effects, BiologicalData data) {
+	private boolean fireRay(Player player, double damage, List<PotionEffect> effects, BiologicalData data) {
 		RaytraceRequest request = RaytraceRequest.builder()
 		                                         .shooter(player)
 		                                         .weapon(weapon)
@@ -184,7 +180,7 @@ public class BiologicalAction {
 												 })
 		                                         .build();
 
-		raytracer.fireInstant(request);
+		return raytracer.fireInstant(request);
 	}
 
 }

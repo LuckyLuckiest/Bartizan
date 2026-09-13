@@ -101,8 +101,14 @@ public class BartizanSettings implements FileInitializer {
 		blockRegenerationDelayTicks = intVal(blockRegeneration, "Regeneration_Delay_Ticks", 100);
 		blockRegenerationStepTicks  = intVal(blockRegeneration, "Regeneration_Step_Ticks", 4);
 
-		NodeReader defaultEffectsSection = section(root, "Default_Effects", report);
-		defaultEffects = EffectsSectionParser.parse(defaultEffectsSection, report);
+		if (root != null && root.has("Default_Effects")) {
+			NodeReader defaultEffectsSection = section(root, "Default_Effects", report);
+			defaultEffects = EffectsSectionParser.parse(defaultEffectsSection, report);
+		} else {
+			log.warn("settings.yml has no Default_Effects section; using the built-in defaults — add the "
+			         + "section to customise them");
+			defaultEffects = EffectsSectionParser.builtInDefaults();
+		}
 
 		if (!report.isEmpty()) report.log(log);
 	}

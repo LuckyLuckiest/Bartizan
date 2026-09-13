@@ -19,7 +19,7 @@ public class ActionBarHookEffect implements Effect {
 		if (text == null) return;
 
 		String formatted = ctx.format(text);
-		String target     = spec.arg("Target", "source");
+		String target    = spec.arg("Target", "source");
 
 		for (LivingEntity entity : ctx.targets(target, spec.doubleArg("Radius", 0))) {
 			if (entity instanceof Player player) ActionBarManager.send(player, formatted);

@@ -28,7 +28,7 @@ public class ParticleHookEffect implements Effect {
 		int      count  = spec.intArg("Count", 1);
 		double[] offset = parseOffset(spec.arg("Offset", "0 0 0"));
 		double   speed  = spec.doubleArg("Speed", 0);
-		Object   data   = "DUST".equalsIgnoreCase(particleName.trim()) ? dustOptions(spec) : null;
+		Object   data   = particle.getDataType() == Particle.DustOptions.class ? dustOptions(spec) : null;
 
 		location.getWorld().spawnParticle(particle, location, count, offset[0], offset[1], offset[2], speed, data);
 	}

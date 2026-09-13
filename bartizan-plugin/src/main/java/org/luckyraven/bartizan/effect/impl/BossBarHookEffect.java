@@ -40,7 +40,7 @@ public class BossBarHookEffect implements Effect {
 		if (players.isEmpty()) return;
 
 		BarColor color    = parseEnum(BarColor.class, spec.arg("Color", "WHITE"), BarColor.WHITE);
-		BarStyle style     = parseEnum(BarStyle.class, spec.arg("Style", "SOLID"), BarStyle.SOLID);
+		BarStyle style    = parseEnum(BarStyle.class, spec.arg("Style", "SOLID"), BarStyle.SOLID);
 		int      duration = Math.max(1, spec.intArg("Duration", 60));
 
 		BossBar bar = Bukkit.createBossBar(ctx.format(text), color, style);

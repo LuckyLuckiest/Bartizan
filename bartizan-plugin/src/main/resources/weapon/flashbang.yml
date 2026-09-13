@@ -44,5 +44,15 @@ Throw:
 Modifiers:
    Flat_Damage: 0.0
 
+# On_Explode overrides settings.yml's Default_Effects entry for this weapon: a flashbang's pop used a sharper
+# pitch (1.8) than the shared default (1.0) pre-HA, so it is pinned here rather than left to the fallback.
+Effects:
+   On_Explode:
+      - Type: Sound
+        Sound: ENTITY_GENERIC_EXPLODE
+        Volume: 2.0
+        Pitch: 1.8
+        At: impact
+
 Death_Messages:
    - "&c%victim% was disoriented by %killer%'s flashbang."

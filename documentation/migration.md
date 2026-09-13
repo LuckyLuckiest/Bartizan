@@ -175,3 +175,15 @@ existing placed signs keep working without the owner re-placing them. This rewri
 - **bStats plugin id ships as `0`.** Bartizan has not yet been registered on bstats.org; `0` is bStats' no-op id
   (metrics silently do nothing rather than throwing). The `number_of_weapons` chart is wired and will start
   reporting the moment a real id is set.
+
+## 10. 0.3.0 (gate HA) — the effects engine
+
+- Shot, impact, empty-magazine, scope and reload-start/end sounds are no longer played by `bartizan-api` directly.
+  The loader (`EffectsSectionParser.lowerLegacySounds`) lowers each configured `Shoot.Sound.*`/`Reload.Sound.*`
+  slot into the matching `Effects:` hook, and `bartizan-plugin`'s `EffectRunner`/listeners play it from there — a
+  weapon's own `Effects:` section, when present, replaces the lowered default entirely for that hook. `Reload`
+  (`InstantReload`/`NumberedReload`) no longer plays the reload start/end sounds itself.
+- `WeaponReloadCompleteEvent#isInterrupted()` is new: `true` when a reload was ended by a weapon swap rather than
+  finishing normally, so a listener can tell a cancelled reload apart from a completed one.
+- `WeaponRaytracer#fireInstant(RaytraceRequest)` now returns `boolean` — whether a living entity took the hit. The
+  raytracer no longer fires `ON_MISS` itself; the firing action decides off this return value instead.

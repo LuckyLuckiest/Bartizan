@@ -40,7 +40,7 @@ See [`documentation/bartizan-api.md`](documentation/bartizan-api.md) for the ser
 example, and [`documentation/migration.md`](documentation/migration.md) for what server owners moving off an older
 Gangland Warfare weapon module need to do.
 
-## Package map (as-built, 0.2.0)
+## Package map (as-built, 0.3.0)
 
 ```
 bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
@@ -54,7 +54,8 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
                                        .weapon                 Weapon + 5 subclasses, WeaponType, ThrowableType, SelectiveFire,
                                                                 WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
-                                       .weapon.dto              15 config records (AmmunitionData, DamageData, ...)
+                                       .weapon.dto              18 config records (AmmunitionData, DamageData,
+                                                                EffectHook, EffectSpec, EffectsData, ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager + action/*
                                        .weapon.recoil            RecoilManager
@@ -67,7 +68,8 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .bootstrap              BartizanContext, DefaultListenerService
                                        .command(.data|.wearable) WeaponCommand/Give/Info/List, Ammunition*, Wearable*, DebugCommand
                                        .config                 KernelConfig, FilesConfig, WiringConfig, ItemConfig
-                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 9 YAML section parsers
+                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 10 YAML section parsers
+                                       .effect(.impl)          Effect, EffectContext, EffectRunner + 15 *HookEffect
                                        .file                   BartizanSettings, BartizanMessages, WeaponLoader
                                        .fire                   PluginFireRegistry
                                        .item                   converters, serializers, refreshers, WeaponItemApiImpl, BartizanItemVocabulary

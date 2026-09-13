@@ -17,7 +17,6 @@ import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
-import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.raytrace.WeaponShooting;
 import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.keystone.timer.SequenceTimer;
@@ -206,14 +205,7 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 			WeaponShooting.fire(plugin, registration.getProvider(), shooter, gun, effectRunner);
 		}
 
-		EffectContext ctx = EffectContext.builder()
-		                                 .weapon(weapon)
-		                                 .source(shooter)
-		                                 .muzzle(WeaponMuzzle.compute(shooter, shooter.getEyeLocation().getDirection()))
-		                                 .ammoLeft(weapon.getAmmunitionData() != null ? weapon.getCurrentMagCapacity() : 0)
-		                                 .ammoMax(weapon.getAmmunitionData() != null
-		                                          ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
-		                                 .build();
+		EffectContext ctx = EffectContext.shot(weapon, shooter, shooter.getEyeLocation().getDirection()).build();
 		effectRunner.run(weapon, EffectHook.ON_SHOOT, ctx);
 
 		refreshHeldItem();

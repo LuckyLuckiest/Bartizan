@@ -30,18 +30,16 @@ public class EffectRunner {
 			"sound", "custom_sound", "particle", "potion", "action_bar", "title", "boss_bar", "message", "command",
 			"push", "camera_shake", "ignite", "cooldown", "firework", "lightning");
 
-	private final BartizanSettings   settings;
 	private final Map<String, Effect> registry;
 
-	public EffectRunner(JavaPlugin plugin, BartizanSettings settings) {
-		this(settings, buildRegistry(plugin));
+	public EffectRunner(JavaPlugin plugin) {
+		this(buildRegistry(plugin));
 	}
 
 	/**
 	 * Test-only seam: run with a hand-built registry instead of the real 15 hook effects.
 	 */
-	EffectRunner(BartizanSettings settings, Map<String, Effect> registry) {
-		this.settings = settings;
+	EffectRunner(Map<String, Effect> registry) {
 		this.registry = registry;
 	}
 
@@ -71,7 +69,7 @@ public class EffectRunner {
 	 */
 	public void run(Weapon weapon, EffectHook hook, EffectContext ctx) {
 		List<EffectSpec> specs = weapon.getEffects().forHook(hook);
-		if (specs.isEmpty()) specs = settings.getDefaultEffects().forHook(hook);
+		if (specs.isEmpty()) specs = BartizanSettings.getDefaultEffects().forHook(hook);
 		if (specs.isEmpty()) return;
 
 		for (EffectSpec spec : specs) {

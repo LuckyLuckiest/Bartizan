@@ -39,8 +39,12 @@ public interface WeaponRaytracer {
 	 * Runs the full hitscan loop for a single ray, synchronously, until the ray stops (no more penetration, no more
 	 * ricochet, no more distance). The supplied request must carry an origin already at the muzzle position - see
 	 * {@code WeaponMuzzle#compute}.
+	 *
+	 * @return {@code true} if a living entity took the hit (the impact event was not cancelled and, on the default
+	 * 		damage path, the damage was not blocked). Callers use this to decide whether to fire {@code ON_MISS}
+	 * 		themselves - the raytracer no longer fires it.
 	 */
-	void fireInstant(RaytraceRequest request);
+	boolean fireInstant(RaytraceRequest request);
 
 	/**
 	 * Runs the loop over exactly one segment of travel - from {@code from} to {@code to}. Used by stepped slow

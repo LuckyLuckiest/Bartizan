@@ -16,8 +16,8 @@ public class PushHookEffect implements Effect {
 	@Override
 	public void run(EffectSpec spec, EffectContext ctx) {
 		double  strength = spec.doubleArg("Strength", 1.0);
-		boolean away      = "away".equalsIgnoreCase(spec.arg("Direction", "look"));
-		String  target    = spec.arg("Target", "source");
+		boolean away     = "away".equalsIgnoreCase(spec.arg("Direction", "look"));
+		String  target   = spec.arg("Target", "source");
 
 		for (LivingEntity entity : ctx.targets(target, spec.doubleArg("Radius", 0))) {
 			Vector direction = away ? awayFromSource(ctx, entity) : entity.getLocation().getDirection();

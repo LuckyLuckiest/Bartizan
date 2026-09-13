@@ -5,8 +5,10 @@ import lombok.Getter;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.util.Vector;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
 
 import java.util.ArrayList;
@@ -39,6 +41,21 @@ public class EffectContext {
 	private final int ammoMax;
 	@Nullable
 	private final String denyReason;
+
+	/**
+	 * Pre-fills the fields every firing action's "shot" context shares — {@code weapon}, {@code source},
+	 * {@code muzzle} and the ammo pair — so {@code GunAction}, {@code BiologicalAction}, {@code IncendiaryAction},
+	 * {@code MeleeAction}, {@code ThrowableAction} and {@code NpcWeaponControllerImpl} don't each repeat the same
+	 * boilerplate. Callers add anything else (e.g. {@code level}) and call {@code build()}.
+	 */
+	public static EffectContextBuilder shot(Weapon weapon, LivingEntity shooter, Vector lookDirection) {
+		return builder()
+				.weapon(weapon)
+				.source(shooter)
+				.muzzle(WeaponMuzzle.compute(shooter, lookDirection))
+				.ammoLeft(weapon.getAmmunitionData() != null ? weapon.getCurrentMagCapacity() : 0)
+				.ammoMax(weapon.getAmmunitionData() != null ? weapon.getAmmunitionData().getMaxMagCapacity() : 0);
+	}
 
 	/**
 	 * @return the placeholder table (%player%, %victim%, %weapon%, %damage%, %distance%, %level%, %ammo_left%,

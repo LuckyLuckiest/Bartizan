@@ -2,7 +2,6 @@ package org.luckyraven.bartizan.api.weapon.dto;
 
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -46,17 +45,6 @@ public record EffectSpec(String type, Map<String, String> args) {
 		} catch (NumberFormatException exception) {
 			return def;
 		}
-	}
-
-	public boolean boolArg(String key, boolean def) {
-		String value = args.get(key);
-		if (value == null) return def;
-
-		return switch (value.trim().toLowerCase(Locale.ROOT)) {
-			case "true", "yes", "on" -> true;
-			case "false", "no", "off" -> false;
-			default -> def;
-		};
 	}
 
 }

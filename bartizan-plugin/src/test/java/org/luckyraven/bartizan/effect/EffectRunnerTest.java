@@ -31,12 +31,10 @@ import static org.mockito.Mockito.when;
 class EffectRunnerTest {
 
 	private List<EffectSpec> invocations;
-	private BartizanSettings settings;
 
 	@BeforeEach
 	void setUp() {
 		invocations = new ArrayList<>();
-		settings    = mock(BartizanSettings.class);
 	}
 
 	@AfterEach
@@ -90,7 +88,7 @@ class EffectRunnerTest {
 		});
 		registry.put("sound", countingEffect());
 
-		EffectRunner runner = new EffectRunner(settings, registry);
+		EffectRunner runner = new EffectRunner(registry);
 
 		EffectSpec boom  = new EffectSpec("boom", Map.of());
 		EffectSpec sound = new EffectSpec("sound", Map.of());
@@ -124,7 +122,7 @@ class EffectRunnerTest {
 	private EffectRunner newRunner(Effect soundEffect) {
 		Map<String, Effect> registry = new HashMap<>();
 		registry.put("sound", soundEffect);
-		return new EffectRunner(settings, registry);
+		return new EffectRunner(registry);
 	}
 
 	private Effect countingEffect() {

@@ -208,6 +208,46 @@ class EffectsSectionParserTest {
 		assertEquals("message", declared.forHook(EffectHook.ON_SHOOT).get(0).type());
 	}
 
+	@Test
+	@DisplayName("legacy sound lowering with both slots set emits exactly one custom_sound spec, never both")
+	void legacyLowering_bothSlotsSet_emitsOnlyCustomSound() {
+		SoundData sounds = new SoundData();
+		sounds.setShotDefault(new SoundEffect(SoundEffect.SoundType.VANILLA, "ENTITY_GENERIC_EXPLODE", 1.0F, 1.0F));
+		sounds.setShotCustom(new SoundEffect(SoundEffect.SoundType.CUSTOM, "mypack:shoot", 1.0F, 1.0F));
+
+		EffectsData data = EffectsData.empty();
+		EffectsSectionParser.lowerLegacySounds(sounds, data);
+
+		List<EffectSpec> onShoot = data.forHook(EffectHook.ON_SHOOT);
+		assertEquals(1, onShoot.size());
+		assertEquals("custom_sound", onShoot.get(0).type());
+		assertEquals("mypack:shoot", onShoot.get(0).arg("Sound"));
+	}
+
+	@Test
+	@DisplayName("builtInDefaults mirrors settings.yml's shipped Default_Effects entries (gate HA follow-up item C)")
+	void builtInDefaults_mirrorsShippedEntries() {
+		EffectsData data = EffectsSectionParser.builtInDefaults();
+
+		List<EffectSpec> critical = data.forHook(EffectHook.ON_CRITICAL);
+		assertEquals(1, critical.size());
+		assertEquals("sound", critical.get(0).type());
+		assertEquals("ITEM_SHIELD_BREAK", critical.get(0).arg("Sound"));
+		assertEquals("source", critical.get(0).arg("Target"));
+
+		List<EffectSpec> deny = data.forHook(EffectHook.ON_DENY);
+		assertEquals(1, deny.size());
+		assertEquals("action_bar", deny.get(0).type());
+		assertEquals("&c%deny_reason%", deny.get(0).arg("Text"));
+		assertEquals("source", deny.get(0).arg("Target"));
+
+		List<EffectSpec> explode = data.forHook(EffectHook.ON_EXPLODE);
+		assertEquals(1, explode.size());
+		assertEquals("sound", explode.get(0).type());
+		assertEquals("ENTITY_GENERIC_EXPLODE", explode.get(0).arg("Sound"));
+		assertEquals("impact", explode.get(0).arg("At"));
+	}
+
 	private NodeReader effectsReaderFor(String yaml) {
 		report = new ConfigReport();
 		ConfigDocument doc  = new ConfigParser().parse(FIXTURE, new StringReader(yaml), report);

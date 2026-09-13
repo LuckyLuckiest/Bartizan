@@ -26,7 +26,6 @@ import org.luckyraven.bartizan.api.weapon.modifiers.action.RicochetModifier;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.TracerModifier;
 import org.luckyraven.bartizan.api.weapon.ProjectileState;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
-import org.luckyraven.bartizan.api.weapon.WeaponType;
 import org.luckyraven.bartizan.api.raytrace.RaytraceContext;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
@@ -174,9 +173,14 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 	 * Runs the full hitscan loop for a single ray, synchronously, until the ray stops (no more penetration, no more
 	 * ricochet, no more distance). The supplied request must carry an origin already at the muzzle position — see
 	 * {@code WeaponMuzzle#compute}.
+	 *
+	 * @return {@code true} if a living entity took the hit — {@code ctx.isHitEntity()}, set by
+	 * 		{@link #handleEntityImpact} just before it fires {@code ON_HIT} (or, for a custom impact handler, as soon
+	 * 		as the impact lands on a {@code LivingEntity}). {@code ON_MISS} is not fired here — callers (the firing
+	 * 		actions) decide whether and when to run it off this return value.
 	 */
 	@Override
-	public void fireInstant(RaytraceRequest request) {
+	public boolean fireInstant(RaytraceRequest request) {
 		ProjectileState state = new ProjectileState(request.getWeapon(), request.getBaseDamage());
 		RaytraceContext ctx   = new RaytraceContext(request, state);
 
@@ -192,17 +196,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 
 		flushTracer(ctx);
 
-		if (!ctx.isHitEntity()) {
-			List<Location> segments   = ctx.getTracerSegments();
-			Location       missImpact = segments.isEmpty() ? null : segments.get(segments.size() - 1);
-
-			EffectContext effectCtx = EffectContext.builder()
-			                                       .weapon(request.getWeapon())
-			                                       .source(request.getShooter())
-			                                       .impact(missImpact)
-			                                       .build();
-			effectRunner.run(request.getWeapon(), EffectHook.ON_MISS, effectCtx);
-		}
+		return ctx.isHitEntity();
 	}
 
 	/**
@@ -409,8 +403,6 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		Weapon       weapon  = ctx.getRequest().getWeapon();
 		LivingEntity shooter = ctx.getRequest().getShooter();
 
-		ctx.setHitEntity(true);
-
 		// --- Compute damage (gun-specific extras only when applicable) ---
 		boolean criticalHit = false;
 		boolean headshot    = false;
@@ -425,7 +417,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 				}
 			}
 			damage = ModifierHandler.calculateArmorPiercingDamage(damage, living, weapon);
-			damage = wearableService.applyWearableReduction(damage, living, weapon.getCategory() == WeaponType.GUN);
+			damage = wearableService.applyWearableReduction(damage, living, weapon instanceof GunWeapon);
 			damage = ModifierHandler.applyFlatDamage(damage, weapon);
 
 			if (weapon instanceof GunWeapon gun
@@ -449,6 +441,11 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 
 		// --- Custom impact handler short-circuits the default pipeline ---
 		if (ctx.getRequest().getImpactHandler() != null) {
+			// "A living entity took the hit" for this path: the event wasn't cancelled (checked above) and the
+			// impact landed on a LivingEntity — the custom handler (incendiary burn, biological potion effects,
+			// melee damage) has no "blocked" concept to additionally gate on, unlike the default path below.
+			if (hit instanceof LivingEntity) ctx.setHitEntity(true);
+
 			// Set the in-progress flag for the handler too, so any target.damage(...) it makes
 			// is recognised as raytracer-driven and the legacy listeners skip it.
 			WeaponRaytracer.setRaytraceDamageInProgress(true);
@@ -504,6 +501,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 			                                       .damage(event.getDamage())
 			                                       .distance(ctx.getRequest().getOrigin().distance(impactPt))
 			                                       .build();
+			ctx.setHitEntity(true);
 			effectRunner.run(weapon, EffectHook.ON_HIT, effectCtx);
 
 			if (criticalHit) {

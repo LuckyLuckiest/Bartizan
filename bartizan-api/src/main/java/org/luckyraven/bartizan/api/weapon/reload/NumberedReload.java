@@ -34,7 +34,7 @@ public class NumberedReload extends Reload {
 		if (timer == null || timer.isCancelled()) return;
 
 		if (isReloading()) {
-			super.endReloading(getCurrentPlayer());
+			super.endReloading(getCurrentPlayer(), true);
 		}
 
 		timer.stop();
@@ -101,7 +101,7 @@ public class NumberedReload extends Reload {
 					}
 				}
 
-				// reload middle sound
+				// reload middle sound — intentionally stays direct here, no On_Reload_Mid hook in v1
 				if (player != null) {
 					SoundEffect.playSounds(player, getWeapon().getSoundData().getReloadCustomMid(), null);
 				}

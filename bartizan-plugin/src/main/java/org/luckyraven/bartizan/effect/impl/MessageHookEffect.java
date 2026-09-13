@@ -17,7 +17,7 @@ public class MessageHookEffect implements Effect {
 		if (text == null) return;
 
 		String formatted = ctx.format(text);
-		String target     = spec.arg("Target", "source");
+		String target    = spec.arg("Target", "source");
 
 		for (LivingEntity entity : ctx.targets(target, spec.doubleArg("Radius", 0))) {
 			if (entity instanceof Player player) player.sendMessage(formatted);

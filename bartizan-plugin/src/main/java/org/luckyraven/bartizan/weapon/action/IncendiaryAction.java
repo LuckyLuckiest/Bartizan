@@ -77,13 +77,7 @@ public class IncendiaryAction {
 		}
 
 		// shoot feedback
-		EffectContext shootCtx = EffectContext.builder()
-		                                      .weapon(weapon)
-		                                      .source(player)
-		                                      .muzzle(WeaponMuzzle.compute(player, player.getEyeLocation().getDirection()))
-		                                      .ammoLeft(tracksAmmo ? weapon.getCurrentMagCapacity() : 0)
-		                                      .ammoMax(tracksAmmo ? weapon.getAmmunitionData().getMaxMagCapacity() : 0)
-		                                      .build();
+		EffectContext shootCtx = EffectContext.shot(weapon, player, player.getEyeLocation().getDirection()).build();
 		effectRunner.run(weapon, EffectHook.ON_SHOOT, shootCtx);
 
 		sprayFire(player, data, tracksAmmo);
