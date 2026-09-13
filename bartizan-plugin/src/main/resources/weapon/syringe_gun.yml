@@ -1,3 +1,14 @@
+# Charge_Time_Per_Level/Max_Charge_Level below are the legacy Shoot.Charge aliases - still read, still fine to
+# leave as-is. The equivalent block form (also accepts Min_Level_To_Fire/Auto_Fire_At_Max, weapons-roadmap.md
+# gate HB) is:
+#
+# Shoot:
+#    Charge:
+#       Time_Per_Level: 20
+#       Max_Level: 3
+#       Min_Level_To_Fire: 1
+#       Auto_Fire_At_Max: false
+
 Information:
    Name: "&aSyringe Gun"
    Category: biological

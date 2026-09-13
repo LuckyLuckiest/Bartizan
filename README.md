@@ -48,14 +48,15 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .combat                 CombatEligibility
                                        .event                  WeaponEvent, WeaponShootEvent, WeaponRaytraceImpactEvent,
                                                                 WeaponEntityDamageEvent, WeaponKillEntityEvent,
-                                                                WeaponReloadEvent/Start/Complete, WeaponChangeSelectiveFireEvent
+                                                                WeaponReloadEvent/Start/Complete, WeaponChangeSelectiveFireEvent,
+                                                                WeaponChargeLevelEvent
                                        .item                   WeaponItemApi
                                        .npc                    NpcWeaponFactory, NpcWeaponController
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
                                        .weapon                 Weapon + 5 subclasses, WeaponType, ThrowableType, SelectiveFire,
                                                                 WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
-                                       .weapon.dto              18 config records (AmmunitionData, DamageData,
-                                                                EffectHook, EffectSpec, EffectsData, ...)
+                                       .weapon.dto              19 config records (AmmunitionData, ChargeData,
+                                                                DamageData, EffectHook, EffectSpec, EffectsData, ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager + action/*
                                        .weapon.recoil            RecoilManager
@@ -68,7 +69,7 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .bootstrap              BartizanContext, DefaultListenerService
                                        .command(.data|.wearable) WeaponCommand/Give/Info/List, Ammunition*, Wearable*, DebugCommand
                                        .config                 KernelConfig, FilesConfig, WiringConfig, ItemConfig
-                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 10 YAML section parsers
+                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 11 YAML section parsers
                                        .effect(.impl)          Effect, EffectContext, EffectRunner + 15 *HookEffect
                                        .file                   BartizanSettings, BartizanMessages, WeaponLoader
                                        .fire                   PluginFireRegistry
@@ -79,7 +80,8 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
                                                                 RaytraceContext, WeaponVisualSpawner
                                        .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser
-                                       .weapon(.action)        WeaponService, WeaponManager, GunAction/FullAutoTask/MeleeAction/...
+                                       .weapon(.action)        WeaponService, WeaponManager, GunAction/FullAutoTask/MeleeAction/...,
+                                                                ChargeController (shared charge-then-release timer)
                                        .wearable               WearableAddon, WearableService
 ```
 

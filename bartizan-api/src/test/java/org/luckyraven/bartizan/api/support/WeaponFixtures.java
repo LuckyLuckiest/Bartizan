@@ -5,6 +5,7 @@ import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.BiologicalData;
+import org.luckyraven.bartizan.api.weapon.dto.ChargeData;
 import org.luckyraven.bartizan.api.weapon.dto.IncendiaryData;
 import org.luckyraven.bartizan.api.weapon.dto.MeleeData;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
@@ -99,7 +100,8 @@ public final class WeaponFixtures {
 	}
 
 	public static BiologicalWeapon biologicalWeapon(int maxMag) {
-		BiologicalData biological = new BiologicalData(20, 3, List.of("BLINDNESS-100-1"), 30.0, 4.0);
+		BiologicalData biological = new BiologicalData(new ChargeData(20, 3, 1, false),
+		                                               List.of("BLINDNESS-100-1"), 30.0, 4.0);
 		return new BiologicalWeapon(UUID.randomUUID(), "test_biogun", "&fTest Biogun", WeaponType.BIOLOGICAL,
 		                            Material.IRON_HOE, 0, (short) 100, List.of(), false, null, biological,
 		                            instantReload(), ammoData(maxMag, 1, maxMag));

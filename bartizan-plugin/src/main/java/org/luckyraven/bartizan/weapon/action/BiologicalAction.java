@@ -2,114 +2,42 @@ package org.luckyraven.bartizan.weapon.action;
 
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
-import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.keystone.util.ActionBarManager;
-import org.luckyraven.keystone.util.ParticleUtil;
 import org.luckyraven.bartizan.api.weapon.dto.BiologicalData;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
-import org.luckyraven.bartizan.listener.WeaponInteract;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
-import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Charged single-shot raytrace weapon. The player holds RMB to charge (each tier multiplies the base damage and picks
- * the matching {@code Effects_Per_Level} entry) and releases RMB to fire a forward raytrace that hits exactly one
- * target.
- *
- * <p>Release-detection is driven by {@link WeaponInteract}: when the watchdog clears
- * the held flag for this weapon's UUID, it invokes the runnable registered via {@link #getReleaseCallback(Player)},
- * which finalises the shot and clears the charge state.
+ * Charged single-shot raytrace weapon. Charging (the timer, the level, the action-bar meter, the release trigger)
+ * is owned by {@link ChargeController}; this class only finalises the shot once a charge level is released — see
+ * {@link #fire(Player, int)}.
  */
 public class BiologicalAction {
 
-	private final JavaPlugin                plugin;
-	private final BiologicalWeapon          weapon;
-	private final WeaponRaytracer           raytracer;
-	private final Map<UUID, RepeatingTimer> activeTasks;
-	private final Map<UUID, int[]>          chargeLevels;
-	private final EffectRunner              effectRunner;
+	private final BiologicalWeapon weapon;
+	private final WeaponRaytracer  raytracer;
+	private final EffectRunner     effectRunner;
 
-	public BiologicalAction(JavaPlugin plugin, BiologicalWeapon weapon, WeaponRaytracer raytracer,
-	                        Map<UUID, RepeatingTimer> activeTasks, EffectRunner effectRunner) {
-		this.plugin        = plugin;
-		this.weapon        = weapon;
-		this.raytracer     = raytracer;
-		this.activeTasks   = activeTasks;
-		this.chargeLevels  = new ConcurrentHashMap<>();
-		this.effectRunner  = effectRunner;
+	public BiologicalAction(BiologicalWeapon weapon, WeaponRaytracer raytracer, EffectRunner effectRunner) {
+		this.weapon       = weapon;
+		this.raytracer    = raytracer;
+		this.effectRunner = effectRunner;
 	}
 
 	/**
-	 * Begins charging the weapon. If a charge is already in progress for this weapon UUID nothing happens — RMB-hold
-	 * keeps refreshing the held flag in {@link WeaponInteract}, but the charge timer is created exactly once per press
-	 * cycle.
+	 * Finalises a charged shot at the given level — {@link ChargeController}'s {@code onFire} callback for this
+	 * weapon. A level of 0 (released before reaching {@code Min_Level_To_Fire}) never reaches here.
 	 */
-	public boolean start(Player player) {
-		UUID weaponUuid = weapon.getUuid();
-
-		if (activeTasks.containsKey(weaponUuid)) return false;
-		if (weapon.getAmmunitionData() != null && weapon.isMagazineEmpty()) {
-			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
-			return false;
-		}
-
-		BiologicalData data = weapon.getBiologicalData();
-
-		int[] charge = {0};
-		chargeLevels.put(weaponUuid, charge);
-
-		RepeatingTimer timer = new RepeatingTimer(plugin, 1L, time -> {
-			if (time.getTickCount() % data.getChargeTimePerLevel() == 0 && charge[0] < data.getMaxChargeLevel()) {
-				charge[0]++;
-				ActionBarManager.send(player, "&6Charging... &e[" + "■".repeat(charge[0]) +
-				                              "□".repeat(data.getMaxChargeLevel() - charge[0]) + "]");
-
-				EffectContext levelCtx = EffectContext.builder().weapon(weapon).source(player).level(charge[0]).build();
-				effectRunner.run(weapon, EffectHook.ON_CHARGE_LEVEL, levelCtx);
-
-				if (charge[0] >= data.getMaxChargeLevel()) {
-					effectRunner.run(weapon, EffectHook.ON_CHARGE_FULL, levelCtx);
-				}
-			}
-			// visual ring that grows with charge level
-			ParticleUtil.spawnChargeRing(player.getLocation(), charge[0], data.getMaxChargeLevel());
-		});
-
-		timer.start(false);
-		activeTasks.put(weaponUuid, timer);
-		return true;
-	}
-
-	/**
-	 * Returns a release runnable that fires the charged shot when invoked. {@link WeaponInteract}'s watchdog calls this
-	 * once it detects RMB has been released.
-	 */
-	public Runnable getReleaseCallback(Player player) {
-		return () -> fire(player);
-	}
-
-	private void fire(Player player) {
-		UUID weaponUuid = weapon.getUuid();
-
-		RepeatingTimer timer = activeTasks.remove(weaponUuid);
-		if (timer != null) timer.stop();
-
-		int[] charge = chargeLevels.remove(weaponUuid);
-		int   level  = charge != null ? charge[0] : 0;
+	public void fire(Player player, int level) {
 		if (level <= 0) return;
-
 		if (!weapon.consumeShot()) return;
 
 		BiologicalData data = weapon.getBiologicalData();

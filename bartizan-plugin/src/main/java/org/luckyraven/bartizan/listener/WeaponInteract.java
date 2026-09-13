@@ -30,6 +30,7 @@ import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.weapon.action.BiologicalAction;
+import org.luckyraven.bartizan.weapon.action.ChargeController;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 import org.luckyraven.bartizan.weapon.action.FullAutoTask;
 import org.luckyraven.bartizan.weapon.action.GunAction;
@@ -46,6 +47,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 
 @ListenerHandler
 @AutowireTarget({WeaponService.class, WeaponRaytracer.class, PluginFireRegistry.class, CombatEligibility.class,
@@ -408,29 +410,49 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
-	 * Charge-then-release trigger for biological weapons. The first RMB press starts the charge timer; subsequent RMB
-	 * presses (Spigot fires them while RMB is held) keep the {@link WeaponData#shooting} flag refreshed. When the
-	 * watchdog detects the player has released RMB, it invokes the release callback registered here, which calls
-	 * {@link BiologicalAction#getReleaseCallback(Player)} to fire the charged shot.
+	 * Charge-then-release trigger for biological weapons — wires a {@link ChargeController} up to
+	 * {@link BiologicalAction#fire(Player, int)} and hands it to the category-agnostic {@link #handleChargeHold}.
+	 * The empty-magazine gate runs only on the press that would actually start a charge (mirrors the old
+	 * {@code BiologicalAction#start}, which only ran on the same press).
 	 */
 	private void handleBiologicalCharge(BiologicalWeapon weapon, Player player) {
-		UUID weaponUuid = weapon.getUuid();
+		BiologicalAction action     = new BiologicalAction(weapon, raytracer, effectRunner);
+		ChargeController controller = new ChargeController(plugin, weapon, weapon.getBiologicalData().getCharge(),
+		                                                   effectRunner, activeTasks, level -> action.fire(player, level));
 
+		handleChargeHold(weapon.getUuid(), player, () -> startBiologicalCharge(weapon, player, controller),
+		                 () -> controller.release(player));
+	}
+
+	private boolean startBiologicalCharge(BiologicalWeapon weapon, Player player, ChargeController controller) {
+		if (weapon.getAmmunitionData() != null && weapon.isMagazineEmpty()) {
+			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
+			return false;
+		}
+		return controller.start(player);
+	}
+
+	/**
+	 * Category-agnostic charge-then-release trigger for weapons whose fire action is a charge-and-release cycle
+	 * (biological now; beam at gate {@code HC}). The first RMB press invokes {@code start}; subsequent RMB presses
+	 * (Spigot fires them while RMB is held) keep the {@link WeaponData#shooting} flag refreshed. When the watchdog
+	 * detects the player has released RMB, it invokes {@code release}.
+	 */
+	private void handleChargeHold(UUID weaponUuid, Player player, BooleanSupplier start, Runnable release) {
 		AtomicReference<WeaponData> existing = continuousFire.get(weaponUuid);
 		if (existing != null) {
 			existing.get().shooting = true;
 			return;
 		}
 
-		BiologicalAction action = new BiologicalAction(plugin, weapon, raytracer, activeTasks, effectRunner);
-		if (!action.start(player)) return;
+		if (!start.getAsBoolean()) return;
 
 		WeaponData freshWeaponData = new WeaponData();
 		freshWeaponData.shooting = true;
 		AtomicReference<WeaponData> ref = new AtomicReference<>(freshWeaponData);
 		continuousFire.put(weaponUuid, ref);
 
-		releaseCallbacks.put(weaponUuid, action.getReleaseCallback(player));
+		releaseCallbacks.put(weaponUuid, release);
 
 		// Release-detection watchdog. Must be synchronous: when the player releases RMB, this fires the release
 		// callback, which raytracer-calls — getNearbyEntities is main-thread only.

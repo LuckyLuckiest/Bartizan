@@ -89,7 +89,9 @@ public interface BartizanApi {
 
 `weapon.Weapon` and its five subclasses (`GunWeapon`, `MeleeWeapon`, `BiologicalWeapon`, `IncendiaryWeapon`,
 `ThrowableWeapon`), `weapon.{WeaponType, ThrowableType, SelectiveFire, WeaponTag, ProjectileType, ProjectileState}`,
-the fifteen `weapon.dto.*` records, `ammo.Ammunition`, `wearable.Wearable` (string trait keys via
+the `weapon.dto.*` records (including `ChargeData` — `timePerLevel`, `maxLevel`, `minLevelToFire`,
+`autoFireAtMax` — the charge-then-release config `BiologicalData#getCharge()` carries since gate `HB`, and beam
+weapons will carry at gate `HC`), `ammo.Ammunition`, `wearable.Wearable` (string trait keys via
 `traits()`/`traitLevel(String)`; jetpack-style extra data via `extraTags()` — NBT keys `fuel`/`fuel_current`/
 `fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code needs no edit),
 `BartizanItemPredicates.WEARABLE`.
@@ -114,7 +116,11 @@ weapon's own `Effects:` list for a hook still replaces the lowered entry entirel
 
 `WeaponEvent`, `WeaponShootEvent`, `WeaponRaytraceImpactEvent` (cancelling suppresses damage only — penetration and
 ricochet counters still advance), `WeaponEntityDamageEvent`, `WeaponKillEntityEvent`, `WeaponReloadEvent` /
-`WeaponReloadStartEvent` / `WeaponReloadCompleteEvent`, `WeaponChangeSelectiveFireEvent`.
+`WeaponReloadStartEvent` / `WeaponReloadCompleteEvent`, `WeaponChangeSelectiveFireEvent`, `WeaponChargeLevelEvent`.
+
+`WeaponChargeLevelEvent` (weapon, player, `level`, `maxLevel`; not cancellable) fires on every charge-level
+increment for a charge-then-release weapon — `bartizan-plugin`'s `ChargeController` (biological now, beam at gate
+`HC`) raises it alongside the `On_Charge_Level`/`On_Charge_Full` effect hooks.
 
 `WeaponReloadCompleteEvent#isInterrupted()` (new at gate `HA`) is `true` when the completion was raised by a
 swap-cancelled reload (`Reload#endReloading(Player, boolean)`) rather than a normal reload finishing — Bartizan's

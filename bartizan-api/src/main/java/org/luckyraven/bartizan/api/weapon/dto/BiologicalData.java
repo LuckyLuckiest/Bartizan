@@ -13,8 +13,7 @@ import java.util.List;
 @AllArgsConstructor
 public class BiologicalData implements Cloneable {
 
-	private int          chargeTimePerLevel;
-	private int          maxChargeLevel;
+	private ChargeData   charge;
 	private List<String> effectsPerLevel;
 	/**
 	 * Maximum raytrace distance for the released shot, in blocks.
@@ -31,6 +30,7 @@ public class BiologicalData implements Cloneable {
 		try {
 			BiologicalData clone = (BiologicalData) super.clone();
 			clone.effectsPerLevel = new ArrayList<>(effectsPerLevel);
+			clone.charge = charge != null ? charge.clone() : null;
 			return clone;
 		} catch (CloneNotSupportedException exception) {
 			throw new PluginException(exception);

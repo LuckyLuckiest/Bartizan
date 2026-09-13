@@ -28,9 +28,10 @@ Block_Regeneration:
 #
 # Effect types and keys (Type is required on every entry; an unknown/missing Type is a warning and that entry is
 # skipped):
-#   Sound         - Sound, Volume (1.0), Pitch (1.0), Target (source|victim|nearby), At (source|muzzle|impact|victim,
-#                   optional). With At set, the sound broadcasts once at that location; without it, it plays
-#                   privately to each player resolved from Target (non-players are skipped)
+#   Sound         - Sound, Volume (1.0), Pitch (1.0), Pitch_Per_Level (0, added to Pitch once per ctx level - used
+#                   by On_Charge_Level's lowered Charge_Feedback), Target (source|victim|nearby), At (source|
+#                   muzzle|impact|victim, optional). With At set, the sound broadcasts once at that location;
+#                   without it, it plays privately to each player resolved from Target (non-players are skipped)
 #   Custom_Sound  - same keys as Sound, but Sound names a resource-pack key instead of a vanilla one
 #   Particle      - Particle, Count (1), Offset ("0 0 0", three space-separated doubles), Speed (0), At,
 #                   Color (#RRGGBB, only read for the DUST particle)

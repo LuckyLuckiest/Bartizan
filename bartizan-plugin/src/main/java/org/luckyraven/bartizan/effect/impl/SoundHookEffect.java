@@ -9,9 +9,11 @@ import org.luckyraven.bartizan.effect.Effect;
 import org.luckyraven.bartizan.effect.EffectContext;
 
 /**
- * {@code Sound}: {@code Sound, Volume (1.0), Pitch (1.0), Target (source|victim|nearby), At (source|muzzle|impact|
- * victim)} — with an explicit {@code At} the vanilla {@link SoundEffect} is broadcast once at that location;
- * otherwise it is played privately to each player resolved from {@code Target} (non-players are skipped).
+ * {@code Sound}: {@code Sound, Volume (1.0), Pitch (1.0), Pitch_Per_Level (0, added to Pitch once per
+ * {@code ctx.level} — used by {@code On_Charge_Level}'s lowered feedback), Target (source|victim|nearby), At
+ * (source|muzzle|impact|victim)} — with an explicit {@code At} the vanilla {@link SoundEffect} is broadcast once at
+ * that location; otherwise it is played privately to each player resolved from {@code Target} (non-players are
+ * skipped).
  */
 public class SoundHookEffect implements Effect {
 
@@ -21,7 +23,7 @@ public class SoundHookEffect implements Effect {
 		if (soundName == null) return;
 
 		float volume = (float) spec.doubleArg("Volume", 1.0);
-		float pitch  = (float) spec.doubleArg("Pitch", 1.0);
+		float pitch  = (float) (spec.doubleArg("Pitch", 1.0) + spec.doubleArg("Pitch_Per_Level", 0.0) * ctx.getLevel());
 
 		SoundEffect sound = new SoundEffect(soundType(), soundName, volume, pitch);
 
