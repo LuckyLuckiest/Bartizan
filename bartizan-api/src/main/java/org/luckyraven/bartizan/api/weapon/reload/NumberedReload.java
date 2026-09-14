@@ -50,33 +50,43 @@ public class NumberedReload extends Reload {
 	protected void executeReload(JavaPlugin plugin, Player player, boolean removeAmmunition) {
 		PlayerInventory inventory = player != null ? player.getInventory() : null;
 
-		timer = new SequenceTimer(plugin);
-
 		AmmunitionData ammunitionData = getWeapon().getAmmunitionData();
-		if (ammunitionData == null) return;
+		if (ammunitionData == null) {
+			resetReloading();
+			return;
+		}
+
+		unloadAmmoIfConfigured(inventory, player, removeAmmunition);
+		setAmmunition(resolveAmmoType(inventory, player, amount));
+
+		timer = new SequenceTimer(plugin);
 
 		// calculate the number of inserts according to the mag capacity
 		int leftToInsert       = ammunitionData.getMaxMagCapacity() - getWeapon().getCurrentMagCapacity();
 		int numberOfInsertions = leftToInsert / ammunitionData.getRestore();
 
-		if (inventory != null) {
+		Ammunition ammoToConsume = getAmmunition();
+
+		if (inventory != null && ammoToConsume != null) {
 			// limit insertions by how much ammo the player actually carries
 			int numberOfAmmunition = 0;
 			for (int i = 0; i < inventory.getSize(); i++) {
 				ItemStack item = inventory.getItem(i);
 				if (item == null || item.getType() == Material.AIR || !Ammunition.isAmmunition(item)) continue;
-				Ammunition ammo = getAmmunition();
-				if (item.equals(ammo.buildItem(item.getAmount()))) {
+				if (item.equals(ammoToConsume.buildItem(item.getAmount()))) {
 					numberOfAmmunition += item.getAmount();
 				}
 			}
 			int maxPossibleInsertions = numberOfAmmunition / amount;
 			numberOfInsertions = Math.min(numberOfInsertions, maxPossibleInsertions);
 		}
-		// NPC path (inventory == null): use full numberOfInsertions — NPCs have unlimited ammo supply
+		// NPC path (inventory == null) or Ammo_Type: none (ammoToConsume == null) — unlimited ammo supply either way.
 
 		ReloadData reloadData = getWeapon().getReloadData();
-		if (reloadData == null) return;
+		if (reloadData == null) {
+			resetReloading();
+			return;
+		}
 
 		// start reloading the gun — the total duration (for Weapon#reloadProgress, gate HD) is known only now that
 		// numberOfInsertions has been clamped to what the player actually carries.
@@ -94,9 +104,11 @@ public class NumberedReload extends Reload {
 					return;
 				}
 
-				if (inventory != null) {
+				Ammunition ammoForThisInsertion = getAmmunition();
+
+				if (inventory != null && ammoForThisInsertion != null) {
 					// if ammo was dropped mid-reload, abort the remaining insertions
-					boolean contains = inventory.containsAtLeast(getAmmunition().buildItem(player, 1), amount);
+					boolean contains = inventory.containsAtLeast(ammoForThisInsertion.buildItem(player, 1), amount);
 					if (removeAmmunition && !contains) {
 						stopReloading();
 						return;
@@ -108,8 +120,8 @@ public class NumberedReload extends Reload {
 					SoundEffect.playSounds(player, getWeapon().getSoundData().getReloadCustomMid(), null);
 				}
 
-				if (inventory != null && removeAmmunition) {
-					inventory.removeItem(getAmmunition().buildItem(player, amount));
+				if (inventory != null && removeAmmunition && ammoForThisInsertion != null) {
+					inventory.removeItem(ammoForThisInsertion.buildItem(player, amount));
 				}
 
 				// add to the weapon capacity

@@ -106,6 +106,11 @@ Ammunition:
 Reload:
    Cooldown: 1
 
+   # Auto_Reload_When_Empty: firing on an empty magazine starts a reload automatically instead of just clicking.
+   Auto_Reload_When_Empty: true
+   # Shoot_Delay_After_Reload: ticks after a completed reload during which firing is refused (racking the pump).
+   Shoot_Delay_After_Reload: 6
+
    Sound:
       Default_Sound_Before:
          Sound: BLOCK_WOODEN_TRAPDOOR_OPEN

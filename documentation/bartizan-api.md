@@ -113,6 +113,18 @@ biological status rather than a damage/duration percentage; jetpack-style extra 
 `fuel`/`fuel_current`/`fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code
 needs no edit), `BartizanItemPredicates.WEARABLE`.
 
+### Ammo type list + reload parity (`weapon.dto.AmmunitionData`/`ReloadData`, `weapon.WeaponTag`, gate `HG`)
+
+`AmmunitionData#getAmmoType()` (single `Ammunition`, nullable) is now a convenience accessor over
+`getAmmoTypes()` (`List<Ammunition>`, possibly empty) — `Ammunition.Types` in the weapon YAML configures more than
+one accepted ammo item, consumed in list order; an empty list is `Ammo_Type: none` (infinite supply, no item
+tracked). The two-arg `AmmunitionData(Ammunition, int, int, int)` constructor is unchanged for the single-type
+case. `ReloadData` gained three fields or their `Reload:` YAML keys: `isUnloadAmmoOnReload()`
+(`Unload_Ammo_On_Reload`), `getShootDelayAfterReload()` (`Shoot_Delay_After_Reload`, ticks), and
+`isAutoReloadWhenEmpty()` (`Auto_Reload_When_Empty`) — all default `false`/`0`. `WeaponTag` gained `AMMO_TYPE`
+(dynamic), the ammo id currently loaded into the magazine, alongside the existing `AMMO_LEFT`. `Weapon` gained
+`isShootLocked()`, backing `Shoot_Delay_After_Reload`.
+
 ### Biological status (`weapon.dto.StatusData`, gate `HB`)
 
 `BiologicalData#getStatus()` (never `null`) is the tracked status — infection, radiation, whatever the weapon

@@ -5,6 +5,7 @@ import lombok.Setter;
 import org.bukkit.Material;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
@@ -31,7 +32,8 @@ public class GunWeapon extends Weapon {
 	public GunWeapon(UUID uuid, String name, String displayName, WeaponType category, Material material,
 	                 int customModelData, short durability, List<String> lore, boolean dropHologram,
 	                 @Nullable List<String> deathMessages, SelectiveFire selectiveFire, int weaponConsumedOnShot,
-	                 ProjectileData projectileData, ReloadData reloadData, @Nullable AmmunitionData ammunitionData) {
+	                 ProjectileData projectileData, @Nullable ReloadData reloadData,
+	                 @Nullable AmmunitionData ammunitionData) {
 		super(uuid, name, displayName, category, material, customModelData, durability, lore, dropHologram,
 		      deathMessages, reloadData, ammunitionData);
 		this.projectileData       = projectileData;
@@ -89,14 +91,22 @@ public class GunWeapon extends Weapon {
 		                 .thenComparingInt(
 								 g -> g.getAmmunitionData() != null ? g.getAmmunitionData().getMaxMagCapacity() : 0)
 		                 .thenComparingInt(g -> g.getReloadData() != null ? g.getReloadData().getCooldown() : 0)
-		                 .thenComparing(g -> g.getAmmunitionData() != null ?
-		                                     g.getAmmunitionData().getAmmoType().getName() :
-		                                     "")
+		                 .thenComparing(GunWeapon::ammoTypeNameForComparison)
 		                 .thenComparingInt(
 								 g -> g.getAmmunitionData() != null ? g.getAmmunitionData().getConsumeRate() : 0)
 		                 .thenComparingInt(g -> g.getAmmunitionData() != null ? g.getAmmunitionData().getRestore() : 0)
 		                 .thenComparing(g -> g.getReloadData() != null ? g.getReloadData().getType().name() : "")
 		                 .compare(this, otherGunWeapon);
+	}
+
+	/**
+	 * {@code AmmunitionData#getAmmoType()} is {@code null} for {@code Ammo_Type: none}, so this reads it through a
+	 * null-safe accessor rather than inlining another {@code != null ? ... : ""} ternary into the comparator chain.
+	 */
+	private static String ammoTypeNameForComparison(GunWeapon gun) {
+		AmmunitionData data = gun.getAmmunitionData();
+		Ammunition     ammo = data != null ? data.getAmmoType() : null;
+		return ammo != null ? ammo.getName() : "";
 	}
 
 }

@@ -98,11 +98,24 @@ Shoot:
 Ammunition:
    Capacity: 6
    Ammo_Type: "9mm"
+   # Ammo_Type: none          -> a magazine that reloads without consuming any item (infinite supply).
+   # Types: an alternative to Ammo_Type — a list of ammo ids; reload consumes the first one the player carries,
+   # in this list's order. Setting both Ammo_Type and Types is a config error.
+   # Types:
+   #    - "9mm"
+   #    - "7,62"
    Consume: 1
    Restore: 1
 
 Reload:
    Cooldown: 1
+
+   # Unload_Ammo_On_Reload: returns floor(current magazine / Restore) rounds to the player before reloading from
+   # empty — the classic revolver "dump the cylinder" reload. Safe with Restore: 1 here because Type: one is a
+   # per-round reload (one insertion per Cooldown until the cylinder is full again) — pair Unload_Ammo_On_Reload
+   # with a per-round Type (one/num) or with Restore == Capacity; on an instant reload with a smaller Restore the
+   # magazine would refill to just Restore rounds instead of topping back up.
+   Unload_Ammo_On_Reload: true
 
    Sound:
       Default_Sound_Before:

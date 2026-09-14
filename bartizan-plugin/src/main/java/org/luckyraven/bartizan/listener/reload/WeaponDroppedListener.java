@@ -1,7 +1,6 @@
 package org.luckyraven.bartizan.listener.reload;
 
 import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -68,17 +67,11 @@ public class WeaponDroppedListener implements Listener {
 			return;
 		}
 
-		// check if the item is available or it was creative
-		boolean haveItem = weaponService.hasAmmunition(player, weapon);
-		boolean creative = player.getGameMode() == GameMode.CREATIVE;
+		// check if the item is available (or it was creative) and start the reload
+		if (!weaponService.tryReload(plugin, player, weapon)) return;
 
-		if (!(haveItem || creative)) return;
-
-		// don't drop the weapon if the player has ammunition item for it
+		// don't drop the weapon — a reload just started
 		event.setCancelled(true);
-
-		// reload the weapon
-		weapon.reload(plugin, player, !creative);
 	}
 
 }

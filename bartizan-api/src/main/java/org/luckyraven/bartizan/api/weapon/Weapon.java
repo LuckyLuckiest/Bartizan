@@ -18,6 +18,7 @@ import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.keystone.util.Placeholder;
 import org.luckyraven.keystone.exception.PluginException;
+import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.weapon.dto.*;
 import org.luckyraven.bartizan.api.weapon.durability.DurabilityCalculator;
 import org.luckyraven.bartizan.api.weapon.recoil.RecoilManager;
@@ -66,6 +67,13 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	// Runtime state
 	private       int                    currentMagCapacity;
 	private       SelectiveFire          currentSelectiveFire;
+	/**
+	 * Wall-clock deadline ({@link System#currentTimeMillis()}) before which {@code Reload.Shoot_Delay_After_Reload}
+	 * silently refuses to fire. Set by {@code Reload#endReloading} on a non-interrupted completion; checked by
+	 * {@code GunAction#weaponShoot} via {@link #isShootLocked()}. Transient runtime state — not persisted to NBT
+	 * and reset on {@link #initClone}, so a freshly minted item never starts shoot-locked.
+	 */
+	private       long                   shootLockedUntilMillis;
 	/**
 	 * Modes the weapon is permitted to cycle through. Set by the parser from the {@code Allowed_Modes} yml key. Empty
 	 * or {@code null} means "no restriction" — the legacy 3-mode SINGLE/BURST/AUTO cycle is used. The configured
@@ -173,6 +181,37 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		return reload != null ? reload.totalDurationTicks() : 0L;
 	}
 
+	/**
+	 * Re-resolves this weapon's loaded ammo type from the item's persisted {@link WeaponTag#AMMO_TYPE} tag,
+	 * matched by {@link Ammunition#getName()} against the configured {@code Ammunition.Types}/{@code Ammo_Type},
+	 * and pushes it into the {@link Reload} instance. Called whenever a {@code Weapon} is (re)resolved from its
+	 * item — see {@code WeaponService#setWeaponData} — so {@code Reload.Unload_Ammo_On_Reload} on a multi-{@code
+	 * Types} weapon keeps handing back the type actually loaded instead of resetting to the first configured type
+	 * across a relog, drop+pickup or {@code /bartizan reload}.
+	 * <p/>
+	 * No-op when there is no reload/ammo configured. Falls back to the first configured type for an absent or
+	 * unrecognised tag (legacy items minted before {@code AMMO_TYPE} existed, or {@code Ammo_Type: none}
+	 * switched to a real type since).
+	 */
+	public void setLoadedAmmoType(@Nullable String ammoTypeName) {
+		if (reload == null || ammunitionData == null) return;
+
+		List<Ammunition> types = ammunitionData.getAmmoTypes();
+		if (types.isEmpty()) return;
+
+		Ammunition resolved = types.get(0);
+		if (ammoTypeName != null && !ammoTypeName.isEmpty()) {
+			for (Ammunition candidate : types) {
+				if (candidate.getName().equalsIgnoreCase(ammoTypeName)) {
+					resolved = candidate;
+					break;
+				}
+			}
+		}
+
+		reload.setLoadedAmmunition(resolved);
+	}
+
 	public void reload(JavaPlugin plugin, Player player, boolean removeAmmunition) {
 		if (reload == null) return;
 		reload.reload(plugin, player, removeAmmunition);
@@ -212,6 +251,14 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		return reloadData != null && !isMagazineFull();
 	}
 
+	/**
+	 * {@code Reload.Shoot_Delay_After_Reload}: {@code true} while shooting should be silently refused after a
+	 * completed reload. Vacuously {@code false} for a weapon that has never reloaded.
+	 */
+	public boolean isShootLocked() {
+		return System.currentTimeMillis() < shootLockedUntilMillis;
+	}
+
 	@NotNull
 	public ItemStack buildItem() {
 		return buildItem(null);
@@ -244,7 +291,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		this.changingDisplayName = buildDisplayName();
 		itemBuilder.setDisplayName(resolvePlaceholder(player, changingDisplayName));
 
-		boolean updatedSelectiveFire = false, updatedCurrentAmmo = false;
+		boolean updatedSelectiveFire = false, updatedCurrentAmmo = false, updatedAmmoType = false;
 
 		for (WeaponTag tag : WeaponTag.values()) {
 			if (containsTag(itemBuilder, tag)) continue;
@@ -260,12 +307,17 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 					tags.put(tag, getAmmoLeftForTag());
 					updatedCurrentAmmo = true;
 				}
+				case AMMO_TYPE -> {
+					tags.put(tag, getAmmoTypeForTag());
+					updatedAmmoType = true;
+				}
 			}
 			itemBuilder.addTag(getTagProperName(tag), tags.get(tag));
 		}
 
 		if (!updatedSelectiveFire) updateTag(itemBuilder, WeaponTag.SELECTIVE_FIRE, getSelectiveFireForTag());
 		if (!updatedCurrentAmmo) updateTag(itemBuilder, WeaponTag.AMMO_LEFT, getAmmoLeftForTag());
+		if (!updatedAmmoType) updateTag(itemBuilder, WeaponTag.AMMO_TYPE, getAmmoTypeForTag());
 	}
 
 	// --- Durability operations ---
@@ -398,6 +450,16 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		return currentMagCapacity;
 	}
 
+	/**
+	 * The ammo id currently loaded into the magazine, per {@link Reload#getLoadedAmmunition()} — empty string
+	 * when there is no reload configured or the ammo type is {@code none}.
+	 */
+	protected String getAmmoTypeForTag() {
+		if (reload == null) return "";
+		Ammunition loaded = reload.getLoadedAmmunition();
+		return loaded != null ? loaded.getName() : "";
+	}
+
 	protected void setUUID(UUID uuid) {
 		this.uuid = uuid;
 	}
@@ -412,6 +474,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		tags.put(WeaponTag.WEAPON, name);
 		tags.put(WeaponTag.SELECTIVE_FIRE, getSelectiveFireForTag());
 		tags.put(WeaponTag.AMMO_LEFT, getAmmoLeftForTag());
+		tags.put(WeaponTag.AMMO_TYPE, getAmmoTypeForTag());
 		tags.forEach((tag, value) -> itemBuilder.addTag(getTagProperName(tag), value));
 	}
 
@@ -442,7 +505,8 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		this.currentMagCapacity = source.ammunitionData != null ? source.ammunitionData.getMaxMagCapacity() : 0;
 		this.reload             = source.reload != null ? source.reload.clone() : null;
 		if (this.reload != null) this.reload.rebindWeapon(this);
-		this.currentSelectiveFire = source.currentSelectiveFire;
+		this.currentSelectiveFire    = source.currentSelectiveFire;
+		this.shootLockedUntilMillis  = 0L;
 	}
 
 	protected void applyEffect(Player player, XPotion potion, int amplifier) {

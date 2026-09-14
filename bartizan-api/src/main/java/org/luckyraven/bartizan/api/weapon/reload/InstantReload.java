@@ -44,10 +44,22 @@ public class InstantReload extends Reload {
 	protected void executeReload(JavaPlugin plugin, Player player, boolean removeAmmunition) {
 		PlayerInventory inventory = player != null ? player.getInventory() : null;
 
-		timer = new SequenceTimer(plugin);
-
 		ReloadData reloadData = getWeapon().getReloadData();
-		if (reloadData == null) return;
+		if (reloadData == null) {
+			resetReloading();
+			return;
+		}
+
+		AmmunitionData ammunitionData = getWeapon().getAmmunitionData();
+		if (ammunitionData == null) {
+			resetReloading();
+			return;
+		}
+
+		unloadAmmoIfConfigured(inventory, player, removeAmmunition);
+		setAmmunition(resolveAmmoType(inventory, player, ammunitionData.getConsumeRate()));
+
+		timer = new SequenceTimer(plugin);
 
 		// start reloading the gun
 		timer.addIntervalTaskPair(0, time -> {
@@ -76,12 +88,11 @@ public class InstantReload extends Reload {
 				return;
 			}
 
-			AmmunitionData ammunitionData = getWeapon().getAmmunitionData();
-			if (ammunitionData == null) return;
+			Ammunition ammoToConsume = getAmmunition();
 
-			if (inventory != null) {
+			if (inventory != null && ammoToConsume != null) {
 				// if ammo was lost before or during the reload start (e.g. dropped), abort immediately
-				boolean contains = inventory.containsAtLeast(getAmmunition().buildItem(player, 1),
+				boolean contains = inventory.containsAtLeast(ammoToConsume.buildItem(player, 1),
 				                                             ammunitionData.getConsumeRate());
 				if (removeAmmunition && !contains) {
 					stopReloading();
@@ -90,9 +101,10 @@ public class InstantReload extends Reload {
 
 				// remove the magazine the moment the reloading starts to prevent bugs
 				if (removeAmmunition) {
-					inventory.removeItem(getAmmunition().buildItem(player, ammunitionData.getConsumeRate()));
+					inventory.removeItem(ammoToConsume.buildItem(player, ammunitionData.getConsumeRate()));
 				}
 			}
+			// Ammo_Type: none (ammoToConsume == null) — infinite supply, nothing to check/remove.
 
 			// add to the weapon capacity
 			getWeapon().addAmmunition(ammunitionData.getRestore());

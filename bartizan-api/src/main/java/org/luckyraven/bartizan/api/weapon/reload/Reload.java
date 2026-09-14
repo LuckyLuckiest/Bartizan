@@ -2,29 +2,39 @@ package org.luckyraven.bartizan.api.weapon.reload;
 
 import lombok.AccessLevel;
 import lombok.Getter;
+import lombok.Setter;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.keystone.util.ActionBarManager;
 import org.luckyraven.keystone.exception.PluginException;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.WeaponTag;
 import org.luckyraven.bartizan.api.ammo.Ammunition;
+import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.api.event.WeaponReloadCompleteEvent;
 import org.luckyraven.bartizan.api.event.WeaponReloadStartEvent;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Getter(value = AccessLevel.PROTECTED)
 public abstract class Reload implements Cloneable {
 
-	private final Ammunition    ammunition;
+	/**
+	 * The ammo type actually loaded into the magazine right now. Mutable (not {@code final}) because
+	 * {@code Ammunition.Types} lets this be re-resolved at the start of every reload run — see
+	 * {@link #resolveAmmoType(PlayerInventory, Player, int)}. {@code null} for {@code Ammo_Type: none}.
+	 */
+	@Setter(AccessLevel.PROTECTED)
+	private       Ammunition    ammunition;
 	private       Weapon        weapon;
 	private       AtomicBoolean reloading;
 	private       Player        currentPlayer;
@@ -48,10 +58,20 @@ public abstract class Reload implements Cloneable {
 	protected abstract void executeReload(JavaPlugin plugin, Player player, boolean removeAmmunition);
 
 	public void reload(JavaPlugin plugin, Player player, boolean removeAmmunition) {
+		// Double-reload guard: startReloading (called from the concrete reload types' SequenceTimer interval-0
+		// task) only flips `reloading` to true one tick after this method returns, so a caller whose next tick
+		// runs before that (e.g. FullAutoTask, 1-tick period) could otherwise see isReloading() == false and start
+		// a second, overlapping reload. Claim the flag synchronously instead. Any executeReload abort path that
+		// returns without ever reaching startReloading/endReloading must call resetReloading() to release it.
+		if (!reloading.compareAndSet(false, true)) return;
+
 		// reload the weapon action bar status
 		ReloadData reloadData = weapon.getReloadData();
 
-		if (reloadData == null) return;
+		if (reloadData == null) {
+			reloading.set(false);
+			return;
+		}
 
 		if (player != null && weapon.getReloadActionBarData() != null) {
 			ActionBarManager.send(plugin, player, weapon.getReloadActionBarData().getReloading(),
@@ -109,6 +129,26 @@ public abstract class Reload implements Cloneable {
 	}
 
 	/**
+	 * The ammo type actually loaded into the magazine right now — {@code null} for {@code Ammo_Type: none}. Public
+	 * (unlike the class-level protected getters) so {@link Weapon#getAmmoTypeForTag()} can read it across the
+	 * api.weapon/api.weapon.reload package split without exposing the rest of {@code Reload}'s internals.
+	 */
+	@Nullable
+	public Ammunition getLoadedAmmunition() {
+		return ammunition;
+	}
+
+	/**
+	 * Rehydrates the loaded ammo type — called by {@link Weapon#setLoadedAmmoType} when a {@code Weapon} instance
+	 * is resolved from the item's persisted {@code AMMO_TYPE} tag, so {@code Ammunition.Types} keeps returning the
+	 * type actually loaded (rather than resetting to the first configured type) across a relog, drop+pickup or
+	 * {@code /bartizan reload}. Public for the same cross-package reason as {@link #getLoadedAmmunition()}.
+	 */
+	public void setLoadedAmmunition(@Nullable Ammunition ammunition) {
+		setAmmunition(ammunition);
+	}
+
+	/**
 	 * @param totalDurationTicks the full duration of this reload attempt in ticks ({@code Reload.Cooldown}, or
 	 *                            {@code numberOfInsertions * Reload.Cooldown} for a numbered reload) — read back by
 	 *                            {@link #reloadProgress()}.
@@ -136,6 +176,16 @@ public abstract class Reload implements Cloneable {
 		Bukkit.getPluginManager().callEvent(new WeaponReloadStartEvent(weapon, player));
 	}
 
+	/**
+	 * Releases the {@code reloading} flag claimed by {@link #reload}'s guard, for an {@code executeReload} abort
+	 * that returns before {@link #startReloading} ever ran — so the next {@link #reload} call isn't permanently
+	 * blocked. Does none of {@link #endReloading}'s side effects (un-scoping, the completion event, {@code
+	 * Shoot_Delay_After_Reload}) since a reload that never started shouldn't run them.
+	 */
+	protected void resetReloading() {
+		reloading.set(false);
+	}
+
 	protected void endReloading(Player player) {
 		endReloading(player, false);
 	}
@@ -154,7 +204,90 @@ public abstract class Reload implements Cloneable {
 		// un-scope the player to resume the showdown
 		weapon.unScope(player, true);
 
+		// Reload.Shoot_Delay_After_Reload: only on a completed (non-interrupted) reload.
+		if (!interrupted) {
+			ReloadData reloadData = weapon.getReloadData();
+			int        delayTicks = reloadData != null ? reloadData.getShootDelayAfterReload() : 0;
+			if (delayTicks > 0) {
+				weapon.setShootLockedUntilMillis(System.currentTimeMillis() + delayTicks * 50L); // 50ms/tick
+			}
+		}
+
 		Bukkit.getPluginManager().callEvent(new WeaponReloadCompleteEvent(weapon, player, interrupted));
+	}
+
+	/**
+	 * Resolves which of the weapon's configured ammo types ({@code Ammunition.Ammo_Type}/{@code Types}) this
+	 * reload run should consume: the first type, in configured order, that the player carries at least
+	 * {@code amountNeeded} of. Falls back to the first configured type when the player carries none of them (so
+	 * the abort/insufficient-ammo checks downstream still have a concrete item to report against), and for the
+	 * NPC path ({@code inventory == null} — NPCs have unlimited supply). Returns {@code null} for {@code
+	 * Ammo_Type: none}.
+	 *
+	 * @param player the player carrying {@code inventory}, or {@code null} for the NPC path — threaded into the
+	 *               probe {@code buildItem} call so placeholder-bearing ammo names match {@code containsAtLeast}
+	 *               the same way {@code WeaponService.hasAmmunition} and every consume site do.
+	 */
+	@Nullable
+	protected Ammunition resolveAmmoType(@Nullable PlayerInventory inventory, @Nullable Player player,
+	                                     int amountNeeded) {
+		AmmunitionData    ammunitionData = weapon.getAmmunitionData();
+		List<Ammunition>  types          = ammunitionData != null ? ammunitionData.getAmmoTypes() : List.of();
+
+		if (types.isEmpty()) return null;
+		if (inventory == null) return types.get(0);
+
+		for (Ammunition candidate : types) {
+			if (inventory.containsAtLeast(candidate.buildItem(player, 1), amountNeeded)) return candidate;
+		}
+
+		return types.get(0);
+	}
+
+	/**
+	 * {@code Reload.Unload_Ammo_On_Reload}: if configured and the magazine isn't already empty, returns
+	 * {@code floor(currentMag / restore)} items of the currently-loaded ammo type to the player's inventory
+	 * (dropping at their feet whatever doesn't fit) and zeroes the magazine before the normal reload sequence
+	 * runs. Skipped for NPCs ({@code player == null}) and {@code Ammo_Type: none} (nothing to return).
+	 *
+	 * @param removeAmmunition {@code false} in creative mode: the magazine is still zeroed (a reload still
+	 *                         happens), but nothing is handed back since nothing was actually consumed to load it.
+	 */
+	protected void unloadAmmoIfConfigured(@Nullable PlayerInventory inventory, @Nullable Player player,
+	                                      boolean removeAmmunition) {
+		if (player == null || inventory == null) return;
+
+		ReloadData reloadData = weapon.getReloadData();
+		if (reloadData == null || !reloadData.isUnloadAmmoOnReload()) return;
+
+		AmmunitionData ammunitionData = weapon.getAmmunitionData();
+		if (ammunitionData == null || ammunitionData.getAmmoTypes().isEmpty()) return;
+
+		int currentMag = weapon.getCurrentMagCapacity();
+		if (currentMag <= 0) return;
+
+		if (removeAmmunition) {
+			int restore = ammunitionData.getRestore();
+			int amount  = restore > 0 ? currentMag / restore : 0;
+
+			if (amount > 0) {
+				// Returns whatever this Reload instance currently has loaded — rehydrated from the item's
+				// AMMO_TYPE tag on every weapon lookup (see WeaponService#setWeaponData / Weapon#setLoadedAmmoType)
+				// so this stays accurate across a relog, drop+pickup or /bartizan reload, not just within one
+				// session.
+				Ammunition loaded    = ammunition != null ? ammunition : ammunitionData.getAmmoTypes().get(0);
+				ItemStack  toReturn  = loaded.buildItem(player, amount);
+				var        leftover = inventory.addItem(toReturn);
+
+				for (ItemStack overflow : leftover.values()) {
+					player.getWorld().dropItem(player.getLocation(), overflow);
+				}
+			}
+		}
+		// creative (removeAmmunition == false): nothing was consumed to load the magazine, so nothing is handed
+		// back — just clear it below.
+
+		weapon.setCurrentMagCapacity(0);
 	}
 
 	/**

@@ -1,14 +1,17 @@
 package org.luckyraven.bartizan.weapon;
 
 import lombok.Getter;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
+import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
@@ -21,6 +24,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -98,10 +102,38 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 
 		if (ammunitionData == null) return true;
 
-		var item        = ammunitionData.getAmmoType().buildItem(player);
-		var consumeRate = ammunitionData.getConsumeRate();
+		List<Ammunition> ammoTypes = ammunitionData.getAmmoTypes();
+		if (ammoTypes.isEmpty()) return true; // Ammo_Type: none — infinite supply
 
-		return player.getInventory().containsAtLeast(item, consumeRate);
+		int consumeRate = ammunitionData.getConsumeRate();
+		for (Ammunition ammoType : ammoTypes) {
+			if (player.getInventory().containsAtLeast(ammoType.buildItem(player), consumeRate)) return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Starts a reload for {@code weapon} if it isn't already reloading, its magazine isn't already full, and the
+	 * player carries the configured ammo (or the ammo type is {@code none} / the player is in creative mode).
+	 * Shared by the sneak+drop reload trigger ({@code WeaponDroppedListener}) and {@code Reload.
+	 * Auto_Reload_When_Empty} ({@code GunAction}) so both go through one path — the later HH gate exposes this on
+	 * {@code BartizanApi} as {@code tryReload}.
+	 *
+	 * @return {@code true} if a reload was started.
+	 */
+	public boolean tryReload(JavaPlugin plugin, Player player, Weapon weapon) {
+		if (weapon.getReloadData() == null) return false;
+		if (weapon.isReloading()) return false;
+		if (weapon.isMagazineFull()) return false;
+
+		boolean haveItem = hasAmmunition(player, weapon);
+		boolean creative = player.getGameMode() == GameMode.CREATIVE;
+
+		if (!(haveItem || creative)) return false;
+
+		weapon.reload(plugin, player, !creative);
+		return true;
 	}
 
 	/**
@@ -319,6 +351,9 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 
 		// get the ammo left
 		int amountLeft = itemBuilder.getIntegerTagData(Weapon.getTagProperName(WeaponTag.AMMO_LEFT));
+		// get the ammo type actually loaded (Ammunition.Types) so it survives this Weapon instance being rebuilt
+		// from the catalogue template — see Weapon#setLoadedAmmoType.
+		String ammoType = itemBuilder.getStringTagData(Weapon.getTagProperName(WeaponTag.AMMO_TYPE));
 		// get the selective fire
 		SelectiveFire selectiveFire = SelectiveFire.getType(
 				itemBuilder.getStringTagData(Weapon.getTagProperName(WeaponTag.SELECTIVE_FIRE)));
@@ -328,6 +363,7 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		weapon.setCurrentDurability(durability);
 		weapon.setCurrentMagCapacity(amountLeft);
 		weapon.setCurrentSelectiveFire(selectiveFire);
+		weapon.setLoadedAmmoType(ammoType);
 	}
 
 }

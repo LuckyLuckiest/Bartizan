@@ -91,11 +91,13 @@ public class GunWeaponParser {
 			                                 .get("Consume_On_Shot").asInt().min(0).orDefault(0);
 		}
 
-		ParsedAmmo parsed = ammoParser.parse(root, report);
-		if (parsed == null) throw new InvalidConfigurationException("Ammunition section not found or invalid");
-
-		ReloadData     reloadData     = parsed.reload();
-		AmmunitionData ammunitionData = parsed.ammo();
+		// A missing/empty Ammunition: section tolerates no magazine at all — same as every other weapon category
+		// (WM weapons without an ammo block need to load through the future importer). An Ammunition: section that
+		// IS present but invalid (unknown ammo id, or both Ammo_Type and Types set) is a config error handled
+		// uniformly by WeaponAddon.registerWeapon via ConfigReport, not by throwing here.
+		ParsedAmmo     parsed         = ammoParser.parse(root, report);
+		ReloadData     reloadData     = parsed != null ? parsed.reload() : null;
+		AmmunitionData ammunitionData = parsed != null ? parsed.ammo() : null;
 
 		ProjectileData projectileData = ProjectileData.builder()
 		                                              .speed(projectileSpeed)

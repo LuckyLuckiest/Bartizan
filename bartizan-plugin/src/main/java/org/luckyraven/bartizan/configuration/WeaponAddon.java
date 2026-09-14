@@ -8,10 +8,12 @@ import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.util.Placeholder;
 import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.persistence.FileHandler;
+import org.luckyraven.keystone.persistence.config.ConfigIssue;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.FileHandlerReader;
 import org.luckyraven.keystone.persistence.config.MappingNode;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.keystone.persistence.config.Severity;
 import org.luckyraven.bartizan.api.weapon.BeamWeapon;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
@@ -22,9 +24,19 @@ import org.luckyraven.bartizan.api.weapon.dto.*;
 import org.luckyraven.bartizan.api.weapon.WeaponType;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @CustomLog
 public class WeaponAddon {
+
+	/**
+	 * The only {@link ConfigReport} {@link Severity#ERROR} codes that fail a weapon's whole load —
+	 * {@link org.luckyraven.bartizan.configuration.parser.AmmunitionSectionParser}'s unresolvable-ammo errors.
+	 * Every other {@code config.*} ERROR (a {@code NodeReader.required()} marker for an absent-but-optional key,
+	 * a {@code min()}/{@code max()} range violation, or a type mismatch) is clamped/defaulted by the reader and
+	 * logged — it must not turn a previously-loading file into a load failure.
+	 */
+	private static final Set<String> FATAL_AMMO_CODES = Set.of("ammo.unknown_type", "ammo.both_ammo_type_and_types");
 
 	private final Map<String, Weapon> weapons;
 
@@ -130,8 +142,28 @@ public class WeaponAddon {
 
 		if (!report.isEmpty()) report.log(log);
 
+		// Only the ammo codes in FATAL_AMMO_CODES fail the whole weapon's load — uniformly across all six
+		// categories, not just guns. Every other ConfigReport ERROR (NodeReader.required() on an absent-but-
+		// optional key, a clamped range, a defaulted type mismatch) stays a logged warning-equivalent so a file
+		// that loaded before keeps loading.
+		List<ConfigIssue> fatalIssues = fatalIssues(report);
+		if (!fatalIssues.isEmpty()) {
+			String errors = fatalIssues.stream().map(ConfigIssue::render).collect(Collectors.joining("; "));
+			throw new InvalidConfigurationException("weapon '" + fileName + "' has configuration errors: " + errors);
+		}
+
 		weapons.put(fileName, weapon);
 		return report;
+	}
+
+	/**
+	 * The subset of {@code report}'s issues that must fail the weapon's load — see {@link #FATAL_AMMO_CODES}.
+	 * Extracted so this filter is testable without bootstrapping a full {@link #registerWeapon} call.
+	 */
+	static List<ConfigIssue> fatalIssues(ConfigReport report) {
+		return report.issues().stream()
+		             .filter(issue -> issue.severity() == Severity.ERROR && FATAL_AMMO_CODES.contains(issue.code()))
+		             .toList();
 	}
 
 	@Nullable

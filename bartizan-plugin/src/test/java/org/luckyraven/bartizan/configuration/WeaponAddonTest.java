@@ -1,7 +1,9 @@
 package org.luckyraven.bartizan.configuration;
 
+import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -106,6 +109,78 @@ class WeaponAddonTest {
 
 		assertEquals(weaponFiles.size(), weaponAddon.getWeaponKeys().size(),
 		             "one registered weapon expected per bundled weapon YAML, got: " + weaponAddon.getWeaponKeys());
+	}
+
+	/**
+	 * Gate {@code HG} review finding 1: a non-ammo {@code config.required} ERROR (here: the whole {@code
+	 * Durability} section absent) must not fail the load — {@code WeaponAddon.FATAL_AMMO_CODES} gates only the
+	 * ammo codes.
+	 */
+	@Test
+	@DisplayName("registerWeapon: a non-ammo config.required ERROR still registers the weapon")
+	void registerWeapon_nonAmmoRequiredError_stillRegisters() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		File weaponFile = writeWeaponFile("no_durability.yml", """
+				Information:
+				   Name: "&7No Durability&r"
+				   Category: melee
+				   Material: IRON_HOE
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+				""");
+
+		WeaponAddon  weaponAddon = new WeaponAddon(null);
+		ConfigReport report     = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, weaponFile));
+
+		assertTrue(report.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.ERROR && issue.code().equals("config.required")),
+		           "expected a config.required ERROR for the missing Durability section");
+		assertNotNull(weaponAddon.getWeapon("no_durability"),
+		              "a non-ammo config.required ERROR must not block registration");
+	}
+
+	/**
+	 * Gate {@code HG} review finding 1: {@code ammo.unknown_type} stays fatal.
+	 */
+	@Test
+	@DisplayName("registerWeapon: ammo.unknown_type still throws")
+	void registerWeapon_unknownAmmoType_throws() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		File weaponFile = writeWeaponFile("bad_ammo.yml", """
+				Information:
+				   Name: "&7Bad Ammo&r"
+				   Category: melee
+				   Material: IRON_HOE
+				   Durability:
+				      Base: 100
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+
+				Ammunition:
+				   Capacity: 6
+				   Ammo_Type: "does_not_exist"
+				""");
+
+		WeaponAddon weaponAddon = new WeaponAddon(null);
+		FileHandler handler     = new FileHandler(plugin, weaponFile);
+
+		assertThrows(InvalidConfigurationException.class,
+		             () -> weaponAddon.registerWeapon(ammunitionManager, handler));
+	}
+
+	private File writeWeaponFile(String name, String yaml) throws IOException {
+		File file = tempDir.resolve("weapon/" + name).toFile();
+		Files.createDirectories(file.getParentFile().toPath());
+		Files.writeString(file.toPath(), yaml);
+		return file;
 	}
 
 	/**

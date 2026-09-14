@@ -17,8 +17,12 @@ import org.luckyraven.bartizan.util.BartizanChatUtil;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
+import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 class WeaponInfoCommand extends SubArgument {
 
@@ -104,9 +108,13 @@ class WeaponInfoCommand extends SubArgument {
 
 		AmmunitionData ammunitionData = weapon.getAmmunitionData();
 		if (ammunitionData != null) {
+			List<Ammunition> ammoTypes = ammunitionData.getAmmoTypes();
+			String ammoTypeLabel = ammoTypes.isEmpty() ? "none" :
+			                       ammoTypes.stream().map(Ammunition::getName).collect(Collectors.joining(", "));
+
 			info.append("\n&7Magazine&8: &b").append(weapon.getCurrentMagCapacity())
 			    .append("&7/&b").append(ammunitionData.getMaxMagCapacity())
-			    .append("\n&7Ammo Type&8: &b").append(ammunitionData.getAmmoType());
+			    .append("\n&7Ammo Type&8: &b").append(ammoTypeLabel);
 		}
 
 		ReloadData reloadData = weapon.getReloadData();

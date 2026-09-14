@@ -25,7 +25,14 @@ public enum WeaponTag {
 	/**
 	 * The current amount of ammo left in the weapon. This can be ambiguous after time.
 	 */
-	AMMO_LEFT(VariableType.DYNAMIC);
+	AMMO_LEFT(VariableType.DYNAMIC),
+
+	/**
+	 * The ammo id currently loaded into the magazine (empty string = none configured, or no ammo item tracked).
+	 * Needed once a weapon can be configured with {@code Ammunition.Types} (multiple accepted ammo items) so
+	 * unloading on reload knows which item to give back.
+	 */
+	AMMO_TYPE(VariableType.DYNAMIC);
 
 	private final VariableType variableType;
 

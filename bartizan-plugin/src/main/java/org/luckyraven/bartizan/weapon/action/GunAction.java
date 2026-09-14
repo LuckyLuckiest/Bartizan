@@ -8,6 +8,7 @@ import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.raytrace.WeaponShooting;
@@ -32,6 +33,11 @@ public class GunAction {
 	}
 
 	public void weaponShoot(Player shooter) {
+		// Reload.Shoot_Delay_After_Reload: refuse to fire silently for a bit after a completed reload.
+		if (weapon.isShootLocked()) {
+			return;
+		}
+
 		// update data
 		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(shooter);
 
@@ -53,6 +59,13 @@ public class GunAction {
 
 		// no shot fired
 		if (!consumed) {
+			// Reload.Auto_Reload_When_Empty: start a reload instead of clicking, if the player can actually reload.
+			ReloadData reloadData = weapon.getReloadData();
+			if (reloadData != null && reloadData.isAutoReloadWhenEmpty()
+			    && weaponService.tryReload(plugin, shooter, weapon)) {
+				return;
+			}
+
 			// empty magazine sound — gated so burst/auto modes play it only once per press cycle
 			EmptyMagSoundGate.play(plugin, shooter, weapon, effectRunner);
 			return;
