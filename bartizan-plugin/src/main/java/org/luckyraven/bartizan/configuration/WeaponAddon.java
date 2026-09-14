@@ -122,6 +122,7 @@ public class WeaponAddon {
 			BeamWeaponParser.lowerPierce(beamWeapon);
 		}
 		applyEffects(root, shoot, weapon, report);
+		applyHud(root, weapon, report);
 
 		// hand the placeholder resolver to the weapon instance so its rendering path can resolve
 		// configured PlaceholderAPI tokens
@@ -257,6 +258,17 @@ public class WeaponAddon {
 		}
 
 		weapon.setEffects(effectsData);
+	}
+
+	/**
+	 * Parses the root {@code HUD:} section (weapons-roadmap.md gate {@code HD}) — category agnostic, like
+	 * {@link #applyEffects}.
+	 */
+	private void applyHud(NodeReader root, Weapon weapon, ConfigReport report) {
+		MappingNode hudSection = root.get("HUD").asMapping().orNull();
+		NodeReader  hud        = hudSection != null ? NodeReader.of(hudSection, report) : null;
+
+		weapon.setHudData(HudSectionParser.parse(hud, report));
 	}
 
 	private void applyScope(NodeReader root, Weapon weapon, ConfigReport report) {

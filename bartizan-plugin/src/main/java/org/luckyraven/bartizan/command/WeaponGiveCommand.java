@@ -1,9 +1,8 @@
 package org.luckyraven.bartizan.command;
 
+import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.PlayerInventory;
 import org.luckyraven.bartizan.Bartizan;
 import org.luckyraven.keystone.command.argument.Argument;
 import org.luckyraven.keystone.command.argument.SubArgument;
@@ -14,17 +13,16 @@ import org.luckyraven.bartizan.file.BartizanMessages;
 import org.luckyraven.bartizan.file.WeaponLoader;
 import org.luckyraven.keystone.persistence.FileHandler;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
-import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 
 import java.util.List;
-import java.util.Map;
 
 /**
- * {@code /bartizan weapon give <name> [amount]} (bartizan.md §1.4) — rewrite of
- * {@code W/command/WeaponGiveCommand.java}: {@code User<Player>.sendMessage} calls become
- * {@code player.sendMessage} directly (the only {@code User} method the original called, per §1.4's verified
- * survey), {@code Messages}/{@code GanglandChatUtil} become {@code BartizanMessages}/{@code BartizanChatUtil}.
+ * {@code /bartizan weapon give <player> <weapon> [amount]} (weapons-roadmap.md gate {@code HD}) — targets any
+ * online player and is usable from console, unlike self-only {@code /bartizan weapon get} (which shares the actual
+ * item-building/overflow-drop body via {@link WeaponGiveHelper}, not by copying it). {@code WeaponCommand}'s own
+ * {@code user} flag had to flip to {@code false} for this command to be console-reachable at all — see
+ * {@code WeaponCommand}'s constructor javadoc.
  */
 class WeaponGiveCommand extends SubArgument {
 
@@ -49,95 +47,65 @@ class WeaponGiveCommand extends SubArgument {
 	@Override
 	protected TriConsumer<Argument, CommandSender, String[]> action() {
 		return (argument, sender, args) -> sender.sendMessage(
-				BartizanChatUtil.setArguments(BartizanMessages.ARGUMENTS_MISSING.toString(), "<name>"));
+				BartizanChatUtil.setArguments(BartizanMessages.ARGUMENTS_MISSING.toString(), "<player> <weapon>"));
 	}
 
 	private void weaponGive() {
-		OptionalArgument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
-			Player player = (Player) sender;
+		OptionalArgument player = new OptionalArgument(bartizan, tree, (argument, sender, args) -> sender.sendMessage(
+				BartizanChatUtil.setArguments(BartizanMessages.ARGUMENTS_MISSING.toString(), "<weapon>")),
+				sender -> Bukkit.getOnlinePlayers().stream().map(Player::getName).toList());
 
-			String  weaponName = args[2];
-			boolean giveWeapon = giveWeapon(player, weaponName.toLowerCase(), 1);
-
-			if (giveWeapon) {
-				String receivedWeapon = BartizanMessages.RECEIVED_WEAPON.toString();
-				player.sendMessage(receivedWeapon.replace("%weapon%", weaponName).replace("%amount%", "1"));
-			} else {
-				String invalidWeapon = BartizanMessages.INVALID_WEAPON.toString();
-				player.sendMessage(invalidWeapon.replace("%args%", weaponName));
-			}
-		}, sender -> {
-			return weaponLoader.getFiles()
-					.stream().map(FileHandler::getName).toList();
-		});
+		OptionalArgument weapon = new OptionalArgument(bartizan, tree, (argument, sender, args) ->
+				handleGive(sender, args[2], args[3], 1),
+				sender -> weaponLoader.getFiles().stream().map(FileHandler::getName).toList());
 
 		OptionalArgument amount = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
-			Player player = (Player) sender;
-
-			String weaponName = args[2];
-			int    weaponAmount;
+			int giveAmount;
 
 			try {
-				weaponAmount = Integer.parseInt(args[3]);
+				giveAmount = Integer.parseInt(args[4]);
 			} catch (NumberFormatException exception) {
-				player.sendMessage(BartizanChatUtil.commandMessage(BartizanMessages.MUST_BE_NUMBERS.toString()));
+				sender.sendMessage(BartizanChatUtil.commandMessage(BartizanMessages.MUST_BE_NUMBERS.toString()));
 				return;
 			}
 
-			boolean giveWeapon = giveWeapon(player, weaponName.toLowerCase(), weaponAmount);
-
-			if (giveWeapon) {
-				String receivedWeapon = BartizanMessages.RECEIVED_WEAPON.toString();
-				String replace = receivedWeapon.replace("%weapon%", weaponName)
-				                               .replace("%amount%", String.valueOf(weaponAmount));
-				player.sendMessage(replace);
-			} else {
-				String invalidWeapon = BartizanMessages.INVALID_WEAPON.toString();
-				player.sendMessage(invalidWeapon.replace("%args%", weaponName));
-			}
+			handleGive(sender, args[2], args[3], giveAmount);
 		}, sender -> List.of("<amount>"));
 
-		name.setDisplayName("name");
+		player.setDisplayName("player");
+		weapon.setDisplayName("weapon");
 		amount.setDisplayName("amount");
 
-		name.addSubArgument(amount);
-		this.addSubArgument(name);
+		weapon.addSubArgument(amount);
+		player.addSubArgument(weapon);
+		this.addSubArgument(player);
 	}
 
-	private boolean giveWeapon(Player player, String name, int amount) {
-		Weapon weapon = weaponManager.getWeapon(player, null, name, true);
-
-		if (weapon == null) return false;
-
-		ItemStack       sampleItem   = weapon.buildItem(player);
-		int             maxStackSize = sampleItem.getMaxStackSize();
-		int             slots        = (int) Math.ceil(amount / (double) maxStackSize);
-		int             amountLeft   = amount;
-		PlayerInventory inventory    = player.getInventory();
-		ItemStack[]     items        = new ItemStack[slots];
-
-		for (int i = 0; i < slots; i++) {
-			int amountGive = Math.min(amountLeft, maxStackSize);
-
-			if (amountGive <= 0) break;
-
-			ItemStack item = weapon.buildItem(player);
-
-			item.setAmount(amountGive);
-
-			items[i] = item;
-
-			amountLeft -= amountGive;
+	private void handleGive(CommandSender sender, String playerName, String weaponName, int amount) {
+		Player target = Bukkit.getPlayerExact(playerName);
+		if (target == null) {
+			sender.sendMessage(BartizanMessages.PLAYER_NOT_FOUND.toString().replace("%player%", playerName));
+			return;
 		}
 
-		Map<Integer, ItemStack> left = inventory.addItem(items);
-
-		// make the player drop from their inventory the rest of items
-		for (ItemStack item : left.values()) {
-			player.getWorld().dropItemNaturally(player.getLocation(), item);
+		boolean gave = WeaponGiveHelper.give(weaponManager, target, weaponName.toLowerCase(), amount);
+		if (!gave) {
+			sender.sendMessage(BartizanMessages.INVALID_WEAPON.toString().replace("%args%", weaponName));
+			return;
 		}
 
-		return true;
+		target.sendMessage(BartizanMessages.RECEIVED_WEAPON.toString()
+		                                                   .replace("%weapon%", weaponName)
+		                                                   .replace("%amount%", String.valueOf(amount)));
+
+		// The target already saw RECEIVED_WEAPON above; a self-give (a player giving themselves the weapon) must
+		// not also get a second, redundant "gave X to Y" line.
+		if (!sender.equals(target)) {
+			sender.sendMessage(BartizanMessages.GAVE_WEAPON.toString()
+			                                                .replace("%weapon%", weaponName)
+			                                                .replace("%amount%", String.valueOf(amount))
+			                                                .replace("%player%", target.getName()));
+		}
 	}
 
 }

@@ -9,6 +9,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.bootstrap.BartizanContext;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
+import org.luckyraven.bartizan.hud.PlaceholderApiSupport;
 import org.luckyraven.keystone.nms.PacketBridge;
 
 @Getter
@@ -46,6 +47,7 @@ public final class Bartizan extends JavaPlugin {
 		// registered at bean construction, so a disable/enable cycle must not leave dead providers behind.
 		getServer().getServicesManager().unregisterAll(this);
 		PacketBridge.reset();
+		PlaceholderApiSupport.unregisterIfPresent();
 
 		if (context == null) return;
 

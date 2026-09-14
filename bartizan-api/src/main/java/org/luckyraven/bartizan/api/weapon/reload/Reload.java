@@ -28,6 +28,14 @@ public abstract class Reload implements Cloneable {
 	private       Weapon        weapon;
 	private       AtomicBoolean reloading;
 	private       Player        currentPlayer;
+	/**
+	 * Wall-clock start of the current reload and its total duration in ticks, set by {@link #startReloading(Player,
+	 * long)} — read back by {@link #reloadProgress()} for the HUD (weapons-roadmap.md gate {@code HD}). Spigot has
+	 * no public "current tick" accessor, so progress is derived from the wall clock, same as {@code
+	 * StatusEffectService}'s tick-equivalent clock.
+	 */
+	private       long          reloadStartMillis;
+	private       long          reloadDurationTicks;
 
 	public Reload(Weapon weapon, Ammunition ammunition) {
 		this.weapon     = weapon;
@@ -71,16 +79,47 @@ public abstract class Reload implements Cloneable {
 		return reloading.get();
 	}
 
+	/**
+	 * @return 0.0-1.0 progress through the current reload (elapsed wall-clock time over {@code totalDurationTicks}
+	 * 		from the {@link #startReloading(Player, long)} call that started it), or {@code 0.0} when not reloading.
+	 */
+	public double reloadProgress() {
+		if (!isReloading()) return 0.0;
+		if (reloadDurationTicks <= 0) return 1.0;
+
+		long   elapsedMillis = System.currentTimeMillis() - reloadStartMillis;
+		double progress      = elapsedMillis / (reloadDurationTicks * 50.0);
+
+		return Math.max(0.0, Math.min(1.0, progress));
+	}
+
+	/**
+	 * @return the total duration (ticks) of the current/most recent reload, as passed to {@link
+	 * 		#startReloading(Player, long)} — read by {@code WeaponReloadListener} for the {@code HUD.Reload_Item_Cooldown}
+	 * 		vanilla item-cooldown overlay (weapons-roadmap.md gate {@code HD}).
+	 */
+	public long totalDurationTicks() {
+		return reloadDurationTicks;
+	}
+
 	public void rebindWeapon(Weapon newWeapon) {
 		this.weapon = newWeapon;
 	}
 
-	protected void startReloading(Player player) {
+	/**
+	 * @param totalDurationTicks the full duration of this reload attempt in ticks ({@code Reload.Cooldown}, or
+	 *                            {@code numberOfInsertions * Reload.Cooldown} for a numbered reload) — read back by
+	 *                            {@link #reloadProgress()}.
+	 */
+	protected void startReloading(Player player, long totalDurationTicks) {
 		// track the player for stopReloading()
 		this.currentPlayer = player;
 
 		// set that the weapon is reloading
 		this.reloading.set(true);
+
+		this.reloadStartMillis   = System.currentTimeMillis();
+		this.reloadDurationTicks = totalDurationTicks;
 
 		if (player == null) return;
 

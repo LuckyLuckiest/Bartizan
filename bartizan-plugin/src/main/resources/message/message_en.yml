@@ -1,5 +1,6 @@
 # message_en.yml - Bartizan's message catalogue (bartizan.md §1.5).
-# 18 entries: 4 prefixes + 14 content members - exactly what BartizanMessages reads, nothing else.
+# Started at 18 entries: 4 prefixes + 14 content members - exactly what BartizanMessages read at gate HA.
+# Gate HD added Errors.Player_Not_Found and Commands.Weapon.Gave for /bartizan weapon give <player> <weapon>.
 
 Normal:
    Prefix: "&8&l[&7B&fT&7Z&8&l]&7 "
@@ -10,6 +11,7 @@ Commands:
       Missing_Arguments: "&4Missing Arguments&7: "
    Weapon:
       Received: "You received &8(&7%amount%&8) &e%weapon% &7weapon."
+      Gave: "&7Gave &8(&7%amount%&8) &e%weapon% &7to &b%player%&7."
       List_Header: "List of weapons"
    Ammo:
       Received: "You received &8(&7%amount%&8) &e%ammo% &7ammunition."
@@ -21,6 +23,7 @@ Commands:
 Errors:
    Prefix: "&4Error&7: "
    Must_Be_Numbers: "&a%command% &7must be numbers."
+   Player_Not_Found: "&cPlayer not found: &3%player%&c."
    Not_Valid_Weapon: "&cInvalid weapon type &3%args%&c."
    Not_Valid_Ammo: "&cInvalid ammunition type &3%args%&c."
    Wearable:

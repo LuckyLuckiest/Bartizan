@@ -49,7 +49,7 @@ class by name — it only reads a small number of consumer-implemented interface
 (`player -> !player.isDead()`) when no consumer has registered one — a downed-player gate, a PvP-zone gate, or any
 other "can this player currently be hit" rule is entirely the consumer's choice to implement or skip.
 
-## `BartizanApi`'s five accessors
+## `BartizanApi`'s five accessors, plus three gate-`HD` convenience methods
 
 ```java
 public interface BartizanApi {
@@ -58,8 +58,19 @@ public interface BartizanApi {
     AmmunitionCatalog ammunition();
     NpcWeaponFactory npcWeapons();
     WeaponItemApi items();
+
+    // gate HD
+    @Nullable Weapon getHeldWeapon(Player player);
+    boolean isScoping(Player player);
+    boolean isReloading(Player player);
 }
 ```
+
+`getHeldWeapon`/`isScoping`/`isReloading` (added at gate `HD`, alongside the HUD feature) are a shortcut over
+`weapons().validateAndGetWeapon(player, item)` for the common "what is this player currently holding/doing" query —
+`getHeldWeapon` checks the main hand, then the off hand; `isScoping`/`isReloading` read that weapon's
+`ScopeData`/`Reload` state. Like `validateAndGetWeapon`, `getHeldWeapon` is **not** read-only: it can mint and
+register a live `Weapon` instance for an item that has no runtime registry entry yet.
 
 > `NpcWeaponFactory.create` throws `IllegalArgumentException` for a weapon name that is not configured; call `items().isValidWeaponName(name)` first (Gangland's `BartizanNpcWeapons` does, returning `NpcRangedAttack.NONE`).
 
@@ -70,6 +81,9 @@ public interface BartizanApi {
 | `wearables()` | `wearable.WearableCatalog` | `getWearable(String)`, `getWearables()`, `resolveWearable(@Nullable ItemStack)`, `applyWearableReduction(double, LivingEntity, boolean)`, `reduceCritBonus(double, LivingEntity)`, `reduceFireTicks(int, LivingEntity)` |
 | `ammunition()` | `ammo.AmmunitionCatalog` | `getAmmunitionKeys()`, `getAmmunition(String)` |
 | `npcWeapons()` | `npc.NpcWeaponFactory` | `create(LivingEntity shooter, String weaponName, double fireRateMultiplier, double aimErrorDegrees)` → `npc.NpcWeaponController extends org.luckyraven.keystone.npc.spi.NpcRangedAttack` — the sole implementation of that Keystone SPI. A consumer with no Bartizan installed uses `NpcRangedAttack.NONE` instead of calling this accessor. |
+| `getHeldWeapon(Player)` | `@Nullable weapon.Weapon` | Gate `HD`. Main hand, then off hand; `null` when neither holds a valid weapon. |
+| `isScoping(Player)` | `boolean` | Gate `HD`. `getHeldWeapon(player)` scoped in. |
+| `isReloading(Player)` | `boolean` | Gate `HD`. `getHeldWeapon(player)` mid-reload. |
 | `items()` | `item.WeaponItemApi` | `buildItem(String)`, `isValidWeaponName(String)`, `isSameWeapon(ItemStack, ItemStack)`, `cleanDisplayName(ItemStack)` — see the worked example below. |
 
 ### `WeaponItemApi` notes

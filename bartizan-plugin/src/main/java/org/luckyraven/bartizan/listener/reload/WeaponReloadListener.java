@@ -12,6 +12,7 @@ import org.luckyraven.keystone.bean.autowire.AutowireTarget;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.api.weapon.dto.HudData;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.weapon.WeaponService;
@@ -37,6 +38,11 @@ public class WeaponReloadListener implements Listener {
 
 		EffectContext ctx = EffectContext.builder().weapon(event.getWeapon()).source(event.getPlayer()).build();
 		effectRunner.run(event.getWeapon(), EffectHook.ON_RELOAD_START, ctx);
+
+		if (isReloadItemCooldownEnabled(event.getWeapon())) {
+			long ticks = event.getWeapon().reloadDurationTicks();
+			if (ticks > 0) event.getPlayer().setCooldown(event.getWeapon().getMaterial(), (int) ticks);
+		}
 	}
 
 	@EventHandler
@@ -46,10 +52,22 @@ public class WeaponReloadListener implements Listener {
 		// A swap-cancelled reload (InstantReload/NumberedReload#stopReloading) also raises this event so state
 		// stays consistent, but ON_RELOAD_CANCEL (below, via onHeldSlotChange) is the feedback hook for that case
 		// — running ON_RELOAD_END too would double-fire the reload-complete cue.
-		if (event.isInterrupted()) return;
+		if (event.isInterrupted()) {
+			// The cooldown overlay was set for the full reload duration at start; a swap-cancelled reload must not
+			// leave the player staring at a cooldown that will never finish counting down on its own.
+			if (isReloadItemCooldownEnabled(event.getWeapon())) {
+				event.getPlayer().setCooldown(event.getWeapon().getMaterial(), 0);
+			}
+			return;
+		}
 
 		EffectContext ctx = EffectContext.builder().weapon(event.getWeapon()).source(event.getPlayer()).build();
 		effectRunner.run(event.getWeapon(), EffectHook.ON_RELOAD_END, ctx);
+	}
+
+	private boolean isReloadItemCooldownEnabled(Weapon weapon) {
+		HudData hud = weapon.getHudData();
+		return hud != null && hud.isReloadItemCooldown();
 	}
 
 	@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

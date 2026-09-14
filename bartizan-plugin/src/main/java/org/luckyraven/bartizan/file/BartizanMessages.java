@@ -10,7 +10,9 @@ import java.util.List;
 /**
  * Bartizan's message catalogue — same shape as Gangland's {@code Messages} enum (bartizan.md §1.5), backed by
  * Keystone's {@link MessageProvider} through {@link org.luckyraven.keystone.persistence.message.LanguageLoader}.
- * 18 entries: 4 prefixes + 14 content members (the exhaustive list from bartizan.md §1.5 — nothing else is added).
+ * Started at 18 entries (4 prefixes + 14 content members, bartizan.md §1.5's exhaustive list); gate {@code HD}
+ * added {@link #PLAYER_NOT_FOUND} and {@link #GAVE_WEAPON} for {@code /bartizan weapon give <player> <weapon>}'s
+ * new target-player feedback.
  */
 public enum BartizanMessages {
 
@@ -23,9 +25,11 @@ public enum BartizanMessages {
 	// commands - argument framework
 	ARGUMENTS_MISSING("Commands.Syntax.Missing_Arguments", Type.COMMAND),
 	MUST_BE_NUMBERS("Errors.Must_Be_Numbers", Type.ERROR),
+	PLAYER_NOT_FOUND("Errors.Player_Not_Found", Type.ERROR),
 
 	// commands - weapon
 	RECEIVED_WEAPON("Commands.Weapon.Received", Type.COMMAND),
+	GAVE_WEAPON("Commands.Weapon.Gave", Type.COMMAND),
 	INVALID_WEAPON("Errors.Not_Valid_Weapon", Type.ERROR),
 	WEAPON_LIST_HEADER("Commands.Weapon.List_Header", Type.COMMAND),
 

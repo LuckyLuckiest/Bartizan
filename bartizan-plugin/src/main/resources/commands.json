@@ -8,8 +8,12 @@
 		"description": "Shows a list of registered weapons."
 	},
 	"weapon_give": {
-		"usage": "/bartizan weapon give <name> <amount>",
-		"description": "Gives the specified weapon if registered."
+		"usage": "/bartizan weapon give <player> <weapon> <amount>",
+		"description": "Gives the specified weapon to a player, if registered. Usable from console."
+	},
+	"weapon_get": {
+		"usage": "/bartizan weapon get <weapon> <amount>",
+		"description": "Gives yourself the specified weapon, if registered."
 	},
 	"weapon_info": {
 		"usage": "/bartizan weapon info <name>",

@@ -61,6 +61,8 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	private       ScopeData              scopeData;
 	private       SpreadData             spreadData;
 	private       EffectsData            effects = EffectsData.empty();
+	@Nullable
+	private       HudData                hudData;
 	// Runtime state
 	private       int                    currentMagCapacity;
 	private       SelectiveFire          currentSelectiveFire;
@@ -153,6 +155,22 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 
 	public boolean isReloading() {
 		return reload != null && reload.isReloading();
+	}
+
+	/**
+	 * @return 0.0-1.0 progress through the current reload, 0.0 when not reloading. Backed by {@link
+	 * 		Reload#reloadProgress()}.
+	 */
+	public double reloadProgress() {
+		return reload != null ? reload.reloadProgress() : 0.0;
+	}
+
+	/**
+	 * @return the total duration (ticks) of the current/most recent reload, or 0 when the weapon has no reload
+	 * 		configured. Backed by {@link Reload#totalDurationTicks()}.
+	 */
+	public long reloadDurationTicks() {
+		return reload != null ? reload.totalDurationTicks() : 0L;
 	}
 
 	public void reload(JavaPlugin plugin, Player player, boolean removeAmmunition) {
@@ -414,6 +432,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 
 		this.spreadData           = source.spreadData != null ? source.spreadData.clone() : null;
 		this.effects              = source.effects != null ? source.effects.clone() : EffectsData.empty();
+		this.hudData              = source.hudData != null ? source.hudData.clone() : null;
 		this.recoil               = new RecoilManager(this);
 		this.spread               = new SpreadManager(this);
 		this.durabilityCalculator = new DurabilityCalculator(this);

@@ -144,6 +144,11 @@ Modifiers:
    Flat_Damage: 0.0
    Armor_Piercing: 0.1
 
+# weapons-roadmap.md gate HD: no Action_Bar/Boss_Bar here, just the vanilla item-cooldown overlay (the diagonal
+# sweep on the hotbar icon) for the whole reload duration.
+HUD:
+   Reload_Item_Cooldown: true
+
 Death_Messages:
    - "&c%victim% ate a shell from %killer%'s %item%."
    - "&c%killer% blasted %victim% point-blank."

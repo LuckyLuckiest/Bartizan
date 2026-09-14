@@ -1,10 +1,13 @@
 package org.luckyraven.bartizan;
 
+import org.bukkit.entity.Player;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
 import org.luckyraven.bartizan.api.BartizanApi;
 import org.luckyraven.bartizan.api.ammo.AmmunitionCatalog;
 import org.luckyraven.bartizan.api.item.WeaponItemApi;
 import org.luckyraven.bartizan.api.npc.NpcWeaponFactory;
+import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.WeaponCatalog;
 import org.luckyraven.bartizan.api.wearable.WearableCatalog;
 import org.luckyraven.bartizan.weapon.WeaponManager;
@@ -62,6 +65,27 @@ public final class BartizanApiImpl implements BartizanApi {
 	@Override
 	public WeaponItemApi items() {
 		return items;
+	}
+
+	@Override
+	@Nullable
+	public Weapon getHeldWeapon(Player player) {
+		Weapon mainHand = weapons.validateAndGetWeapon(player, player.getInventory().getItemInMainHand());
+		if (mainHand != null) return mainHand;
+
+		return weapons.validateAndGetWeapon(player, player.getInventory().getItemInOffHand());
+	}
+
+	@Override
+	public boolean isScoping(Player player) {
+		Weapon weapon = getHeldWeapon(player);
+		return weapon != null && weapon.getScopeData() != null && weapon.getScopeData().isScoped();
+	}
+
+	@Override
+	public boolean isReloading(Player player) {
+		Weapon weapon = getHeldWeapon(player);
+		return weapon != null && weapon.isReloading();
 	}
 
 }

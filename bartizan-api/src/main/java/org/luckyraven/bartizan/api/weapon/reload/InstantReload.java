@@ -51,7 +51,7 @@ public class InstantReload extends Reload {
 
 		// start reloading the gun
 		timer.addIntervalTaskPair(0, time -> {
-			super.startReloading(player);
+			super.startReloading(player, reloadData.getCooldown());
 		});
 
 		// the sound that plays at the middle

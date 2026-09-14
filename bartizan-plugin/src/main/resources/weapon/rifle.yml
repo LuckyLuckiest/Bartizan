@@ -270,6 +270,29 @@ Modifiers:
    # Armor Piercing - bypassPercentage (0.0-1.0)
    Armor_Piercing: 0.4
 
+# Continuous HUD shown while this weapon is held (weapons-roadmap.md gate HD). All three keys below are optional.
+# Action_Bar owns the action bar for as long as the weapon is held - a hook Action_Bar effect (or the
+# selective-fire change message) gets overwritten by this within 5 ticks, so use %selective_fire%/%reload% in the
+# template below instead of a separate hook if you need that information shown.
+HUD:
+   # Placeholders: %weapon% (display name, no ammo suffix), %ammo_left%/%ammo_max% (%ammo_max% shows "∞" when the
+   # weapon has no magazine), %selective_fire% (current fire mode name, empty if the weapon has none),
+   # %reload% (Reload.Action_Bar.Reloading while reloading, else empty), %durability% (current/max, empty when
+   # unbreakable), %firearm_state% (reloading|scoping|empty|ready), %reload_progress% (0-100 while reloading,
+   # else empty).
+   Action_Bar: "&6%weapon% &8«&e%ammo_left%&7/&e%ammo_max%&8» &7%selective_fire% %reload%"
+
+   Boss_Bar:
+      # Same placeholders as Action_Bar.
+      Title: "&6%weapon% &7%ammo_left%/%ammo_max%"
+      # org.bukkit.boss.BarColor. A bad value is a ConfigReport warning, falling back to WHITE.
+      Color: YELLOW
+      # org.bukkit.boss.BarStyle. A bad value is a ConfigReport warning, falling back to SOLID.
+      Style: SEGMENTED_10
+
+   # Shows the vanilla item-cooldown overlay (the diagonal sweep on the hotbar icon) for the whole reload duration.
+   Reload_Item_Cooldown: true
+
 Death_Messages:
    - "&c%victim% was gunned down by %killer%'s %item%."
    - "&c%killer% landed a clean shot on %victim%."

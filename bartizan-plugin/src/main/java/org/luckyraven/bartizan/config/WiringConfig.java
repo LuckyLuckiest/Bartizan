@@ -18,6 +18,8 @@ import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.file.BartizanSettings;
 import org.luckyraven.bartizan.file.WeaponBlockRegenerationSettings;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
+import org.luckyraven.bartizan.hud.HudService;
+import org.luckyraven.bartizan.hud.PlaceholderApiSupport;
 import org.luckyraven.bartizan.npc.NpcWeaponFactoryImpl;
 import org.luckyraven.bartizan.raytrace.WeaponRaytracerImpl;
 import org.luckyraven.bartizan.status.StatusEffectService;
@@ -124,6 +126,22 @@ public final class WiringConfig {
 		StatusEffectService service = new StatusEffectService(bartizan, effectRunner, wearableService,
 		                                                       () -> System.currentTimeMillis() / 50L, new Random());
 		service.start();
+		return service;
+	}
+
+	/**
+	 * Continuous per-player weapon HUD (weapons-roadmap.md gate {@code HD}): action bar/boss bar ticker for a
+	 * weapon's {@code HUD:} block. Also the registration point for the PlaceholderAPI expansion — see
+	 * {@link PlaceholderApiSupport} for why that call, not the expansion itself, lives directly in this method
+	 * rather than behind its own bean.
+	 */
+	@Bean
+	public HudService hudService(WeaponService weaponService) {
+		HudService service = new HudService(bartizan, weaponService);
+		service.start();
+
+		PlaceholderApiSupport.registerIfPresent(bartizan, weaponService);
+
 		return service;
 	}
 

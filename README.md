@@ -56,8 +56,9 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
                                        .weapon                 Weapon + 6 subclasses (incl. BeamWeapon), WeaponType, ThrowableType,
                                                                 SelectiveFire, WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
-                                       .weapon.dto              21 config records (AmmunitionData, ChargeData, BeamData,
-                                                                StatusData, DamageData, EffectHook, EffectSpec, EffectsData, ...)
+                                       .weapon.dto              22 config records (AmmunitionData, ChargeData, BeamData,
+                                                                StatusData, DamageData, EffectHook, EffectSpec, EffectsData,
+                                                                HudData, ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager + action/*
                                        .weapon.recoil            RecoilManager
@@ -68,12 +69,14 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
 bartizan-plugin org.luckyraven.bartizan                       Bartizan, BartizanApiImpl
                                        .ammo                   AmmunitionManager
                                        .bootstrap              BartizanContext, DefaultListenerService
-                                       .command(.data|.wearable) WeaponCommand/Give/Info/List, Ammunition*, Wearable*, DebugCommand
+                                       .command(.data|.wearable) WeaponCommand/Give/Get/Info/List, Ammunition*, Wearable*, DebugCommand
                                        .config                 KernelConfig, FilesConfig, WiringConfig, ItemConfig
-                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 12 YAML section parsers (incl. BeamWeaponParser)
+                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 13 YAML section parsers (incl. BeamWeaponParser,
+                                                                HudSectionParser)
                                        .effect(.impl)          Effect, EffectContext, EffectRunner + 15 *HookEffect
                                        .file                   BartizanSettings, BartizanMessages, WeaponLoader
                                        .fire                   PluginFireRegistry
+                                       .hud                    HudService, WeaponPlaceholders, BartizanExpansion, PlaceholderApiSupport
                                        .item                   converters, serializers, refreshers, WeaponItemApiImpl, BartizanItemVocabulary
                                        .listener(.*)           WeaponInteract, ScopeJumpListener, death/fire/player/projectile/reload/selective/wearable
                                        .metrics                WeaponMetrics

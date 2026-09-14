@@ -52,11 +52,6 @@ public class NumberedReload extends Reload {
 
 		timer = new SequenceTimer(plugin);
 
-		// start reloading the gun
-		timer.addIntervalTaskPair(0, time -> {
-			super.startReloading(player);
-		});
-
 		AmmunitionData ammunitionData = getWeapon().getAmmunitionData();
 		if (ammunitionData == null) return;
 
@@ -82,6 +77,13 @@ public class NumberedReload extends Reload {
 
 		ReloadData reloadData = getWeapon().getReloadData();
 		if (reloadData == null) return;
+
+		// start reloading the gun — the total duration (for Weapon#reloadProgress, gate HD) is known only now that
+		// numberOfInsertions has been clamped to what the player actually carries.
+		long totalDurationTicks = (long) numberOfInsertions * reloadData.getCooldown();
+		timer.addIntervalTaskPair(0, time -> {
+			super.startReloading(player, totalDurationTicks);
+		});
 
 		for (int i = 0; i < numberOfInsertions; ++i) {
 			timer.addIntervalTaskPair(reloadData.getCooldown(), time -> {

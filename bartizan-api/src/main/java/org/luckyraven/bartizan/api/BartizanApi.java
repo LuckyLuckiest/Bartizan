@@ -1,8 +1,11 @@
 package org.luckyraven.bartizan.api;
 
+import org.bukkit.entity.Player;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.ammo.AmmunitionCatalog;
 import org.luckyraven.bartizan.api.item.WeaponItemApi;
 import org.luckyraven.bartizan.api.npc.NpcWeaponFactory;
+import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.WeaponCatalog;
 import org.luckyraven.bartizan.api.wearable.WearableCatalog;
 
@@ -23,5 +26,24 @@ public interface BartizanApi {
 	NpcWeaponFactory npcWeapons();
 
 	WeaponItemApi items();
+
+	/**
+	 * @return the weapon {@code player} is holding (main hand, then off hand), or {@code null} when neither hand
+	 * 		holds a valid weapon item (weapons-roadmap.md gate {@code HD}).
+	 */
+	@Nullable
+	Weapon getHeldWeapon(Player player);
+
+	/**
+	 * @return {@code true} when {@code player}'s held weapon (see {@link #getHeldWeapon(Player)}) is currently
+	 * 		scoped in.
+	 */
+	boolean isScoping(Player player);
+
+	/**
+	 * @return {@code true} when {@code player}'s held weapon (see {@link #getHeldWeapon(Player)}) is currently
+	 * 		reloading.
+	 */
+	boolean isReloading(Player player);
 
 }

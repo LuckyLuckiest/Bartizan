@@ -20,6 +20,12 @@ import java.util.Map;
  * Keystone's {@link Command} directly (no Gangland adapter), permission namespace {@code bartizan.command.weapon}
  * via the prefix overload, help rendered through {@link HelpInfo} against {@link InformationManager}'s
  * {@code weapon_*} entries.
+ *
+ * <p>The {@code user} flag ({@code Command}'s 4th constructor argument) gates the WHOLE {@code /bartizan weapon}
+ * tree, not any one sub-argument — so it had to flip from {@code true} to {@code false} at gate {@code HD} for
+ * {@code give <player> <weapon> [amount]} to be usable from console. {@code info}/{@code list} still work
+ * unchanged for players; {@code get} enforces its own self-only check since the framework no longer does it for
+ * this command.
  */
 @Getter
 @CommandHandler
@@ -36,7 +42,7 @@ public final class WeaponCommand extends Command {
 	                     WeaponManager weaponManager,
 	                     WeaponAddon weaponAddon,
 	                     WeaponLoader weaponLoader) {
-		super(bartizan, Bartizan.FULL_PREFIX, "weapon", true);
+		super(bartizan, Bartizan.FULL_PREFIX, "weapon", false);
 
 		this.bartizan      = bartizan;
 		this.weaponManager = weaponManager;
@@ -62,12 +68,14 @@ public final class WeaponCommand extends Command {
 	@Override
 	protected void initializeArguments() {
 		Argument give = new WeaponGiveCommand(bartizan, getArgumentTree(), getArgument(), weaponManager, weaponLoader);
+		Argument get  = new WeaponGetCommand(bartizan, getArgumentTree(), getArgument(), weaponManager, weaponLoader);
 		Argument info = new WeaponInfoCommand(bartizan, getArgumentTree(), getArgument(), weaponManager, weaponAddon);
 		Argument list = new WeaponListCommand(bartizan, getArgumentTree(), getArgument(), weaponAddon);
 
 		List<Argument> arguments = new ArrayList<>();
 
 		arguments.add(give);
+		arguments.add(get);
 		arguments.add(info);
 		arguments.add(list);
 

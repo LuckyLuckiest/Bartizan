@@ -64,6 +64,9 @@
         <keystone.version>1.9.0</keystone.version>
 
         <viaversion.version>5.8.1</viaversion.version>
+        <!-- Gate HD: WeaponPlaceholders' PlaceholderAPI expansion. The "placeholderapi" repository below already
+             existed pre-HD (declared for a hypothetical future need); this is its first real consumer. -->
+        <placeholderapi.version>2.11.6</placeholderapi.version>
         <xseries.version>13.6.0</xseries.version>
         <gson.version>2.10.1</gson.version>
         <bstats.version>3.2.1</bstats.version>
@@ -184,6 +187,12 @@
                 <groupId>com.viaversion</groupId>
                 <artifactId>viaversion-api</artifactId>
                 <version>${viaversion.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>me.clip</groupId>
+                <artifactId>placeholderapi</artifactId>
+                <version>${placeholderapi.version}</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>

@@ -3,7 +3,9 @@ package org.luckyraven.bartizan.command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.Bartizan;
+import org.luckyraven.keystone.command.CommandMessages;
 import org.luckyraven.keystone.command.argument.Argument;
 import org.luckyraven.keystone.command.argument.SubArgument;
 import org.luckyraven.keystone.command.argument.types.OptionalArgument;
@@ -41,7 +43,10 @@ class WeaponInfoCommand extends SubArgument {
 	@Override
 	protected TriConsumer<Argument, CommandSender, String[]> action() {
 		return (argument, sender, args) -> {
-			Player player = (Player) sender;
+			// Reads the sender's own held item, so unlike the name-arg branch below this one genuinely needs a
+			// player (WeaponCommand's user flag no longer gates this for us — see its constructor javadoc).
+			Player player = requirePlayer(sender);
+			if (player == null) return;
 
 			ItemStack itemStack = player.getInventory().getItemInMainHand();
 			Weapon    weapon    = weaponManager.validateAndGetWeapon(player, itemStack);
@@ -57,17 +62,15 @@ class WeaponInfoCommand extends SubArgument {
 
 	private void weaponInfo() {
 		OptionalArgument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
-			Player player = (Player) sender;
-
 			String weaponName = args[2];
 			Weapon weapon     = weaponAddon.getWeapon(weaponName);
 
 			if (weapon == null) {
-				player.sendMessage(BartizanMessages.INVALID_WEAPON.toString().replace("%args%", weaponName));
+				sender.sendMessage(BartizanMessages.INVALID_WEAPON.toString().replace("%args%", weaponName));
 				return;
 			}
 
-			sendInfo(player, weapon);
+			sendInfo(sender, weapon);
 		}, sender -> weaponAddon.getWeaponKeys()
 				.stream().toList());
 
@@ -76,9 +79,17 @@ class WeaponInfoCommand extends SubArgument {
 		this.addSubArgument(name);
 	}
 
-	private void sendInfo(Player player, Weapon weapon) {
+	@Nullable
+	private Player requirePlayer(CommandSender sender) {
+		if (sender instanceof Player player) return player;
+
+		sender.sendMessage(CommandMessages.playerOnly());
+		return null;
+	}
+
+	private void sendInfo(CommandSender sender, Weapon weapon) {
 		JsonFormatter jsonFormatter = new JsonFormatter();
-		player.sendMessage(jsonFormatter.formatToJson(BartizanChatUtil.color(buildInfo(weapon)), " ".repeat(3)));
+		sender.sendMessage(jsonFormatter.formatToJson(BartizanChatUtil.color(buildInfo(weapon)), " ".repeat(3)));
 	}
 
 	private String buildInfo(Weapon weapon) {

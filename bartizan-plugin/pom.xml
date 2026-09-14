@@ -148,6 +148,14 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- Gate HD: BartizanExpansion. plugin.yml already softdepends on PlaceholderAPI; PlaceholderApiSupport
+             only touches this dependency's classes once PlaceholderAPI is actually installed and enabled. -->
+        <dependency>
+            <groupId>me.clip</groupId>
+            <artifactId>placeholderapi</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.mockito</groupId>
