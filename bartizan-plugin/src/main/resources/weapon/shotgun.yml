@@ -145,7 +145,8 @@ Modifiers:
    Armor_Piercing: 0.1
 
 # weapons-roadmap.md gate HD: no Action_Bar/Boss_Bar here, just the vanilla item-cooldown overlay (the diagonal
-# sweep on the hotbar icon) for the whole reload duration.
+# sweep on the hotbar icon) for the whole reload duration. The overlay is keyed by item Material, not by weapon -
+# two weapons sharing a Material show each other's reload overlay on the hotbar (firing is unaffected).
 HUD:
    Reload_Item_Cooldown: true
 

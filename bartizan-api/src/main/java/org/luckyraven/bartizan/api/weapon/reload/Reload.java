@@ -85,7 +85,9 @@ public abstract class Reload implements Cloneable {
 	 */
 	public double reloadProgress() {
 		if (!isReloading()) return 0.0;
-		if (reloadDurationTicks <= 0) return 1.0;
+		// A zero-duration reload (e.g. NumberedReload with numberOfInsertions == 0) is still mid-reload for one
+		// tick - report empty progress rather than flashing the HUD bar full.
+		if (reloadDurationTicks <= 0) return 0.0;
 
 		long   elapsedMillis = System.currentTimeMillis() - reloadStartMillis;
 		double progress      = elapsedMillis / (reloadDurationTicks * 50.0);

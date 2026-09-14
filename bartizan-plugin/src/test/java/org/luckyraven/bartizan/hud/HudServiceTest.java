@@ -125,4 +125,31 @@ class HudServiceTest {
 		verify(bar).removeAll();
 	}
 
+	@Test
+	@DisplayName("switching between two HUD weapons refreshes the reused boss bar's colour and style")
+	void tick_switchingHudWeapons_refreshesColorAndStyle() {
+		HudData.BossBarData firstBarData  = new HudData.BossBarData("&6First", BarColor.YELLOW, BarStyle.SEGMENTED_10);
+		HudData.BossBarData secondBarData = new HudData.BossBarData("&6Second", BarColor.RED, BarStyle.SOLID);
+		Weapon              firstWeapon   = hudWeapon(new HudData(null, firstBarData, false), 15, 30);
+		Weapon              secondWeapon  = hudWeapon(new HudData(null, secondBarData, false), 15, 30);
+
+		ItemStack item   = mock(ItemStack.class);
+		Player    player = player(item);
+
+		BossBar bar = mock(BossBar.class);
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(player));
+			bukkit.when(() -> Bukkit.createBossBar(any(), any(), any())).thenReturn(bar);
+
+			when(weaponService.validateAndGetWeapon(player, item)).thenReturn(firstWeapon);
+			service.tick(); // creates the bar with the first weapon's colour/style
+
+			when(weaponService.validateAndGetWeapon(player, item)).thenReturn(secondWeapon);
+			service.tick(); // reuses the same bar - must pick up the second weapon's colour/style
+		}
+
+		verify(bar).setColor(BarColor.RED);
+		verify(bar).setStyle(BarStyle.SOLID);
+	}
+
 }

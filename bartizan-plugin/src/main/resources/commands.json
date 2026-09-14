@@ -9,11 +9,11 @@
 	},
 	"weapon_give": {
 		"usage": "/bartizan weapon give <player> <weapon> <amount>",
-		"description": "Gives the specified weapon to a player, if registered. Usable from console."
+		"description": "Gives the specified weapon to a player, if registered. Usable from console. Amount is capped at 2304 (36 stacks)."
 	},
 	"weapon_get": {
 		"usage": "/bartizan weapon get <weapon> <amount>",
-		"description": "Gives yourself the specified weapon, if registered."
+		"description": "Gives yourself the specified weapon, if registered. Amount is capped at 2304 (36 stacks)."
 	},
 	"weapon_info": {
 		"usage": "/bartizan weapon info <name>",

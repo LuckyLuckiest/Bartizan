@@ -15,6 +15,10 @@ import java.util.Map;
  */
 final class WeaponGiveHelper {
 
+	// ponytail: 36 inventory slots * 64 (largest vanilla stack size) - a console-reachable amount with no upper
+	// bound lets `give <p> rifle 2000000000` allocate an ItemStack[] large enough to OOM the server.
+	private static final int MAX_AMOUNT = 2304;
+
 	private WeaponGiveHelper() {
 	}
 
@@ -22,12 +26,15 @@ final class WeaponGiveHelper {
 	 * @param receiver the player whose inventory receives the weapon (the {@code /give} target, or the sole player
 	 *                 for {@code /get}).
 	 * @param name weapon file name (already lower-cased by the caller).
+	 * @param amount clamped to {@code [1, MAX_AMOUNT]} before use.
 	 *
 	 * @return {@code false} when {@code name} is not a configured weapon; the receiver's inventory is untouched.
 	 */
 	static boolean give(WeaponManager weaponManager, Player receiver, String name, int amount) {
 		Weapon weapon = weaponManager.getWeapon(receiver, null, name, true);
 		if (weapon == null) return false;
+
+		amount = Math.max(1, Math.min(amount, MAX_AMOUNT));
 
 		ItemStack       sampleItem   = weapon.buildItem(receiver);
 		int             maxStackSize = sampleItem.getMaxStackSize();

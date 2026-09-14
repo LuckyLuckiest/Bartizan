@@ -271,9 +271,9 @@ Modifiers:
    Armor_Piercing: 0.4
 
 # Continuous HUD shown while this weapon is held (weapons-roadmap.md gate HD). All three keys below are optional.
-# Action_Bar owns the action bar for as long as the weapon is held - a hook Action_Bar effect (or the
-# selective-fire change message) gets overwritten by this within 5 ticks, so use %selective_fire%/%reload% in the
-# template below instead of a separate hook if you need that information shown.
+# Action_Bar runs on the action bar's background channel, so it never locks out other plugins' background HUDs -
+# a foreground message (a hook Action_Bar effect, the selective-fire cycle message, the charge meter) shows on
+# top of it for its own ~2.5s window, then this HUD resumes underneath.
 HUD:
    # Placeholders: %weapon% (display name, no ammo suffix), %ammo_left%/%ammo_max% (%ammo_max% shows "∞" when the
    # weapon has no magazine), %selective_fire% (current fire mode name, empty if the weapon has none),
@@ -291,6 +291,8 @@ HUD:
       Style: SEGMENTED_10
 
    # Shows the vanilla item-cooldown overlay (the diagonal sweep on the hotbar icon) for the whole reload duration.
+   # The overlay is keyed by item Material, not by weapon - two weapons sharing a Material show each other's
+   # reload overlay on the hotbar (firing is unaffected).
    Reload_Item_Cooldown: true
 
 Death_Messages:

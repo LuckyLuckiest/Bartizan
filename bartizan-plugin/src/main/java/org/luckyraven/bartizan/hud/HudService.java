@@ -89,7 +89,10 @@ public class HudService implements BeanLifecycle {
 		}
 
 		if (hud.getActionBar() != null) {
-			ActionBarManager.send(player, WeaponPlaceholders.resolve(weapon, player, hud.getActionBar()));
+			// Background channel at priority 10 (Keystone's documented priority for active-use HUDs) - the
+			// foreground send() locks the action bar for 2.5s and this tick re-arms it every 5 ticks, so it would
+			// never expire and would starve every other plugin's sendBackground() HUD on this server.
+			ActionBarManager.sendBackground(player, WeaponPlaceholders.resolve(weapon, player, hud.getActionBar()), 10);
 		}
 
 		if (hud.getBossBar() != null) updateBossBar(player, weapon, hud.getBossBar());
@@ -116,10 +119,13 @@ public class HudService implements BeanLifecycle {
 			bar = Bukkit.createBossBar(title, data.color(), data.style());
 			bar.addPlayer(player);
 			bossBars.put(player.getUniqueId(), bar);
-		} else {
-			bar.setTitle(title);
 		}
 
+		// Set unconditionally, not just on create - a reused bar (player switched HUD weapons, or /bartizan
+		// reload changed the config) must pick up this weapon's colour/style too, not keep the previous holder's.
+		bar.setTitle(title);
+		bar.setColor(data.color());
+		bar.setStyle(data.style());
 		bar.setProgress(progress);
 	}
 
