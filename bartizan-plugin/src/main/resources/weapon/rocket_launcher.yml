@@ -35,6 +35,20 @@ Shoot:
          # Owner_Immunity: keeps the shooter safe from their own rocket blast. Explicit here since the
          # default is false (grenades self-damage by default; this rocket opts out of that).
          Owner_Immunity: true
+      Explosion:
+         # Radius/Damage/Fire_Ticks/Owner_Immunity/Ignore_Teams/Knockback fall back to the legacy Damage: keys
+         # above when omitted here - this block only opts into the new shape/exposure/cluster/airstrike/
+         # detonation controls (gate HI-a).
+         Shape: sphere
+         Exposure: distance
+         Block_Damage: false
+         # Airstrike:
+         #    Count: 3
+         #    Height: 15
+         #    Radius: 6
+         #    Delay_Ticks: 20
+         # Detonation:
+         #    Delay_After_Impact: 10   # freeze the rocket at impact for 10 ticks before it actually goes off
       Consumed_Amount: 1
       Per_Shot: 1
       Cooldown: 10

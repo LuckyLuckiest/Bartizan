@@ -10,6 +10,7 @@ import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.api.weapon.WeaponType;
@@ -27,7 +28,13 @@ public class GunWeapon extends Weapon {
 	private final int            weaponConsumedOnShot;
 
 	// Gun-specific mutable configuration
-	private DamageData damageData;
+	private DamageData    damageData;
+	/**
+	 * Gate {@code HI-a} — the unified AOE explosion config for ROCKET/FLARE projectiles. Default-constructed like
+	 * {@link #damageData}; {@code GunWeaponParser} lowers the legacy {@code Damage.Explosion_*} keys into it via
+	 * {@code ExplosionSectionParser} so existing rocket configs behave identically.
+	 */
+	private ExplosionData explosionData;
 
 	public GunWeapon(UUID uuid, String name, String displayName, WeaponType category, Material material,
 	                 int customModelData, short durability, List<String> lore, boolean dropHologram,
@@ -40,7 +47,8 @@ public class GunWeapon extends Weapon {
 		this.weaponConsumedOnShot = weaponConsumedOnShot;
 		this.setCurrentSelectiveFire(selectiveFire);
 
-		this.damageData = new DamageData();
+		this.damageData    = new DamageData();
+		this.explosionData = new ExplosionData();
 	}
 
 	// --- Magazine override (uses projectile consumed amount per shot) ---
@@ -70,7 +78,8 @@ public class GunWeapon extends Weapon {
 		GunWeapon copy = (GunWeapon) super.clone();
 
 		// Clone Gun-specific mutable data
-		copy.damageData = this.damageData.clone();
+		copy.damageData    = this.damageData.clone();
+		copy.explosionData = this.explosionData.clone();
 
 		return copy;
 	}

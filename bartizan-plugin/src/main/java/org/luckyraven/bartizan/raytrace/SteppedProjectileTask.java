@@ -4,10 +4,8 @@ import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.raytrace.RaytraceContext;
 import org.luckyraven.bartizan.api.raytrace.WeaponVisualSpawner;
 
-import com.cryptomorin.xseries.particles.XParticle;
 import org.bukkit.Location;
 import org.bukkit.World;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -15,15 +13,15 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
-import org.luckyraven.bartizan.api.weapon.dto.DamageData;
-import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData.Detonation;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData.Trigger;
 import org.luckyraven.bartizan.api.weapon.dto.SoundData;
-import org.luckyraven.bartizan.api.weapon.modifiers.DamageMath;
-import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
-import org.luckyraven.bartizan.weapon.DamageRules;
 import org.luckyraven.keystone.sound.SoundEffect;
+import org.luckyraven.keystone.timer.CountdownTimer;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 
 import java.util.HashSet;
@@ -41,9 +39,9 @@ import java.util.UUID;
  * still work consistently.
  * <p>
  * On terminal impact (the ray runs out of distance, iterations, or hits a non-penetrable target), the task removes the
- * visual and — if {@code explodeOnTerminate} is set — fires an AOE explosion at the impact point with linear damage
- * falloff. Mirrors the legacy {@code ProjectileDamageListener#explosiveProjectile} behaviour for backwards
- * compatibility with rocket weapons.
+ * visual and — if {@code explodeOnTerminate} is set — hands off to {@link #onImpact(Location)}, which applies the
+ * weapon's {@code Detonation} rules and, via the unified {@code ExplosionHandler} (gate {@code HI-a}), fires the AOE
+ * explosion at the impact point.
  */
 public class SteppedProjectileTask {
 
@@ -182,84 +180,69 @@ public class SteppedProjectileTask {
 			visual.remove();
 		}
 
+		// Gate HI-a seam: HI-b's future terminate(Location, boolean, ImpactKind) calls onImpact(Location) itself
+		// when it decides an explosion is allowed. Until that lands, route the current gate here directly so
+		// rockets keep exploding on every terminal impact exactly as before.
 		if (explodeOnTerminate && explosionRadius > 0 && impactLocation != null) {
-			fireExplosion(impactLocation);
+			onImpact(impactLocation);
 		}
 	}
 
 	/**
-	 * Linear damage falloff from the blast centre. {@code explosionDamage} is dealt at distance 0 and tapers to 0 at
-	 * {@code explosionRadius}; anything outside the radius (or a weapon that configured no blast) takes nothing.
+	 * Gate {@code HI-a} — applies the weapon's {@code Detonation} rules for this impact and, if they allow it,
+	 * explodes. This is the seam {@code terminate(Location, boolean)} (gate {@code HI-b}) will call once it lands;
+	 * for now {@link #terminate(Location)} above routes here directly.
+	 * <p>
+	 * {@code HI-b}'s {@code terminate} does not yet tell this method whether the impact was a block or an entity,
+	 * so every impact is treated as satisfying both {@link Trigger#BLOCK} and {@link Trigger#ENTITY} — narrow this
+	 * once that information reaches here. A configured {@code Detonation.Fuse_Ticks} (explode after N ticks with
+	 * no impact at all) is not wired for this gun/rocket path — nothing in this class runs independently of the
+	 * tick loop {@code start()} owns; throwables get the equivalent behaviour from {@code ThrowableAction}'s own
+	 * fuse timer instead.
 	 */
-	static double falloffDamage(double explosionDamage, double explosionRadius, double distance) {
-		if (explosionDamage <= 0 || explosionRadius <= 0 || distance >= explosionRadius) {
-			return 0;
+	void onImpact(Location impact) {
+		ExplosionData data = explosionDataOf(ctx.getRequest().getWeapon());
+		if (data == null || data.getRadius() <= 0) return;
+
+		Detonation detonation = data.getDetonation();
+		boolean impactQualifies = detonation == null
+		                          || detonation.impactWhen().contains(Trigger.BLOCK)
+		                          || detonation.impactWhen().contains(Trigger.ENTITY);
+		if (!impactQualifies) return;
+
+		int delay = detonation != null ? detonation.delayAfterImpactTicks() : 0;
+		if (delay > 0) {
+			new CountdownTimer(plugin, 0L, 1L, delay, null, null, expired -> fireExplosion(impact)).start(false);
+		} else {
+			fireExplosion(impact);
 		}
-		return explosionDamage * (1 - (distance / explosionRadius));
 	}
 
 	/**
-	 * Adds a {@code Damage.Knockback} falloff vector (gate HF, §6) pointing away from the blast centre. A no-op
-	 * when {@code knockback} is {@code null} (unconfigured) or the falloff factor is {@code 0}.
+	 * Thin call into the unified {@code ExplosionHandler} (gate {@code HI-a}) — replaces the old hand-rolled
+	 * linear-falloff/no-block-damage explosion this class used to do inline.
 	 */
-	private void applyExplosionKnockback(LivingEntity target, Location center, double dist, @Nullable Double knockback) {
-		if (knockback == null) return;
-
-		double factor = DamageMath.explosionKnockbackFactor(knockback, dist, explosionRadius);
-		if (factor <= 0) return;
-
-		Vector direction = dist > 1e-6
-		                    ? target.getLocation().toVector().subtract(center.toVector()).normalize()
-		                    : new Vector(0, 1, 0);
-		target.setVelocity(target.getVelocity().add(direction.multiply(factor)));
-	}
-
 	private void fireExplosion(Location loc) {
-		World world = loc.getWorld();
-		if (world == null) {
-			return;
-		}
+		ExplosionHandler handler = ExplosionHandler.get();
+		if (handler == null) return;
 
-		Weapon weapon = ctx.getRequest().getWeapon();
-		// SteppedProjectileTask only ever drives guns (bullets/rockets) — DamageData lives on GunWeapon.
-		DamageData damageData = weapon instanceof GunWeapon gun ? gun.getDamageData() : null;
-		Double     knockback  = damageData != null ? damageData.getKnockback() : null;
+		Weapon        weapon = ctx.getRequest().getWeapon();
+		ExplosionData data   = explosionDataOf(weapon);
+		if (data == null) return;
 
-		LivingEntity shooter = ctx.getRequest().getShooter();
-		for (Entity entity : world.getNearbyEntities(loc, explosionRadius, explosionRadius, explosionRadius)) {
-			if (!(entity instanceof LivingEntity target)) continue;
+		handler.explode(weapon, data, loc, ctx.getRequest().getShooter(), ctx.getState().getDepth());
+	}
 
-			// Damage.Owner_Immunity / Ignore_Teams (gate HF, §4) replace the old hardcoded shooter skip.
-			boolean protectedTarget = damageData != null
-			                          ? DamageRules.isProtected(damageData, shooter, target)
-			                          : target.equals(shooter);
-			if (protectedTarget) continue;
-
-			double dist   = target.getLocation().distance(loc);
-			double damage = falloffDamage(explosionDamage, explosionRadius, dist);
-			if (damage > 0) {
-				// Without this flag, WeaponInteract.onEntityDamage cancels the damage whenever the shooter
-				// still holds a weapon — mirrors WeaponRaytracerImpl.handleEntityImpact's guard exactly.
-				WeaponRaytracer.setRaytraceDamageInProgress(true);
-				try {
-					target.damage(damage, shooter);
-				} finally {
-					WeaponRaytracer.setRaytraceDamageInProgress(false);
-				}
-				applyExplosionKnockback(target, loc, dist, knockback);
-			}
-		}
-
-		world.spawnParticle(XParticle.EXPLOSION.get(), loc, 5, 0.5, 0.5, 0.5, 0.1);
-		world.spawnParticle(XParticle.SMOKE.get(), loc, 30, 1.0, 1.0, 1.0, 0.1);
-		world.spawnParticle(XParticle.FLAME.get(), loc, 20, 1.0, 1.0, 1.0, 0.1);
-
-		EffectContext effectCtx = EffectContext.builder()
-		                                       .weapon(ctx.getRequest().getWeapon())
-		                                       .source(shooter)
-		                                       .impact(loc)
-		                                       .build();
-		effectRunner.run(ctx.getRequest().getWeapon(), EffectHook.ON_EXPLODE, effectCtx);
+	/**
+	 * Resolves the {@code ExplosionData} carried by {@code weapon}, regardless of whether it's a gun (rocket) or a
+	 * throwable (a cluster/airstrike sub-munition {@code ExplosionHandler} spawns via {@code WeaponShooting#launch}
+	 * may carry either).
+	 */
+	@Nullable
+	static ExplosionData explosionDataOf(Weapon weapon) {
+		if (weapon instanceof GunWeapon gun) return gun.getExplosionData();
+		if (weapon instanceof ThrowableWeapon throwable) return throwable.getExplosionData();
+		return null;
 	}
 
 }

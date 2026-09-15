@@ -8,6 +8,7 @@ import org.bukkit.scoreboard.ScoreboardManager;
 import org.bukkit.scoreboard.Team;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
 import org.luckyraven.bartizan.api.weapon.dto.ThrowableData;
 
 /**
@@ -25,6 +26,14 @@ public final class DamageRules {
 	}
 
 	public static boolean isProtected(ThrowableData data, @Nullable LivingEntity shooter, LivingEntity victim) {
+		return isProtected(data.isOwnerImmunity(), data.isIgnoreTeams(), shooter, victim);
+	}
+
+	/**
+	 * Gate {@code HI-a} — the unified {@code ExplosionHandler} reads {@code Owner_Immunity}/{@code Ignore_Teams}
+	 * off {@link ExplosionData} directly rather than the gun/throwable DTO the blast originated from.
+	 */
+	public static boolean isProtected(ExplosionData data, @Nullable LivingEntity shooter, LivingEntity victim) {
 		return isProtected(data.isOwnerImmunity(), data.isIgnoreTeams(), shooter, victim);
 	}
 

@@ -10,6 +10,9 @@ import org.luckyraven.bartizan.ammo.AmmunitionManager;
 import org.luckyraven.bartizan.configuration.parser.AmmunitionSectionParser.ParsedAmmo;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.DropoffStep;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData.Shape;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData.Trigger;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.api.weapon.ProjectileType;
@@ -17,6 +20,7 @@ import org.luckyraven.bartizan.api.weapon.GunWeapon;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Parses the {@code Shoot:} section of a GUN weapon YAML and constructs a {@link GunWeapon}. Ammunition is required for
@@ -114,6 +118,19 @@ public class GunWeaponParser {
 		// Knockback: null (absent) leaves vanilla knockback untouched; any present value (0 included) replaces it.
 		Double knockback = damage.has("Knockback") ? damage.get("Knockback").asDouble().orDefault(0.0) : null;
 
+		// Explosion: (gate HI-a) — sibling of Damage: under Projectile:. Absent entirely for every weapon file
+		// bundled before this gate; ExplosionSectionParser lowers the legacy Damage.Explosion_* keys above into it
+		// so a rocket's blast behaves identically either way. Legacy guns explode immediately on any impact.
+		// Fire_Ticks lowers to 0, not Damage.Fire_Ticks: the old vanilla-style rocket blast never set victims on
+		// fire (only a direct hit did, via DamageData.fireTicks above) — an explicit Explosion.Fire_Ticks still
+		// works.
+		MappingNode explosionSection = projectile.get("Explosion").asMapping().orNull();
+		NodeReader  explosionReader  = explosionSection != null ? NodeReader.of(explosionSection, report) : null;
+		ExplosionSectionParser.LegacyDefaults legacyExplosion = new ExplosionSectionParser.LegacyDefaults(
+				projectileExplosionRadius, projectileExplosionDamage, 0, knockback, ownerImmunity,
+				ignoreTeams, Shape.SPHERE, new ExplosionData.Detonation(Set.of(Trigger.BLOCK, Trigger.ENTITY), 0, 0));
+		ExplosionData explosionData = ExplosionSectionParser.parse(explosionReader, legacyExplosion, report);
+
 		int projectileConsumed = projectile.get("Consumed_Amount").asInt().min(0).orDefault(0);
 		int projectilePerShot  = projectile.get("Per_Shot").asInt().min(1).orDefault(1);
 		// Cooldown is authored as a decimal (e.g. 0.8) and Bukkit's getInt silently truncated to 0. Preserve that
@@ -174,6 +191,8 @@ public class GunWeaponParser {
 		gun.getDamageData().setOwnerImmunity(ownerImmunity);
 		gun.getDamageData().setIgnoreTeams(ignoreTeams);
 		gun.getDamageData().setKnockback(knockback);
+
+		gun.setExplosionData(explosionData);
 
 		return gun;
 	}

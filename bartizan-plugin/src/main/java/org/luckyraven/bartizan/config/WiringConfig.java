@@ -21,6 +21,7 @@ import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.hud.HudService;
 import org.luckyraven.bartizan.hud.PlaceholderApiSupport;
 import org.luckyraven.bartizan.npc.NpcWeaponFactoryImpl;
+import org.luckyraven.bartizan.raytrace.ExplosionHandler;
 import org.luckyraven.bartizan.raytrace.WeaponRaytracerImpl;
 import org.luckyraven.bartizan.stats.StatsService;
 import org.luckyraven.bartizan.status.StatusEffectService;
@@ -103,6 +104,19 @@ public final class WiringConfig {
 		                                                        weaponVisualSpawner, effectRunner);
 		Bukkit.getServicesManager().register(WeaponRaytracer.class, raytracer, bartizan, ServicePriority.Normal);
 		return raytracer;
+	}
+
+	/**
+	 * Gate {@code HI-a}: the unified AOE explosion path for both guns (rockets) and throwables (grenades). Neither
+	 * {@code SteppedProjectileTask} nor {@code ThrowableAction} is constructed through this bean graph (the
+	 * former's constructor belongs to gate {@code HI-b}; the latter is manually {@code new}'d per-throw by
+	 * {@code WeaponInteract}), so both reach this singleton via {@code ExplosionHandler.get()} instead of
+	 * constructor injection — see that method's javadoc.
+	 */
+	@Bean
+	public ExplosionHandler explosionHandler(WeaponRaytracer raytracer, BlockDamageManager blockDamageManager,
+	                                         EffectRunner effectRunner) {
+		return new ExplosionHandler(bartizan, raytracer, blockDamageManager, effectRunner);
 	}
 
 	@Bean

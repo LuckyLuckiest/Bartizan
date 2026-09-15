@@ -24,7 +24,6 @@ Throw:
    Bounces: false
    Max_Bounces: 0
    Sticky: true
-   Entity_Type: SNOWBALL
    Recoil:
       Amount: 0.0
       Push: 0.05

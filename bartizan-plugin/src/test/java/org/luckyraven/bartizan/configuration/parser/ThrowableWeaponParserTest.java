@@ -12,6 +12,7 @@ import org.luckyraven.keystone.persistence.config.ConfigDocument;
 import org.luckyraven.keystone.persistence.config.ConfigParser;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.keystone.persistence.config.Severity;
 
 import java.io.StringReader;
 import java.nio.file.Path;
@@ -72,6 +73,31 @@ class ThrowableWeaponParserTest {
 		assertEquals(60, data.getFuseTime());
 		assertEquals(3.0, data.getExplosionRadius(), 1e-9);
 		assertEquals(6, data.getExplosionDamage());
+	}
+
+	@Test
+	@DisplayName("gate HI-a: Entity_Type is a dead key — parses without error but warns")
+	void entityType_isDeadKey_warnsButDoesNotFail() throws Exception {
+		parse("""
+				Throw:
+				   Type: EXPLOSIVE
+				   Entity_Type: SNOWBALL
+				""");
+
+		assertFalse(report.hasErrors());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING && issue.code().equals("throw.entity_type_ignored")));
+	}
+
+	@Test
+	@DisplayName("gate HI-a: absent Entity_Type produces no dead-key warning")
+	void entityType_absent_noWarning() throws Exception {
+		parse("""
+				Throw:
+				   Type: EXPLOSIVE
+				""");
+
+		assertFalse(report.issues().stream().anyMatch(issue -> issue.code().equals("throw.entity_type_ignored")));
 	}
 
 	private ThrowableWeapon parse(String yaml) throws Exception {

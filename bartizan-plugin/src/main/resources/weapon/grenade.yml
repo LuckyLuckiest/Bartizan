@@ -20,10 +20,33 @@ Throw:
    Bounces: true
    Max_Bounces: 5
    Sticky: false
-   Entity_Type: SNOWBALL
    # Owner_Immunity: false (default) - grenades self-damage the thrower, as they always have. Uncomment to
    # make this grenade safe for its own thrower:
    # Owner_Immunity: true
+   Explosion:
+      # Radius/Damage/Fire_Ticks/Owner_Immunity/Ignore_Teams fall back to the legacy keys above when omitted
+      # here - this block only opts into the new shape/exposure/cluster/detonation controls (gate HI-a).
+      #
+      # Shape defaults to flat (full Explosion_Damage anywhere inside Explosion_Radius, no falloff) when this
+      # key is left unset - that is the historical grenade behaviour, kept as the throwable default. Uncomment
+      # to opt this grenade into the linear sphere falloff guns use instead:
+      # Shape: sphere
+      #
+      # Knockback defaults to 2.0 when unset here AND Throw.Knockback above is also unset - this restores the
+      # old hardcoded thrower-push strength; the unified explosion handler now applies it to every victim in
+      # range, not just the thrower. Set Throw.Knockback (or Knockback here) to override it, 0 to disable it.
+      #
+      # Gate HI-a also removes the vanilla World#createExplosion blast this grenade used to fire ON TOP OF the
+      # damage below - Explosion_Damage above is now the full amount a victim inside Explosion_Radius takes.
+      # Retune it if this server's grenades relied on the extra vanilla-blast damage stacking on top.
+      # Exposure: line_of_sight  # blast is blocked by walls/floors between the centre and a target
+      # Cluster:
+      #    Count: 3
+      #    Speed: 1.2
+      #    Delay_Ticks: 0
+      # Detonation:
+      #    Impact_When: [block, entity]   # detonate on landing/entity contact instead of waiting out the fuse
+      #    Delay_After_Impact: 5
    Recoil:
       Amount: 0.0
       Push: 0.1

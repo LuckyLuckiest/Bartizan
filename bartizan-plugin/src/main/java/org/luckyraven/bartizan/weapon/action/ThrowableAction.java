@@ -13,20 +13,20 @@ import org.luckyraven.keystone.timer.CountdownTimer;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.keystone.util.ParticleUtil;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData.Detonation;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData.Trigger;
 import org.luckyraven.bartizan.api.weapon.dto.ThrowableData;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
-import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
 import org.luckyraven.bartizan.api.event.WeaponShootEvent;
-import org.luckyraven.bartizan.api.weapon.modifiers.DamageMath;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
-import org.luckyraven.bartizan.api.weapon.ProjectileState;
+import org.luckyraven.bartizan.raytrace.ExplosionHandler;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.ThrowableType;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
-import org.luckyraven.bartizan.weapon.DamageRules;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,11 +37,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code WeaponDeathMessageContributor} and gadget's {@code CarDamageListener} — are deleted, along with the 1-tick
  * cleanup task that drained {@code pendingVehicleExplosionDamage}. Both consumers now read
  * {@link WeaponEntityDamageEvent#weaponName()} / {@link WeaponEntityDamageEvent#kind()} instead: the event is fired
- * once per living target in the damage loop below (as the checklist names explicitly) and, by the same reasoning
- * given the event's own javadoc ("hits a non-living entity such as a vehicle"), once per non-living entity in the
- * pre-registration loop that used to populate {@code pendingVehicleExplosionDamage} — recorded as a deviation in
- * bartizan.md §7 task B13, since the checklist's own line citation only names the living-entity call site and P3's
- * {@code CarDamageListener} rewrite (out of this stream's scope) needs a firing site for vehicles too.
+ * once per living target (now inside the unified {@code ExplosionHandler}, gate {@code HI-a}) and, by the same
+ * reasoning given the event's own javadoc ("hits a non-living entity such as a vehicle"), once per non-living
+ * entity in the pre-registration loop below that used to populate {@code pendingVehicleExplosionDamage} —
+ * recorded as a deviation in bartizan.md §7 task B13, since the checklist's own line citation only names the
+ * living-entity call site and P3's {@code CarDamageListener} rewrite (out of this stream's scope) needs a firing
+ * site for vehicles too.
+ * <p>
+ * Gate {@code HI-a} deletes the vanilla {@code World#createExplosion} blast this class used to fire alongside its
+ * own damage loop (and the {@code vanillaBlastImmune} bookkeeping that existed only to undo that blast's own
+ * entity damage for a protected victim) — the explosive branch of {@link #detonate} now routes through the same
+ * {@code ExplosionHandler} rockets use.
  */
 public class ThrowableAction {
 
@@ -50,17 +56,14 @@ public class ThrowableAction {
 	 * static so WeaponInteract.onEntityDamage can access it without holding an instance. See {@link MeleeAction}'s
 	 * javadoc on its own {@code pendingDamage} field for why this stays static rather than becoming a private
 	 * instance field.
+	 * <p>
+	 * Gate {@code HI-a}: no longer populated. {@code ExplosionHandler#explode} wraps its own {@code target.damage}
+	 * call in {@code WeaponRaytracer.setRaytraceDamageInProgress}, which already satisfies
+	 * {@code WeaponInteract.onEntityDamage}'s cancel guard — this set's guard-bypass purpose is redundant for the
+	 * explosive path. The field itself stays (still referenced by {@code WeaponInteract}, outside this gate's
+	 * file list) so nothing that reads it needs to change.
 	 */
 	public static final Set<UUID> pendingDamage = ConcurrentHashMap.newKeySet();
-
-	/**
-	 * Entity UUIDs immune to the cosmetic {@code World#createExplosion} blast fired below (gate HF, §7):
-	 * that call applies vanilla entity damage on its own, before the {@code Damage.Owner_Immunity}/
-	 * {@code Ignore_Teams} protected-entity loop further down ever runs. Populated just before the call and
-	 * consulted by {@code WeaponInteract}'s explosion-cause guard; cleared on the next tick as a safety net
-	 * in case a protected entity's damage event never actually fires (e.g. already dead).
-	 */
-	public static final Set<UUID> vanillaBlastImmune = ConcurrentHashMap.newKeySet();
 
 	private final JavaPlugin         plugin;
 	private final ThrowableWeapon    weapon;
@@ -84,6 +87,14 @@ public class ThrowableAction {
 		WeaponShootEvent shootEvent = new WeaponShootEvent(weapon, player);
 		Bukkit.getPluginManager().callEvent(shootEvent);
 		if (shootEvent.isCancelled()) return;
+
+		// Detonation.Impact_When/Delay_After_Impact (gate HI-a) — everything else about the flight loop below is
+		// unchanged; Fuse_Time (the fuseTimer further down) remains the fallback exactly as before when Impact_When
+		// is empty (the legacy-parity default ExplosionSectionParser lowers for every throwable that doesn't
+		// configure Detonation itself).
+		Detonation   detonation = weapon.getExplosionData().getDetonation();
+		Set<Trigger> impactWhen = detonation != null ? detonation.impactWhen() : Set.of();
+		int          impactDelay = detonation != null ? detonation.delayAfterImpactTicks() : 0;
 
 		if (player.getGameMode() != GameMode.CREATIVE) {
 			decrementHeldStack(player);
@@ -115,9 +126,20 @@ public class ThrowableAction {
 		int[]     bounceCooldown    = {0};
 		int[]     tickCount         = {0};
 		double[]  prevVelocityLenSq = {throwVec.lengthSquared()};
+		boolean[] detonated         = {false};
+
+		// Declared (but not started) before physicsTimer so physicsTimer's own body can cancel it on an early
+		// impact-triggered detonation.
+		CountdownTimer fuseTimer = new CountdownTimer(plugin, 0L, 1L, data.getFuseTime(), null, null, expired -> {
+			if (detonated[0]) return;
+			detonated[0] = true;
+			Location blast = grenade.getLocation();
+			grenade.remove();
+			detonate(blast, data, player, world);
+		});
 
 		RepeatingTimer physicsTimer = new RepeatingTimer(plugin, 1L, time -> {
-			if (grenade.isDead()) {
+			if (detonated[0] || grenade.isDead()) {
 				time.stop();
 				return;
 			}
@@ -167,18 +189,56 @@ public class ThrowableAction {
 				}
 			}
 
+			// Detonation.Impact_When (gate HI-a): landing OR a wall/ceiling hit (BLOCK — review fix: previously
+			// only justLanded counted, so a grenade thrown straight into a wall never detonated on Impact_When:
+			// [block]) or entity contact (ENTITY, ignoring the thrower for the first 5 ticks so the grenade
+			// doesn't detonate in the thrower's own hitbox at launch — see hasNearbyLivingEntity's javadoc;
+			// review fix: this used to also skip the whole ENTITY check for those first 5 ticks via an outer
+			// tickCount[0] > 5 guard, making the inner per-tick exclusion dead code and, past tick 5, letting the
+			// thrower detonate their own grenade on contact).
+			boolean impactTriggered = ((justLanded || hitSurface || stickyCollision) && impactWhen.contains(Trigger.BLOCK)) ||
+			                          (impactWhen.contains(Trigger.ENTITY) &&
+			                           hasNearbyLivingEntity(grenade, player, tickCount[0]));
+
+			if (impactTriggered) {
+				detonated[0] = true;
+				time.stop();
+				fuseTimer.stop();
+
+				Location blast = grenade.getLocation();
+				if (impactDelay > 0) {
+					grenade.setVelocity(new Vector(0, 0, 0));
+					grenade.setGravity(false);
+					new CountdownTimer(plugin, 0L, 1L, impactDelay, null, null, expired -> {
+						grenade.remove();
+						detonate(blast, data, player, world);
+					}).start(false);
+				} else {
+					grenade.remove();
+					detonate(blast, data, player, world);
+				}
+				return;
+			}
+
 			wasOnGround[0] = onGround;
 			ParticleUtil.spawnSmokeTrail(grenade.getLocation());
 		});
 
 		physicsTimer.start(false);
+		fuseTimer.start(false);
+	}
 
-		new CountdownTimer(plugin, 0L, 1L, data.getFuseTime(), null, null, timer -> {
-			physicsTimer.stop();
-			Location blast = grenade.getLocation();
-			grenade.remove();
-			detonate(blast, data, player, world);
-		}).start(false);
+	/**
+	 * {@code Detonation.Impact_When: [entity]} contact check — a living entity within 0.6 blocks of the grenade,
+	 * excluding the thrower for the first 5 ticks of flight.
+	 */
+	private boolean hasNearbyLivingEntity(Item grenade, Player thrower, int tickCount) {
+		for (Entity nearby : grenade.getNearbyEntities(0.6, 0.6, 0.6)) {
+			if (!(nearby instanceof LivingEntity)) continue;
+			if (tickCount <= 5 && nearby.equals(thrower)) continue;
+			return true;
+		}
+		return false;
 	}
 
 	private void decrementHeldStack(Player player) {
@@ -194,7 +254,7 @@ public class ThrowableAction {
 	}
 
 	private void detonate(Location center, ThrowableData data, Player player, World world) {
-		// dispatch on throwable type — only EXPLOSIVE goes through the legacy createExplosion path
+		// dispatch on throwable type — only EXPLOSIVE goes through the unified explosion handler
 		ThrowableType type = data.getType() != null ? data.getType() : ThrowableType.EXPLOSIVE;
 		switch (type) {
 			case STUN -> {
@@ -205,114 +265,40 @@ public class ThrowableAction {
 				spawnSmokeCloud(center, data, world);
 				return;
 			}
-			case EXPLOSIVE -> { /* fall through to legacy explosive handler below */ }
+			case EXPLOSIVE -> { /* fall through to the unified explosion handler below */ }
 		}
 
-		ParticleUtil.spawnExplosionBurst(center);
-		if (data.getFireTicks() > 0) {
-			ParticleUtil.spawnFireBurst(center, data.getExplosionRadius());
+		ExplosionHandler handler = ExplosionHandler.get();
+		if (handler == null) return;
+
+		// Modifiers.Flat_Damage bonus (pre-dates this gate) folded into a clone so ExplosionHandler itself stays
+		// ignorant of any per-weapon damage bonus mechanics — mirrors how the old code added it to totalDmg.
+		ExplosionData explosionData = weapon.getExplosionData().clone();
+		if (weapon.getModifiersData().hasFlatDamage()) {
+			explosionData.setDamage(explosionData.getDamage() + weapon.getModifiersData().getFlatDamage().bonus());
 		}
 
-		double flatBonus = weapon.getModifiersData().hasFlatDamage() ?
-		                   weapon.getModifiersData().getFlatDamage().bonus() :
-		                   0.0;
-		double totalDmg = data.getExplosionDamage() + flatBonus;
-		double radiusSq = data.getExplosionRadius() * data.getExplosionRadius();
+		double radius   = explosionData.getRadius();
+		double radiusSq = radius * radius;
 
-		// Fire the canonical WeaponEntityDamageEvent for every non-living entity (vehicles) in range
-		// before World#createExplosion fires its own events, so a listener such as CarDamageListener
-		// can read event.kind() == EXPLOSION / event.getDamage() and apply the configured value instead
-		// of vanilla explosion damage. Replaces the deleted pendingVehicleExplosionDamage map.
-		if (totalDmg > 0) {
-			for (Entity nearby : world.getNearbyEntities(center, data.getExplosionRadius(), data.getExplosionRadius(),
-			                                             data.getExplosionRadius())) {
+		// Fire the canonical WeaponEntityDamageEvent for every non-living entity (vehicles) in range so a listener
+		// such as CarDamageListener can react — unchanged from before gate HI-a deletes the vanilla
+		// World#createExplosion call itself (that call never covered non-living entities on its own; this
+		// pre-emptive notification did, and still does).
+		if (explosionData.getDamage() > 0) {
+			for (Entity nearby : world.getNearbyEntities(center, radius, radius, radius)) {
 				if (nearby instanceof LivingEntity) continue;
 				if (nearby.getLocation().distanceSquared(center) > radiusSq) continue;
-				Bukkit.getPluginManager().callEvent(
-						new WeaponEntityDamageEvent(weapon, nearby, totalDmg, player, weapon.getName(),
-						                            DamageKind.EXPLOSION));
+				Bukkit.getPluginManager().callEvent(new WeaponEntityDamageEvent(
+						weapon, nearby, explosionData.getDamage(), player, weapon.getName(), DamageKind.EXPLOSION));
 			}
 		}
 
-		// ponytail: global short-lived set, not per-detonation scoping - fine at this scale (one grenade
-		// blast per tick in practice); revisit if concurrent grenades ever need independent immunity windows.
-		if (data.getExplosionRadius() > 0) {
-			for (Entity nearby : world.getNearbyEntities(center, data.getExplosionRadius(), data.getExplosionRadius(),
-			                                             data.getExplosionRadius())) {
-				if (nearby instanceof LivingEntity target && DamageRules.isProtected(data, player, target)) {
-					vanillaBlastImmune.add(target.getUniqueId());
-				}
-			}
-			if (DamageRules.isProtected(data, player, player)) vanillaBlastImmune.add(player.getUniqueId());
-			Bukkit.getScheduler().runTask(plugin, vanillaBlastImmune::clear);
+		if (explosionData.getFireTicks() > 0) {
+			placeTempFire(center, radius, explosionData.getFireTicks(), world);
 		}
 
-		world.createExplosion(center.getX(), center.getY(), center.getZ(), (float) data.getExplosionRadius(),
-		                      false, false, player);
-
-		if (data.getFireTicks() > 0) {
-			placeTempFire(center, data.getExplosionRadius(), data.getFireTicks(), world);
-		}
-
-		ProjectileState explosionState = new ProjectileState(weapon, totalDmg);
-
-		for (Entity nearby : world.getNearbyEntities(center, data.getExplosionRadius(), data.getExplosionRadius(),
-		                                             data.getExplosionRadius())) {
-			if (!(nearby instanceof LivingEntity target)) continue;
-			if (nearby.getLocation().distanceSquared(center) > radiusSq) continue;
-
-			// Damage.Ignore_Teams (gate HF, §4) — a protected teammate is skipped entirely (Owner_Immunity is
-			// moot here since getNearbyEntities() never returns the thrower themselves).
-			if (DamageRules.isProtected(data, player, target)) continue;
-
-			// Fire the unified impact event so future event consumers (and the cops-n-crooks
-			// raytrace handlers added in the gangland-weapon raytrace refactor) react to grenade
-			// explosions through the same hook as gun shots. The legacy {@code target.damage(...)}
-			// call below still drives the existing EntityDamageByEntityEvent path for cops-n-crooks
-			// listeners that haven't been migrated.
-			WeaponRaytraceImpactEvent impactEvent = new WeaponRaytraceImpactEvent(weapon, player, target, null, null,
-			                                                                      target.getLocation(), totalDmg,
-			                                                                      explosionState);
-			Bukkit.getPluginManager().callEvent(impactEvent);
-			if (impactEvent.isCancelled()) continue;
-
-			if (totalDmg > 0) {
-				UUID targetUuid = target.getUniqueId();
-				pendingDamage.add(targetUuid);
-				Bukkit.getPluginManager().callEvent(
-						new WeaponEntityDamageEvent(weapon, target, impactEvent.getDamage(), player, weapon.getName(),
-						                            DamageKind.EXPLOSION));
-				target.damage(impactEvent.getDamage(), player);
-
-				// Damage.Knockback (gate HF, §6) — additional falloff push on top of whatever vanilla knockback
-				// target.damage(amount, player) already applied.
-				double dist   = target.getLocation().distance(center);
-				double factor = DamageMath.explosionKnockbackFactor(data.getKnockback(), dist, data.getExplosionRadius());
-				if (factor > 0) {
-					Vector direction = dist > 1e-6
-					                    ? target.getLocation().toVector().subtract(center.toVector()).normalize()
-					                    : new Vector(0, 1, 0);
-					target.setVelocity(target.getVelocity().add(direction.multiply(factor)));
-				}
-			}
-			if (data.getFireTicks() > 0) target.setFireTicks(data.getFireTicks());
-		}
-
-		// getNearbyEntities() never returns the player themselves, so self-damage and knockback must be applied explicitly.
-		if (player.getLocation().distanceSquared(center) <= radiusSq) {
-			// Damage.Owner_Immunity (gate HF, §4) — defaults false, so grenades keep self-damaging unless a
-			// weapon opts in. The thrower's own blast-knockback below is unaffected — it existed before this gate.
-			if (totalDmg > 0 && !DamageRules.isProtected(data, player, player)) player.damage(totalDmg);
-			if (data.getFireTicks() > 0) player.setFireTicks(data.getFireTicks());
-			Vector blastDir = player.getLocation().toVector().subtract(center.toVector());
-			double dist     = blastDir.length();
-			if (dist > 0) {
-				double strength = (1.0 - dist / data.getExplosionRadius()) * 2.0;
-				player.setVelocity(player.getVelocity().add(blastDir.normalize().multiply(strength)));
-			} else {
-				player.setVelocity(player.getVelocity().add(new Vector(0, 2.0, 0)));
-			}
-		}
+		handler.explode(weapon, explosionData, center, player, 0);
 	}
 
 	/**

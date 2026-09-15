@@ -26,7 +26,6 @@ Throw:
    Bounces: true
    Max_Bounces: 4
    Sticky: false
-   Entity_Type: SNOWBALL
    Display_Item:
       Material: FIREWORK_STAR
       Name: "&fFlashbang"

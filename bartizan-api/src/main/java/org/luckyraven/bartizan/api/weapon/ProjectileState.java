@@ -21,6 +21,14 @@ public class ProjectileState {
 	private int    bounceCount;
 	private double currentDamageMultiplier;
 
+	/**
+	 * Gate {@code HI-a}: 0 for an original projectile/throw, 1 for a cluster/airstrike sub-munition
+	 * {@code ExplosionHandler} spawns via {@code WeaponShooting#launch}. Gates further cluster/airstrike
+	 * recursion — {@code SteppedProjectileTask#onImpact} reads this back off the surrounding
+	 * {@code RaytraceContext}'s state.
+	 */
+	private int depth;
+
 	public ProjectileState(GunWeapon weapon) {
 		this(weapon, weapon.getProjectileData().getDamage());
 	}

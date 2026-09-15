@@ -28,7 +28,6 @@ Throw:
    Bounces: true
    Max_Bounces: 3
    Sticky: false
-   Entity_Type: SNOWBALL
    Display_Item:
       Material: TNT
       Name: "&8Smoke Canister"

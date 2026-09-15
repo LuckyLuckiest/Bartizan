@@ -9,8 +9,6 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.EntityDamageEvent;
-import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -315,22 +313,6 @@ public class WeaponInteract implements Listener {
 			shootFullAuto(gunWeapon, player, item);
 		} else {
 			shootOtherModes(gunWeapon, player);
-		}
-	}
-
-	/**
-	 * Gate HF §7: {@code ThrowableAction.detonate}'s cosmetic {@code World#createExplosion} call deals vanilla
-	 * entity damage before the {@code Damage.Owner_Immunity}/{@code Ignore_Teams} loop ever runs, so a
-	 * protected victim would still take the blast. Cancels just that damage for entities the throw itself
-	 * marked immune, regardless of which {@link EntityDamageEvent} subtype Bukkit fires for the explosion.
-	 */
-	@EventHandler(priority = EventPriority.LOWEST)
-	public void onExplosionDamage(EntityDamageEvent event) {
-		DamageCause cause = event.getCause();
-		if (cause != DamageCause.ENTITY_EXPLOSION && cause != DamageCause.BLOCK_EXPLOSION) return;
-
-		if (ThrowableAction.vanillaBlastImmune.remove(event.getEntity().getUniqueId())) {
-			event.setCancelled(true);
 		}
 	}
 

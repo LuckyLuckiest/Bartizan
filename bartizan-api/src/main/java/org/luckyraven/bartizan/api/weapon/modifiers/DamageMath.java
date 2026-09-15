@@ -45,8 +45,8 @@ public final class DamageMath {
 
 	/**
 	 * Linear falloff scalar for an explosion's {@code Knockback} field: full {@code knockback} at the blast centre,
-	 * tapering to {@code 0} at {@code radius}. Mirrors {@code SteppedProjectileTask#falloffDamage}'s shape so a
-	 * caller applies it along the direction from the blast centre to the victim.
+	 * tapering to {@code 0} at {@code radius}. Mirrors {@link ExplosionMath#damageAt}'s sphere-shape falloff curve
+	 * so a caller applies it along the direction from the blast centre to the victim.
 	 */
 	public static double explosionKnockbackFactor(double knockback, double distance, double radius) {
 		if (knockback <= 0 || radius <= 0 || distance >= radius) return 0.0;

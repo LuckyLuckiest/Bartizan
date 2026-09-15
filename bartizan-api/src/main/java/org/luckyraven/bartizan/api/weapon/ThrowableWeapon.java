@@ -6,6 +6,7 @@ import org.bukkit.Material;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.api.weapon.dto.ThrowableData;
 import org.luckyraven.bartizan.api.weapon.WeaponType;
@@ -18,6 +19,13 @@ import java.util.UUID;
 public class ThrowableWeapon extends Weapon {
 
 	private final ThrowableData throwableData;
+	/**
+	 * Gate {@code HI-a} — the unified AOE explosion config for {@code Type: EXPLOSIVE} throwables.
+	 * Default-constructed like {@code GunWeapon#damageData}; {@code ThrowableWeaponParser} lowers the legacy
+	 * {@code Throw.Explosion_*}/{@code Fuse_Time} keys into it via {@code ExplosionSectionParser} so existing
+	 * grenade configs behave identically.
+	 */
+	private ExplosionData explosionData;
 
 	public ThrowableWeapon(UUID uuid, String name, String displayName, WeaponType category, Material material,
 	                       int customModelData, short durability, List<String> lore, boolean dropHologram,
@@ -26,6 +34,7 @@ public class ThrowableWeapon extends Weapon {
 		super(uuid, name, displayName, category, material, customModelData, durability, lore, dropHologram,
 		      deathMessages, reloadData, ammunitionData);
 		this.throwableData = throwableData;
+		this.explosionData = new ExplosionData();
 	}
 
 	@Override
@@ -37,8 +46,9 @@ public class ThrowableWeapon extends Weapon {
 
 	@Override
 	public ThrowableWeapon clone() {
-		// No extra mutable fields — Weapon.clone() handles everything.
-		return (ThrowableWeapon) super.clone();
+		ThrowableWeapon copy = (ThrowableWeapon) super.clone();
+		copy.explosionData = this.explosionData.clone();
+		return copy;
 	}
 
 }

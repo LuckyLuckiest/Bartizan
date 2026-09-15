@@ -12,12 +12,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
-import org.luckyraven.bartizan.api.weapon.dto.DamageData;
+import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.api.weapon.dto.SpreadData;
 import org.luckyraven.bartizan.api.weapon.ProjectileState;
 import org.luckyraven.bartizan.api.weapon.ProjectileType;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.effect.EffectRunner;
 
 /**
@@ -152,16 +153,64 @@ public final class WeaponShooting {
 		double speedPerTick = Math.max(0.1, projectileData.getSpeed());
 		int    maxTicks     = (int) Math.ceil(projectileData.getDistance() / speedPerTick) * 2 + 20;
 
-		DamageData damageData = weapon.getDamageData();
-
 		// Radius and damage are two distinct config values: Explosion_Radius sizes the blast, Explosion_Damage is
 		// the damage dealt at its centre. Reading the radius off the damage produced 50-block rocket blasts.
-		boolean explode         = type == ProjectileType.ROCKET;
-		double  explosionRadius = explode ? damageData.getExplosionRadius() : 0;
-		double  explosionDamage = explode ? damageData.getExplosionDamage() : 0;
+		// Gate HI-a review fix: reads the unified ExplosionData (mirrors #launch below) instead of the legacy
+		// DamageData.explosionRadius/explosionDamage — an Explosion.Radius override under Shoot.Projectile now
+		// actually takes effect for rockets.
+		ExplosionData ed              = weapon.getExplosionData();
+		boolean       explode         = type == ProjectileType.ROCKET && ed.getRadius() > 0;
+		double        explosionRadius = explode ? ed.getRadius() : 0;
+		double        explosionDamage = explode ? ed.getDamage() : 0;
 
 		new SteppedProjectileTask(plugin, raytracer, raytracer.getVisualSpawner(), visual, ctx, explode,
 		                          explosionRadius, explosionDamage, maxTicks, effectRunner).start();
+	}
+
+	/**
+	 * Gate {@code HI-a}: launches a single stepped projectile from an explicit {@code origin}/{@code direction}
+	 * rather than the shooter's eye — {@code ExplosionHandler} uses this to spawn cluster/airstrike sub-munitions.
+	 * Mirrors {@link #fireSlow} without editing it (that method, and {@code SteppedProjectileTask}'s constructor
+	 * this still calls, belong to gate {@code HI-b}). Always spawns a {@code Fireball} visual and deals no direct
+	 * hit damage of its own ({@code baseDamage: 0}) — a sub-munition's only payload is the explosion it carries.
+	 */
+	public static void launch(JavaPlugin plugin, WeaponRaytracer raytracer, LivingEntity shooter, Weapon weapon,
+	                          Location origin, Vector direction, EffectRunner effectRunner, int depth) {
+		Vector unitDir = direction.clone().normalize();
+
+		Projectile visual = raytracer.getVisualSpawner()
+		                             .spawnCosmetic(Fireball.class, shooter, origin, direction.clone());
+		if (visual == null) {
+			return;
+		}
+
+		// Gate HI-a review fix: a cluster/airstrike sub-munition inherits the parent weapon's Projectile.Gravity
+		// (guns only — throwables have no such config) so the stepped task can arc it back down instead of
+		// flying dead straight, and never plays its own fly-by sound (the parent explosion already did).
+		double gravity = weapon instanceof GunWeapon gun ? gun.getProjectileData().getGravity() : 0.0;
+
+		RaytraceRequest request = RaytraceRequest.builder()
+		                                         .shooter(shooter)
+		                                         .weapon(weapon)
+		                                         .origin(origin.clone())
+		                                         .direction(unitDir)
+		                                         .maxDistance(64.0)
+		                                         .baseDamage(0.0)
+		                                         .gravity(gravity)
+		                                         .playFlyby(false)
+		                                         .build();
+
+		ProjectileState state = new ProjectileState(weapon, 0.0);
+		state.setDepth(depth);
+		RaytraceContext ctx = new RaytraceContext(request, state);
+
+		ExplosionData explosionData = SteppedProjectileTask.explosionDataOf(weapon);
+		boolean explode         = explosionData != null && explosionData.getRadius() > 0;
+		double  explosionRadius = explode ? explosionData.getRadius() : 0;
+		double  explosionDamage = explode ? explosionData.getDamage() : 0;
+
+		new SteppedProjectileTask(plugin, raytracer, raytracer.getVisualSpawner(), visual, ctx, explode,
+		                          explosionRadius, explosionDamage, 200, effectRunner).start();
 	}
 
 }

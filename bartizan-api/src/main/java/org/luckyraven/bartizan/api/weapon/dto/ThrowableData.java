@@ -23,7 +23,6 @@ public class ThrowableData implements Cloneable {
 	private boolean bounces;
 	private int     maxBounces;
 	private boolean sticky;
-	private String  entityType;
 
 	/**
 	 * Behaviour discriminator. Defaults to {@link ThrowableType#EXPLOSIVE} when missing from yml so existing throwable

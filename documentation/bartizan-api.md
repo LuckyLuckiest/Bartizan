@@ -190,6 +190,42 @@ explosions). The hit-zone classification itself (a `back` flag plus which zone �
 (neither referenced by an api type, so neither moved) it could not stay plugin-only. `HitZone`'s own `zone()`
 accessor now returns `BodyZone` rather than a plugin-local enum.
 
+### Explosion parity (`weapon.dto.ExplosionData`, `weapon.modifiers.ExplosionMath`, gate `HI-a`)
+
+Unifies the two explosion paths guns (rockets) and throwables (grenades) used to run independently into one
+`ExplosionData` both `GunWeapon` and `ThrowableWeapon` carry (`getExplosionData()`, default-constructed like
+`getDamageData()`/`getThrowableData()`). `ExplosionData` holds `radius`, `damage`, `fireTicks`, `shape`
+(`SPHERE`/`CUBE`/`FLAT` — see below for the per-category default), `exposure` (`Exposure.DISTANCE` default |
+`LINE_OF_SIGHT` — a blocked line of sight to the blast centre zeroes a victim's damage regardless of distance;
+the check ignores passable blocks such as grass/torches/signs), `blockDamage` (default `false`), `knockback`
+(`@Nullable Double`, same falloff-vector semantics as `DamageData#getKnockback()`), `ownerImmunity`/`ignoreTeams`,
+and three nested records: `@Nullable Cluster(count, speed, delayTicks)` and `@Nullable Airstrike(count, height,
+radius, delayTicks)` (sub-munitions spawned on detonation, depth-guarded so a sub-munition never itself spawns
+another), and `Detonation(Set<Trigger> impactWhen, delayAfterImpactTicks, fuseTicks)` — `Trigger` is
+`BLOCK`/`ENTITY`/`SPAWN` (`SPAWN` reserved, nothing produces it yet; `BLOCK` fires on a landing *or* a wall/ceiling
+hit, not landing only). The legacy `Damage.Explosion_*`/`Throw.Explosion_*` YAML keys still populate their own
+DTOs (`DamageData`, `ThrowableData`) unchanged — a consumer reading those keeps working — but the explosion
+*runtime* (`bartizan-plugin`'s `ExplosionHandler`) reads only `ExplosionData`, lowered from those legacy keys by
+the plugin's `ExplosionSectionParser` so an unconfigured weapon behaves exactly as it did before this gate. That
+legacy lowering's per-category defaults matter for `shape`/`knockback`/`fireTicks` specifically: guns default to
+`Shape.SPHERE` (the old rocket linear falloff) with an explosion `fireTicks` of `0` (the old rocket blast never
+set victims on fire — only a direct hit does, via `DamageData.fireTicks`); throwables default to `Shape.FLAT`
+(full `damage` anywhere inside `radius`, the old grenade behaviour) and a `knockback` of `2.0` when `Throw
+.Knockback` is unset (the old grenade code's hardcoded thrower-push strength, now applied to every victim in
+range via the unified handler, not just the thrower). Since gate `HI-a` deletes the vanilla
+`World#createExplosion` blast a throwable used to fire *in addition to* its own damage loop, a grenade's
+`Explosion_Damage` is now the full amount a victim inside `radius` takes — retune it on a server that relied on
+the extra vanilla-blast damage stacking on top.
+
+`ExplosionMath` (new, `weapon.modifiers`, pure like `DamageMath`) holds `damageAt(Shape, radius, damage, Vector
+offset)` (Euclidean distance for `SPHERE`/`FLAT`, Chebyshev/max-axis distance for `CUBE`; `SPHERE`/`CUBE` taper
+linearly to `0` at `radius`, `FLAT` deals full `damage` anywhere inside `radius` and `0` outside) and
+`sphereContains`/`cubeContains`.
+
+Throwables (grenades) detonate through `ThrowableAction`'s own item-physics flight loop, never through
+`WeaponRaytracer` — unlike rockets (`SteppedProjectileTask`), a throwable never fires `WeaponRaytraceImpactEvent`;
+listen for `WeaponEntityDamageEvent`/`ON_EXPLODE` instead.
+
 ### Events (`org.luckyraven.bartizan.api.event`)
 
 `WeaponEvent`, `WeaponShootEvent`, `WeaponRaytraceImpactEvent` (cancelling suppresses damage only — penetration and
@@ -225,7 +261,8 @@ own `WeaponReloadListener` skips `ON_RELOAD_END` in that case, since `ON_RELOAD_
 listener never looks up a short-lived side table keyed by entity UUID. `kind()` returns a `DamageKind` enum
 (`DIRECT`, `EXPLOSION`, `FIRE`, `BIOLOGICAL`, `MELEE`). As of gate `HK` every value is actually produced:
 `DIRECT` by the default raytracer damage path (guns) and by `BeamAction`'s short-circuited impact handler,
-`EXPLOSION` by `ThrowableAction`, `FIRE` by `IncendiaryAction`, `BIOLOGICAL` by `BiologicalAction`, and `MELEE` by
+`EXPLOSION` by the unified `ExplosionHandler` (gate `HI-a`) for every living-entity hit of any explosion — rockets
+and throwables alike, `FIRE` by `IncendiaryAction`, `BIOLOGICAL` by `BiologicalAction`, and `MELEE` by
 `MeleeAction` — each fires it only for a `Player` shooter, after it has applied its own damage. `getZone()`
 (`@Nullable` `BodyZone` — `HEAD`/`BODY`/`ARMS`/`LEGS`/`FEET`, promoted from the plugin-only `raytrace.HitZone`
 record) and `getDistance()` are new at gate `HK`; both are `null`/`0` unless the firing path computed them (guns
