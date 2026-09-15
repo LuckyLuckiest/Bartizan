@@ -16,8 +16,12 @@ import org.luckyraven.bartizan.wearable.WearableAddon;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -129,6 +133,63 @@ class BartizanApiImplTest {
 		Player player = player(mock(ItemStack.class), mock(ItemStack.class));
 
 		assertFalse(api.tryReload(player));
+	}
+
+	@Test
+	@DisplayName("setSkin applies a valid skin and persists the held item")
+	void setSkin_validSkin_appliesAndPersists() {
+		ItemStack mainHand = mock(ItemStack.class);
+		Player    player   = player(mainHand, mock(ItemStack.class));
+
+		Weapon weapon = mock(Weapon.class);
+		when(weapon.setSelectedSkin("gold")).thenReturn(true);
+		when(weaponManager.getHeldWeapon(player)).thenReturn(weapon);
+
+		assertTrue(api.setSkin(player, "gold"));
+		verify(weaponManager).persistHeldWeapon(weapon, player);
+	}
+
+	@Test
+	@DisplayName("setSkin returns false for an unknown skin and never persists")
+	void setSkin_unknownSkin_returnsFalseWithoutPersisting() {
+		ItemStack mainHand = mock(ItemStack.class);
+		Player    player   = player(mainHand, mock(ItemStack.class));
+
+		Weapon weapon = mock(Weapon.class);
+		when(weapon.setSelectedSkin("nope")).thenReturn(false);
+		when(weaponManager.getHeldWeapon(player)).thenReturn(weapon);
+
+		assertFalse(api.setSkin(player, "nope"));
+		verify(weaponManager, never()).persistHeldWeapon(any(), any());
+	}
+
+	@Test
+	@DisplayName("setSkin is false when the player holds no weapon")
+	void setSkin_noWeapon_isFalse() {
+		Player player = player(mock(ItemStack.class), mock(ItemStack.class));
+
+		assertFalse(api.setSkin(player, "gold"));
+	}
+
+	@Test
+	@DisplayName("getSkin reads the held weapon's selected skin")
+	void getSkin_readsWeapon() {
+		ItemStack mainHand = mock(ItemStack.class);
+		Player    player   = player(mainHand, mock(ItemStack.class));
+
+		Weapon weapon = mock(Weapon.class);
+		when(weapon.getSelectedSkin()).thenReturn("gold");
+		when(weaponManager.getHeldWeapon(player)).thenReturn(weapon);
+
+		assertEquals("gold", api.getSkin(player));
+	}
+
+	@Test
+	@DisplayName("getSkin is null when the player holds no weapon")
+	void getSkin_noWeapon_isNull() {
+		Player player = player(mock(ItemStack.class), mock(ItemStack.class));
+
+		assertNull(api.getSkin(player));
 	}
 
 }

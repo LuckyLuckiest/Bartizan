@@ -170,8 +170,16 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		ItemBuilder heldWeapon = getHeldWeaponItem(player);
 		if (heldWeapon == null) return;
 
-		weapon.updateWeaponData(heldWeapon);
-		weapon.updateWeapon(player, heldWeapon, player.getInventory().getHeldItemSlot());
+		weapon.updateWeaponData(heldWeapon, player);
+
+		// getHeldWeaponItem checks the main hand first, only falling back to the off hand when the main hand
+		// isn't the weapon (gate HJ review finding 4) - write back to whichever hand it actually came from,
+		// not unconditionally the main-hand hotbar slot.
+		if (isWeapon(player.getInventory().getItemInMainHand())) {
+			weapon.updateWeapon(player, heldWeapon, player.getInventory().getHeldItemSlot());
+		} else {
+			player.getInventory().setItemInOffHand(heldWeapon.build());
+		}
 	}
 
 	/**
@@ -365,6 +373,8 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		// get the selective fire
 		SelectiveFire selectiveFire = SelectiveFire.getType(
 				itemBuilder.getStringTagData(Weapon.getTagProperName(WeaponTag.SELECTIVE_FIRE)));
+		// get the selected Skins.Named skin, if any
+		String skinName = itemBuilder.getStringTagData(Weapon.getTagProperName(WeaponTag.SKIN));
 		// set weapon durability
 		short durability = weapon.getDurabilityCalculator().calculateWeaponDurabilityFromItem(itemBuilder);
 
@@ -372,6 +382,8 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		weapon.setCurrentMagCapacity(amountLeft);
 		weapon.setCurrentSelectiveFire(selectiveFire);
 		weapon.setLoadedAmmoType(ammoType);
+		// an unrecognised/removed skin name is treated as none, not left stale on the in-memory instance
+		if (!weapon.setSelectedSkin(skinName)) weapon.setSelectedSkin(null);
 	}
 
 }

@@ -66,6 +66,10 @@ public interface BartizanApi {
 
     // gate HH
     boolean tryReload(Player player);
+
+    // gate HJ
+    boolean setSkin(Player player, @Nullable String name);
+    @Nullable String getSkin(Player player);
 }
 ```
 
@@ -93,6 +97,8 @@ mode. Returns `false` when the player holds no weapon or the reload was refused.
 | `isScoping(Player)` | `boolean` | Gate `HD`. `getHeldWeapon(player)` scoped in. |
 | `isReloading(Player)` | `boolean` | Gate `HD`. `getHeldWeapon(player)` mid-reload. |
 | `tryReload(Player)` | `boolean` | Gate `HH`. Starts a reload for `getHeldWeapon(player)` via `WeaponService.tryReload`; `false` when no weapon is held or the reload was refused. |
+| `setSkin(Player, String)` | `boolean` | Gate `HJ`. Sets `getHeldWeapon(player)`'s selected `Skins.Named` skin (`null`/empty clears it) and persists the item; `false` when the player holds no weapon or the name isn't one of that weapon's configured `Skins.Named` entries. |
+| `getSkin(Player)` | `@Nullable String` | Gate `HJ`. `getHeldWeapon(player)`'s currently selected `Skins.Named` skin, or `null` when none is selected. |
 | `items()` | `item.WeaponItemApi` | `buildItem(String)`, `isValidWeaponName(String)`, `isSameWeapon(ItemStack, ItemStack)`, `cleanDisplayName(ItemStack)` — see the worked example below. |
 
 ### `WeaponItemApi` notes
@@ -125,6 +131,28 @@ needs no edit), `BartizanItemPredicates.WEARABLE`.
 `Weapon#getHandlingData()` (nullable, gate `HE`) carries the interaction-handling rules — `Equip_Delay`,
 `Deny_Use_In_Crafting`, `Cancel.*`, `Attributes`, `Trigger`, `Circumstance`, `Destroy_When_Empty`,
 `Reset_Fall_Distance` — parsed from a weapon's `Information:`/`Shoot:` sections.
+
+### Skins (`weapon.SkinState`, `weapon.dto.SkinsData`, `weapon.WeaponTag`, gate `HJ`)
+
+`Weapon#getSkinsData()` (nullable) is a weapon's parsed `Skins:` section: a per-`SkinState`
+(`DEFAULT`/`SCOPE`/`RELOAD`/`SPRINT`/`NO_AMMO`) custom-model-data table, plus a `named(String)` lookup of
+player-selectable `Skins.Named` entries (`SkinsData.NamedSkin` — its own per-state overrides and an optional
+`Item_Model` override). `null` means the weapon has no `Skins:` block and renders entirely through
+`Information.Custom_Model_Data`/`Item_Model`.
+
+`Weapon#currentSkinState(@Nullable Player)` resolves the active state in a fixed priority order — reloading beats
+being scoped in, which beats an empty magazine, which beats sprinting, which falls back to `DEFAULT`.
+`Weapon#resolveCustomModelData(SkinState)`/`#resolveItemModel(SkinState)` consult the selected named skin (see
+below) first, then the root `Skins:` table, then `Information.Custom_Model_Data`/`Item_Model`.
+`Weapon#setSelectedSkin(@Nullable String)` validates a name against `getSkinsData().named(String)` and returns
+`false` (leaving the current selection untouched) for an unrecognised one; `null`/empty clears the selection.
+`WeaponTag.SKIN` (dynamic) persists the selection across a relog/drop+pickup the same way `AMMO_TYPE` does.
+
+`BartizanApi.setSkin(Player, String)`/`getSkin(Player)` (above) are the cross-plugin entry point; in-plugin,
+`/bartizan weapon skin <name|default>` does the same against the sender's held weapon. `Item_Model` (both
+`Information.Item_Model` and a named skin's override) only takes effect on a 1.21.2+ server — `ItemMeta#setItemModel`
+doesn't exist before that — and is otherwise silently ignored (with a startup warning for the root
+`Information.Item_Model` case).
 
 ### Ammo type list + reload parity (`weapon.dto.AmmunitionData`/`ReloadData`, `weapon.WeaponTag`, gate `HG`)
 

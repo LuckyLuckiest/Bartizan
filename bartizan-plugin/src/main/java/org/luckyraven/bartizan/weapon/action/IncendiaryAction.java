@@ -110,7 +110,7 @@ public class IncendiaryAction {
 		if (tracksAmmo) weapon.consumeShot();
 
 		// update ammo counter in display name
-		weapon.updateWeaponData(heldWeapon);
+		weapon.updateWeaponData(heldWeapon, player);
 
 		// durability on shot
 		short onShot = weapon.getDurabilityData().getOnShot();

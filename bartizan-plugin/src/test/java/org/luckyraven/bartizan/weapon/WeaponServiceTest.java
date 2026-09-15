@@ -1,6 +1,8 @@
 package org.luckyraven.bartizan.weapon;
 
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,9 +24,13 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -153,6 +159,43 @@ class WeaponServiceTest {
 		doReturn(offHandWeapon).when(spyService).validateAndGetWeapon(player, offHand);
 
 		assertSame(offHandWeapon, spyService.getHeldWeapon(player));
+	}
+
+	/**
+	 * Gate {@code HJ} review finding 4: {@code getHeldWeaponItem} checks the main hand first, falling back to the
+	 * off hand only when the main hand isn't the weapon - {@code persistHeldWeapon} must write back to whichever
+	 * hand it actually read from, not unconditionally the main-hand hotbar slot. {@code isWeapon} is spied rather
+	 * than driven through real NBT so the test doesn't need a real item's tag data.
+	 */
+	@Test
+	@DisplayName("persistHeldWeapon writes back to the off hand when the weapon was read from there")
+	void persistHeldWeapon_offHandWeapon_writesToOffHand() {
+		WeaponService serviceSpy = spy(service);
+
+		ItemStack mainHandItem = mock(ItemStack.class);
+		when(mainHandItem.getType()).thenReturn(Material.SHIELD);
+		when(mainHandItem.getAmount()).thenReturn(1);
+		doReturn(false).when(serviceSpy).isWeapon(mainHandItem);
+
+		ItemStack offHandItem = mock(ItemStack.class);
+		when(offHandItem.getType()).thenReturn(Material.IRON_HOE);
+		when(offHandItem.getAmount()).thenReturn(1);
+		doReturn(true).when(serviceSpy).isWeapon(offHandItem);
+
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		when(inventory.getItem(EquipmentSlot.HAND)).thenReturn(mainHandItem);
+		when(inventory.getItem(EquipmentSlot.OFF_HAND)).thenReturn(offHandItem);
+		when(inventory.getItemInMainHand()).thenReturn(mainHandItem);
+
+		Player player = mock(Player.class);
+		when(player.getInventory()).thenReturn(inventory);
+
+		Weapon weapon = mock(Weapon.class);
+
+		serviceSpy.persistHeldWeapon(weapon, player);
+
+		verify(inventory).setItemInOffHand(offHandItem);
+		verify(inventory, never()).setItem(anyInt(), any(ItemStack.class));
 	}
 
 }

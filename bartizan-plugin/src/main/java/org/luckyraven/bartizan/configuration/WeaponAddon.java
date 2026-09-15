@@ -4,10 +4,12 @@ import com.cryptomorin.xseries.XAttribute;
 import com.cryptomorin.xseries.XMaterial;
 import lombok.CustomLog;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.jetbrains.annotations.Nullable;
+import org.luckyraven.keystone.nms.NmsVersion;
 import org.luckyraven.keystone.util.Placeholder;
 import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.persistence.FileHandler;
@@ -141,6 +143,7 @@ public class WeaponAddon {
 		}
 		applyEffects(root, shoot, weapon, report);
 		applyHud(root, weapon, report);
+		applySkins(root, information, weapon, report, customModelData);
 
 		// hand the placeholder resolver to the weapon instance so its rendering path can resolve
 		// configured PlaceholderAPI tokens
@@ -448,6 +451,30 @@ public class WeaponAddon {
 		NodeReader  hud        = hudSection != null ? NodeReader.of(hudSection, report) : null;
 
 		weapon.setHudData(HudSectionParser.parse(hud, report));
+	}
+
+	/**
+	 * Parses {@code Information.Item_Model} and the root {@code Skins:} section (weapons-roadmap.md gate
+	 * {@code HJ}) — category agnostic, like {@link #applyHud}. {@code Item_Model} is warned about (but still
+	 * stored) when the running server is older than 1.21.2, since {@link Weapon#updateWeaponData} never applies it
+	 * on such a server anyway — the warning is purely so an admin understands why the model never shows up.
+	 */
+	private void applySkins(NodeReader root, NodeReader information, Weapon weapon, ConfigReport report,
+	                        int customModelData) {
+		NamespacedKey itemModel = SkinSectionParser.parseItemModel(information, "Item_Model", report);
+		if (itemModel != null && !NmsVersion.current().atLeast(21, 2)) {
+			String parentPath = information.mapping().path();
+			String path = parentPath == null || parentPath.isEmpty() ? "Item_Model" : parentPath + ".Item_Model";
+			report.add(Severity.WARNING, information.mapping().location(), path,
+			           "Information.Item_Model requires server 1.21.2+ - ignored on this server version",
+			           "skins.item_model_unsupported_version");
+		}
+		weapon.setItemModel(itemModel);
+
+		MappingNode skinsSection = root.get("Skins").asMapping().orNull();
+		NodeReader  skins        = skinsSection != null ? NodeReader.of(skinsSection, report) : null;
+
+		weapon.setSkinsData(SkinSectionParser.parse(skins, customModelData, report));
 	}
 
 	private void applyScope(NodeReader root, Weapon weapon, ConfigReport report) {

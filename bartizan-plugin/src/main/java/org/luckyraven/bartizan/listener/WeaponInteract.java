@@ -201,6 +201,11 @@ public class WeaponInteract implements Listener {
 
 			boolean scopingIn = weapon.cycleScope(player);
 
+			// gate HJ: refresh the item's Scope-state skin, but only for a weapon that actually has one configured
+			// - persistHeldWeapon rebuilds+rewrites the held item unconditionally, which is otherwise unnecessary
+			// churn on every scope toggle for the vast majority of weapons with no Skins: block at all.
+			if (weapon.getSkinsData() != null) weaponService.persistHeldWeapon(weapon, player);
+
 			// A scopeless weapon (scopeData == null) still reaches this branch (validateScope defaults to true)
 			// but has no ON_SCOPE_IN/ON_SCOPE_OUT of its own to fire.
 			if (scopeData != null) {

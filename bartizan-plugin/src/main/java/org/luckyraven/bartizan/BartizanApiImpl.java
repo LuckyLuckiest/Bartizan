@@ -12,6 +12,7 @@ import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.WeaponCatalog;
 import org.luckyraven.bartizan.api.wearable.WearableCatalog;
 import org.luckyraven.bartizan.weapon.WeaponManager;
+import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.wearable.WearableAddon;
 
 /**
@@ -94,6 +95,23 @@ public final class BartizanApiImpl implements BartizanApi {
 		if (weapon == null) return false;
 
 		return weapons.tryReload(plugin, player, weapon);
+	}
+
+	@Override
+	public boolean setSkin(Player player, @Nullable String name) {
+		Weapon weapon = getHeldWeapon(player);
+		if (weapon == null || !weapon.setSelectedSkin(name)) return false;
+
+		weapons.persistHeldWeapon(weapon, player);
+
+		return true;
+	}
+
+	@Override
+	@Nullable
+	public String getSkin(Player player) {
+		Weapon weapon = getHeldWeapon(player);
+		return weapon != null ? weapon.getSelectedSkin() : null;
 	}
 
 }

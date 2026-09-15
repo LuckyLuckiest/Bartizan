@@ -21,6 +21,7 @@ import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.item.ItemBuilder;
+import org.luckyraven.keystone.nms.NmsVersion;
 import org.luckyraven.keystone.util.Placeholder;
 import org.luckyraven.keystone.exception.PluginException;
 import org.luckyraven.bartizan.api.ammo.Ammunition;
@@ -76,6 +77,21 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	@Nullable
 	private       HudData                hudData;
 	/**
+	 * {@code Skins:} section (weapons-roadmap.md gate {@code HJ}) — per-{@link SkinState} custom model data plus
+	 * player-selectable {@code Named} skins. {@code null} for a weapon with no {@code Skins:} block at all, in
+	 * which case {@link #resolveCustomModelData}/{@link #resolveItemModel} fall straight through to
+	 * {@link #customModelData}/{@link #itemModel}.
+	 */
+	@Nullable
+	private       SkinsData              skinsData;
+	/**
+	 * {@code Information.Item_Model} (weapons-roadmap.md gate {@code HJ}) — a 1.21.2+ item model component.
+	 * {@code null} when unconfigured. Never applied on a server older than 1.21.2; see
+	 * {@link #updateWeaponData(ItemBuilder, Player)}.
+	 */
+	@Nullable
+	private       NamespacedKey          itemModel;
+	/**
 	 * Interaction-handling rules (weapons-roadmap.md gate {@code HE}, part a) — {@code Equip_Delay},
 	 * {@code Deny_Use_In_Crafting}, {@code Cancel.*}, {@code Attributes}, {@code Trigger}, {@code Circumstance},
 	 * {@code Destroy_When_Empty}, {@code Reset_Fall_Distance}. {@code null} for a weapon built outside
@@ -100,6 +116,14 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	 * starting {@link #currentSelectiveFire} must always be present in this set when the set is non-empty.
 	 */
 	private       Set<SelectiveFire>     allowedSelectiveFires;
+	/**
+	 * The currently selected {@code Skins.Named} skin (weapons-roadmap.md gate {@code HJ}), or {@code null} when
+	 * none is selected. Runtime state — persisted via {@link WeaponTag#SKIN} and rehydrated by {@code
+	 * WeaponService#setWeaponData} on every resolve, mirroring {@link #currentSelectiveFire}/{@code AMMO_TYPE}.
+	 * Set only through {@link #setSelectedSkin(String)}, which validates the name against {@link #skinsData}.
+	 */
+	@Setter(AccessLevel.NONE)
+	private       String                 selectedSkin;
 
 	private String changingDisplayName;
 	private short  currentDurability;
@@ -318,6 +342,81 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		return System.currentTimeMillis() < shootLockedUntilMillis;
 	}
 
+	// --- Skin operations (weapons-roadmap.md gate HJ) ---
+
+	/**
+	 * The active {@link SkinState} for rendering, in a fixed priority order: a reload in progress beats being
+	 * scoped in, which beats an empty magazine, which beats sprinting.
+	 * // ponytail: fixed priority, no per-weapon override — add a config knob if a weapon ever needs a different
+	 * // order.
+	 *
+	 * @param player the shooter, or {@code null} when there is none (e.g. an NPC-fired shot) — sprinting is simply
+	 * 		never detected in that case.
+	 */
+	public SkinState currentSkinState(@Nullable Player player) {
+		if (isReloading()) return SkinState.RELOAD;
+		if (scopeData != null && scopeData.isScoped()) return SkinState.SCOPE;
+		if (isMagazineEmpty()) return SkinState.NO_AMMO;
+		if (player != null && player.isSprinting()) return SkinState.SPRINT;
+		return SkinState.DEFAULT;
+	}
+
+	/**
+	 * The custom model data to render for {@code state}: the selected {@link #selectedSkin}'s own override for
+	 * {@code state} (falling back to that named skin's own {@code Default}), else the root {@link #skinsData}'s
+	 * override for {@code state} (falling back to its {@code Default}), else {@link #customModelData}.
+	 */
+	public int resolveCustomModelData(SkinState state) {
+		if (skinsData == null) return customModelData;
+
+		SkinsData.NamedSkin named = selectedSkin != null ? skinsData.named(selectedSkin) : null;
+		if (named != null) {
+			Integer namedState = named.state(state);
+			if (namedState != null) return namedState;
+
+			Integer namedDefault = named.state(SkinState.DEFAULT);
+			if (namedDefault != null) return namedDefault;
+		}
+
+		Integer rootState = skinsData.state(state);
+		if (rootState != null) return rootState;
+
+		Integer rootDefault = skinsData.state(SkinState.DEFAULT);
+		return rootDefault != null ? rootDefault : customModelData;
+	}
+
+	/**
+	 * The item model to render: the selected named skin's {@code Item_Model} override when one is configured, else
+	 * {@link #itemModel} ({@code Information.Item_Model}). {@code state} is accepted for symmetry with
+	 * {@link #resolveCustomModelData(SkinState)} — unlike custom model data, {@code Item_Model} has no per-state
+	 * override, only a per-named-skin one.
+	 */
+	@Nullable
+	public NamespacedKey resolveItemModel(@Nullable SkinState state) {
+		SkinsData.NamedSkin named = skinsData != null && selectedSkin != null ? skinsData.named(selectedSkin) : null;
+		if (named != null && named.itemModel() != null) return named.itemModel();
+
+		return itemModel;
+	}
+
+	/**
+	 * Validates {@code name} against this weapon's {@link SkinsData#named(String)} table and, if it matches (or
+	 * {@code name} is {@code null}/empty, meaning "no skin"), applies it.
+	 *
+	 * @return {@code false} for an unrecognised name — the current selection is left unchanged in that case.
+	 */
+	public boolean setSelectedSkin(@Nullable String name) {
+		if (name == null || name.isEmpty()) {
+			this.selectedSkin = null;
+			return true;
+		}
+
+		if (skinsData == null || skinsData.named(name) == null) return false;
+
+		this.selectedSkin = name.toLowerCase(Locale.ROOT);
+		return true;
+	}
+
 	@NotNull
 	public ItemStack buildItem() {
 		return buildItem(null);
@@ -333,9 +432,10 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 				(durability - currentDurability) * (builder.getItemMaxDurability() / (double) durability));
 		builder.setDurability(currentDamage);
 
-		if (customModelData > 0) {
-			builder.setCustomModelData(customModelData);
-		}
+		// The initial give only ever needs the DEFAULT-state model - routed through the same rendering path
+		// updateWeaponData uses (gate HJ review finding 6) so a freshly given weapon on 1.21.2+ carries its item
+		// model immediately instead of waiting for the first shot/reload/scope/sprint to apply it.
+		applySkinRendering(builder, SkinState.DEFAULT);
 
 		initializeTags(builder);
 		builder.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
@@ -353,7 +453,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		this.changingDisplayName = buildDisplayName();
 		itemBuilder.setDisplayName(resolvePlaceholder(player, changingDisplayName));
 
-		boolean updatedSelectiveFire = false, updatedCurrentAmmo = false, updatedAmmoType = false;
+		boolean updatedSelectiveFire = false, updatedCurrentAmmo = false, updatedAmmoType = false, updatedSkin = false;
 
 		for (WeaponTag tag : WeaponTag.values()) {
 			if (containsTag(itemBuilder, tag)) continue;
@@ -373,6 +473,10 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 					tags.put(tag, getAmmoTypeForTag());
 					updatedAmmoType = true;
 				}
+				case SKIN -> {
+					tags.put(tag, getSkinForTag());
+					updatedSkin = true;
+				}
 			}
 			itemBuilder.addTag(getTagProperName(tag), tags.get(tag));
 		}
@@ -380,12 +484,68 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		if (!updatedSelectiveFire) updateTag(itemBuilder, WeaponTag.SELECTIVE_FIRE, getSelectiveFireForTag());
 		if (!updatedCurrentAmmo) updateTag(itemBuilder, WeaponTag.AMMO_LEFT, getAmmoLeftForTag());
 		if (!updatedAmmoType) updateTag(itemBuilder, WeaponTag.AMMO_TYPE, getAmmoTypeForTag());
+		if (!updatedSkin) updateTag(itemBuilder, WeaponTag.SKIN, getSkinForTag());
+
+		applySkinRendering(itemBuilder, player);
 
 		// Attributes: re-applying on every rebuild must replace, not duplicate — applyAttributeModifiers keys each
 		// modifier by a stable NamespacedKey derived from the weapon name + attribute, so this is idempotent.
 		if (handlingData != null && !handlingData.getAttributes().isEmpty()) {
 			applyAttributeModifiers(itemBuilder.build());
 		}
+	}
+
+	/**
+	 * Applies {@link #currentSkinState(Player)}'s custom model data and item model to {@code itemBuilder}
+	 * (weapons-roadmap.md gate {@code HJ}).
+	 */
+	private void applySkinRendering(ItemBuilder itemBuilder, @Nullable Player player) {
+		applySkinRendering(itemBuilder, currentSkinState(player));
+	}
+
+	/**
+	 * Applies {@code state}'s custom model data and item model to {@code itemBuilder} — shared by
+	 * {@link #buildItem(Player)} (always {@link SkinState#DEFAULT}) and {@link #updateWeaponData(ItemBuilder,
+	 * Player)} (via {@link #currentSkinState(Player)}) so both apply skins through the same path (gate {@code HJ}
+	 * review finding 6). A resolved custom model data of 0 (no {@code Default}/named override and no
+	 * {@code Information.Custom_Model_Data}) clears any custom model data already on the item instead of leaving
+	 * a previous state's value stuck on it (review finding 3). The item model write only touches {@link ItemMeta}
+	 * — and only on a 1.21.2+ server, where {@code ItemMeta#setItemModel} exists as a real component — and only
+	 * when the resolved key actually differs from what the stack already carries, so a rebuild that doesn't
+	 * change skins never touches meta at all.
+	 */
+	private void applySkinRendering(ItemBuilder itemBuilder, SkinState state) {
+		int resolvedCustomModelData = resolveCustomModelData(state);
+		if (resolvedCustomModelData > 0) {
+			itemBuilder.setCustomModelData(resolvedCustomModelData);
+		} else {
+			clearCustomModelData(itemBuilder);
+		}
+
+		if (!NmsVersion.current().atLeast(21, 2)) return;
+
+		NamespacedKey resolvedItemModel = resolveItemModel(state);
+		ItemStack     stack             = itemBuilder.build();
+		ItemMeta      meta              = stack != null ? stack.getItemMeta() : null;
+		if (meta == null || Objects.equals(meta.getItemModel(), resolvedItemModel)) return;
+
+		meta.setItemModel(resolvedItemModel);
+		stack.setItemMeta(meta);
+	}
+
+	/**
+	 * Clears a stale custom model data left over from a previously-rendered {@link SkinState} once the current
+	 * state resolves to none at all (weapons-roadmap.md gate {@code HJ} review finding 3) —
+	 * {@code ItemBuilder#setCustomModelData} only ever sets a positive value, so this is the only path that can
+	 * take the component back off the item.
+	 */
+	private void clearCustomModelData(ItemBuilder itemBuilder) {
+		ItemStack stack = itemBuilder.build();
+		ItemMeta  meta  = stack != null ? stack.getItemMeta() : null;
+		if (meta == null || !meta.hasCustomModelData()) return;
+
+		meta.setCustomModelData(null);
+		stack.setItemMeta(meta);
 	}
 
 	// --- Durability operations ---
@@ -528,6 +688,13 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		return loaded != null ? loaded.getName() : "";
 	}
 
+	/**
+	 * The name of the currently selected {@code Skins.Named} skin, or an empty string when none is selected.
+	 */
+	protected String getSkinForTag() {
+		return selectedSkin != null ? selectedSkin : "";
+	}
+
 	protected void setUUID(UUID uuid) {
 		this.uuid = uuid;
 	}
@@ -543,6 +710,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		tags.put(WeaponTag.SELECTIVE_FIRE, getSelectiveFireForTag());
 		tags.put(WeaponTag.AMMO_LEFT, getAmmoLeftForTag());
 		tags.put(WeaponTag.AMMO_TYPE, getAmmoTypeForTag());
+		tags.put(WeaponTag.SKIN, getSkinForTag());
 		tags.forEach((tag, value) -> itemBuilder.addTag(getTagProperName(tag), value));
 	}
 
@@ -571,6 +739,9 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		this.effects              = source.effects != null ? source.effects.clone() : EffectsData.empty();
 		this.hudData              = source.hudData != null ? source.hudData.clone() : null;
 		this.handlingData         = source.handlingData != null ? source.handlingData.clone() : null;
+		this.skinsData            = source.skinsData != null ? source.skinsData.clone() : null;
+		// NamespacedKey is a fully immutable Bukkit value type - safe to share across template copies.
+		this.itemModel            = source.itemModel;
 		this.recoil               = new RecoilManager(this);
 		this.spread               = new SpreadManager(this);
 		this.durabilityCalculator = new DurabilityCalculator(this);
@@ -582,6 +753,9 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		if (this.reload != null) this.reload.rebindWeapon(this);
 		this.currentSelectiveFire    = source.currentSelectiveFire;
 		this.shootLockedUntilMillis  = 0L;
+		// Runtime state, not carried over from the template - a fresh copy starts with no skin selected until
+		// WeaponService#setWeaponData rehydrates it from the item's WeaponTag#SKIN.
+		this.selectedSkin            = null;
 	}
 
 	protected void applyEffect(Player player, XPotion potion, int amplifier) {

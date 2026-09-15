@@ -19,6 +19,10 @@
 		"usage": "/bartizan weapon info <name>",
 		"description": "Shows the information of the held weapon or of the specified name."
 	},
+	"weapon_skin": {
+		"usage": "/bartizan weapon skin <name|default>",
+		"description": "Applies a Skins.Named skin to the held weapon, or 'default' to clear the selection."
+	},
 	"ammunition_help": {
 		"usage": "/bartizan ammo help <page>",
 		"description": "Shows the specified page in the ammo menu."

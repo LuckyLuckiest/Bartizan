@@ -25,6 +25,13 @@ Information:
    Category: gun
    # The material that would be used for the weapon
    Material: IRON_PICKAXE
+   # The Default-state model when Skins.Default (below) is absent. Matches Skins.Default here on purpose -
+   # nothing about how the weapon looks changes by adding the Skins: block.
+   Custom_Model_Data: 1000
+   # 1.21.2+ item model component (a namespaced key, e.g. a resource pack's custom model). Ignored (with a
+   # startup warning) on an older server - Custom_Model_Data above still applies there either way. Uncomment
+   # once a matching resource pack model exists.
+   # Item_Model: "bartizan:rifle"
    # For mc versions 1.9> setting durability can have unique textures
    Durability:
       Base: 100
@@ -343,6 +350,26 @@ HUD:
    # The overlay is keyed by item Material, not by weapon - two weapons sharing a Material show each other's
    # reload overlay on the hotbar (firing is unaffected).
    Reload_Item_Cooldown: true
+
+# Per-state custom model data / item model (weapons-roadmap.md gate HJ). Every key is optional - an absent state
+# falls back to Default, then to Information.Custom_Model_Data/Item_Model above. The values below intentionally
+# match Information.Custom_Model_Data so this block changes nothing about how the weapon looks out of the box;
+# give each state its own resource-pack model to actually see the skins change.
+Skins:
+   Default: 1000
+   Scope: 1000
+   Reload: 1000
+   Sprint: 1000
+   No_Ammo: 1000
+
+   # Named: player-selectable skins ("/bartizan weapon skin <name>"), each overriding any state above and/or
+   # Item_Model. A state left out of a named skin falls back to that skin's own Default, then to the states
+   # above.
+   # Named:
+   #    gold:
+   #       Default: 2000
+   #       Scope: 2001
+   #       Item_Model: "bartizan:rifle_gold"
 
 Death_Messages:
    - "&c%victim% was gunned down by %killer%'s %item%."

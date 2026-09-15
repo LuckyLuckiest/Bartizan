@@ -71,6 +71,7 @@ public final class WeaponCommand extends Command {
 		Argument get  = new WeaponGetCommand(bartizan, getArgumentTree(), getArgument(), weaponManager, weaponLoader);
 		Argument info = new WeaponInfoCommand(bartizan, getArgumentTree(), getArgument(), weaponManager, weaponAddon);
 		Argument list = new WeaponListCommand(bartizan, getArgumentTree(), getArgument(), weaponAddon);
+		Argument skin = new WeaponSkinCommand(bartizan, getArgumentTree(), getArgument(), weaponManager);
 
 		List<Argument> arguments = new ArrayList<>();
 
@@ -78,6 +79,7 @@ public final class WeaponCommand extends Command {
 		arguments.add(get);
 		arguments.add(info);
 		arguments.add(list);
+		arguments.add(skin);
 
 		getArgument().addAllSubArguments(arguments);
 	}

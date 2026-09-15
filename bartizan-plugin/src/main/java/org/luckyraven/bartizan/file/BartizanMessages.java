@@ -32,6 +32,8 @@ public enum BartizanMessages {
 	GAVE_WEAPON("Commands.Weapon.Gave", Type.COMMAND),
 	INVALID_WEAPON("Errors.Not_Valid_Weapon", Type.ERROR),
 	WEAPON_LIST_HEADER("Commands.Weapon.List_Header", Type.COMMAND),
+	SKIN_APPLIED("Commands.Weapon.Skin_Applied", Type.COMMAND),
+	SKIN_UNKNOWN("Errors.Not_Valid_Skin", Type.ERROR),
 
 	// commands - ammo
 	RECEIVED_AMMO("Commands.Ammo.Received", Type.COMMAND),

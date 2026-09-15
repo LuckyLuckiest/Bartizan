@@ -57,13 +57,13 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
                                        .weapon                 Weapon + 6 subclasses (incl. BeamWeapon), WeaponType, ThrowableType,
                                                                 SelectiveFire, WeaponTag, ProjectileType, ProjectileState, WeaponCatalog,
-                                                                BodyZone (gate HK)
-                                       .weapon.dto              26 config records (AmmunitionData, ChargeData, BeamData,
+                                                                BodyZone (gate HK), SkinState (gate HJ)
+                                       .weapon.dto              27 config records (AmmunitionData, ChargeData, BeamData,
                                                                 StatusData, DamageData, DropoffStep, ExplosionData (gate
                                                                 HI-a, incl. nested Cluster/Airstrike/Detonation),
                                                                 VisualData, BouncyData (gate HI-b), EffectHook (26 hooks,
                                                                 incl. On_Block_Hit and the zone hooks), EffectSpec,
-                                                                EffectsData, HudData, HandlingData, MuzzleOffsetData, ...)
+                                                                EffectsData, HudData, HandlingData, MuzzleOffsetData, SkinsData, ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager, DamageMath, ExplosionMath + action/*
                                        .weapon.recoil            RecoilManager
@@ -74,16 +74,17 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
 bartizan-plugin org.luckyraven.bartizan                       Bartizan, BartizanApiImpl
                                        .ammo                   AmmunitionManager
                                        .bootstrap              BartizanContext, DefaultListenerService
-                                       .command(.data|.wearable) WeaponCommand/Give/Get/Info/List, Ammunition*, Wearable*, DebugCommand, StatsCommand
+                                       .command(.data|.wearable) WeaponCommand/Give/Get/Info/List/Skin, Ammunition*, Wearable*, DebugCommand, StatsCommand
                                        .config                 KernelConfig, FilesConfig, WiringConfig, ItemConfig
-                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 14 YAML section parsers (incl. BeamWeaponParser,
-                                                                HudSectionParser, ExplosionSectionParser (gate HI-a))
+                                       .configuration(.parser) WeaponAddon, AmmunitionAddon, the 15 YAML section parsers (incl. BeamWeaponParser,
+                                                                HudSectionParser, ExplosionSectionParser (gate HI-a), SkinSectionParser (gate HJ))
                                        .effect(.impl)          Effect, EffectContext, EffectRunner + 15 *HookEffect
                                        .file                   BartizanSettings, BartizanMessages, WeaponLoader
                                        .fire                   PluginFireRegistry
                                        .hud                    HudService, WeaponPlaceholders, BartizanExpansion, PlaceholderApiSupport
                                        .item                   converters, serializers, refreshers, WeaponItemApiImpl, BartizanItemVocabulary
                                        .listener(.*)           WeaponInteract, ScopeJumpListener, WeaponCraftingListener,
+                                                                WeaponSprintListener,
                                                                 death/fire/player/projectile/reload/selective/wearable
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,

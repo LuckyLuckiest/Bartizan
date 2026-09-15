@@ -62,7 +62,7 @@ public class WeaponSelectiveFireChangeListener implements Listener {
 
 		if (itemBuilder == null) return;
 
-		weapon.updateWeaponData(itemBuilder);
+		weapon.updateWeaponData(itemBuilder, player);
 		weapon.updateWeapon(player, itemBuilder, player.getInventory().getHeldItemSlot());
 
 		ActionBarManager.send(player, "&6Selective Fire > &e" +

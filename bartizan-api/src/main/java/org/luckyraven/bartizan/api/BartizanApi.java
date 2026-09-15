@@ -57,4 +57,20 @@ public interface BartizanApi {
 	 */
 	boolean tryReload(Player player);
 
+	/**
+	 * Sets {@code player}'s held weapon's selected {@code Skins.Named} skin (weapons-roadmap.md gate {@code HJ}).
+	 * {@code null}/empty clears the selection back to the state-driven default.
+	 *
+	 * @return {@code false} when {@code player} holds no weapon, or {@code name} does not match a configured
+	 * 		{@code Skins.Named} entry on that weapon — the current selection is left unchanged in that case.
+	 */
+	boolean setSkin(Player player, @Nullable String name);
+
+	/**
+	 * @return the name of {@code player}'s held weapon's currently selected {@code Skins.Named} skin, or
+	 * 		{@code null} when no skin is selected or {@code player} holds no weapon.
+	 */
+	@Nullable
+	String getSkin(Player player);
+
 }

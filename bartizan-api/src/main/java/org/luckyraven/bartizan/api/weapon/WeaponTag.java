@@ -32,7 +32,15 @@ public enum WeaponTag {
 	 * Needed once a weapon can be configured with {@code Ammunition.Types} (multiple accepted ammo items) so
 	 * unloading on reload knows which item to give back.
 	 */
-	AMMO_TYPE(VariableType.DYNAMIC);
+	AMMO_TYPE(VariableType.DYNAMIC),
+
+	/**
+	 * The name of the currently selected {@code Skins.Named} skin (weapons-roadmap.md gate {@code HJ}); empty
+	 * string means no skin is selected (the item renders through the state-driven root {@code Skins:} fallbacks).
+	 * Saved so a player's chosen skin survives a relog, drop+pickup or catalogue-template rebuild the same way
+	 * {@link #SELECTIVE_FIRE}/{@link #AMMO_TYPE} do.
+	 */
+	SKIN(VariableType.DYNAMIC);
 
 	private final VariableType variableType;
 

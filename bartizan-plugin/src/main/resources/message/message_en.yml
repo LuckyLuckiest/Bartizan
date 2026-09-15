@@ -13,6 +13,7 @@ Commands:
       Received: "You received &8(&7%amount%&8) &e%weapon% &7weapon."
       Gave: "&7Gave &8(&7%amount%&8) &e%weapon% &7to &b%player%&7."
       List_Header: "List of weapons"
+      Skin_Applied: "&7Applied skin &b%skin% &7to your held weapon."
    Ammo:
       Received: "You received &8(&7%amount%&8) &e%ammo% &7ammunition."
       List_Header: "List of ammunition"
@@ -27,6 +28,7 @@ Errors:
    Not_Valid_Weapon: "&cInvalid weapon type &3%args%&c."
    Not_Valid_Ammo: "&cInvalid ammunition type &3%args%&c."
    No_Stats: "&cNo stats recorded for &3%player%&c."
+   Not_Valid_Skin: "&cUnknown skin &3%skin% &cfor this weapon."
    Wearable:
       Invalid: "Invalid wearable: &c%name%"
       Not_Registered: "Wearable not registered: &c%key%"

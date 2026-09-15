@@ -36,6 +36,9 @@ public class WeaponReloadListener implements Listener {
 	public void onReloadStart(WeaponReloadStartEvent event) {
 		reloadingPlayers.add(event.getPlayer().getUniqueId());
 
+		// gate HJ: refresh the item so a Skins.Reload skin actually shows while reloading.
+		weaponService.persistHeldWeapon(event.getWeapon(), event.getPlayer());
+
 		EffectContext ctx = EffectContext.builder().weapon(event.getWeapon()).source(event.getPlayer()).build();
 		effectRunner.run(event.getWeapon(), EffectHook.ON_RELOAD_START, ctx);
 
@@ -48,6 +51,11 @@ public class WeaponReloadListener implements Listener {
 	@EventHandler
 	public void onReloadEnd(WeaponReloadCompleteEvent event) {
 		reloadingPlayers.remove(event.getPlayer().getUniqueId());
+
+		// gate HJ: refresh the item so the Skins.Reload skin clears - runs whether the reload finished normally
+		// or was swap-cancelled, since isReloading() is already false by the time either variant of this event
+		// fires.
+		weaponService.persistHeldWeapon(event.getWeapon(), event.getPlayer());
 
 		// A swap-cancelled reload (InstantReload/NumberedReload#stopReloading) also raises this event so state
 		// stays consistent, but ON_RELOAD_CANCEL (below, via onHeldSlotChange) is the feedback hook for that case

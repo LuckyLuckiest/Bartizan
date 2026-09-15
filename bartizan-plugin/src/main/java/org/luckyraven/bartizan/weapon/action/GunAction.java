@@ -85,7 +85,7 @@ public class GunAction {
 
 		boolean hitEntity = WeaponShooting.fire(plugin, raytracer, shooter, weapon, effectRunner);
 
-		weapon.updateWeaponData(heldWeapon);
+		weapon.updateWeaponData(heldWeapon, shooter);
 
 		// change durability of the weapon
 		short durabilityOnShot = weapon.getDurabilityData().getOnShot();
