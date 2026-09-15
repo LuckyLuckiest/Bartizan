@@ -6,10 +6,15 @@ import lombok.Getter;
 import lombok.Setter;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.util.Vector;
@@ -70,6 +75,15 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	private       EffectsData            effects = EffectsData.empty();
 	@Nullable
 	private       HudData                hudData;
+	/**
+	 * Interaction-handling rules (weapons-roadmap.md gate {@code HE}, part a) — {@code Equip_Delay},
+	 * {@code Deny_Use_In_Crafting}, {@code Cancel.*}, {@code Attributes}, {@code Trigger}, {@code Circumstance},
+	 * {@code Destroy_When_Empty}, {@code Reset_Fall_Distance}. {@code null} for a weapon built outside
+	 * {@code WeaponAddon.registerWeapon} (e.g. a test fixture) — every consumer treats {@code null} the same as
+	 * the all-defaults {@link HandlingData}.
+	 */
+	@Nullable
+	private       HandlingData           handlingData;
 	// Runtime state
 	private       int                    currentMagCapacity;
 	private       SelectiveFire          currentSelectiveFire;
@@ -286,7 +300,10 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 
 		initializeTags(builder);
 		builder.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
-		return builder.build();
+
+		ItemStack item = builder.build();
+		applyAttributeModifiers(item);
+		return item;
 	}
 
 	public void updateWeaponData(ItemBuilder itemBuilder) {
@@ -324,6 +341,12 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		if (!updatedSelectiveFire) updateTag(itemBuilder, WeaponTag.SELECTIVE_FIRE, getSelectiveFireForTag());
 		if (!updatedCurrentAmmo) updateTag(itemBuilder, WeaponTag.AMMO_LEFT, getAmmoLeftForTag());
 		if (!updatedAmmoType) updateTag(itemBuilder, WeaponTag.AMMO_TYPE, getAmmoTypeForTag());
+
+		// Attributes: re-applying on every rebuild must replace, not duplicate — applyAttributeModifiers keys each
+		// modifier by a stable NamespacedKey derived from the weapon name + attribute, so this is idempotent.
+		if (handlingData != null && !handlingData.getAttributes().isEmpty()) {
+			applyAttributeModifiers(itemBuilder.build());
+		}
 	}
 
 	// --- Durability operations ---
@@ -505,6 +528,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		this.muzzleOffsetData     = source.muzzleOffsetData;
 		this.effects              = source.effects != null ? source.effects.clone() : EffectsData.empty();
 		this.hudData              = source.hudData != null ? source.hudData.clone() : null;
+		this.handlingData         = source.handlingData != null ? source.handlingData.clone() : null;
 		this.recoil               = new RecoilManager(this);
 		this.spread               = new SpreadManager(this);
 		this.durabilityCalculator = new DurabilityCalculator(this);
@@ -527,6 +551,42 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 
 	protected void removeEffect(Player player, XPotion potion) {
 		XPotion.of(potion.name()).map(XPotion::getPotionEffectType).ifPresent(player::removePotionEffect);
+	}
+
+	/**
+	 * {@code Information.Attributes} — Bukkit attribute modifiers applied to the main-hand item. Each entry is
+	 * keyed by a {@link NamespacedKey} derived from the weapon name and the attribute itself, so calling this again
+	 * (a rebuild via {@link #updateWeaponData}) replaces the previous modifier instead of stacking a duplicate.
+	 */
+	private void applyAttributeModifiers(@Nullable ItemStack item) {
+		if (item == null || handlingData == null) return;
+
+		List<HandlingData.AttributeEntry> entries = handlingData.getAttributes();
+		if (entries.isEmpty()) return;
+
+		ItemMeta meta = item.getItemMeta();
+		if (meta == null) return;
+
+		for (HandlingData.AttributeEntry entry : entries) {
+			Attribute attribute = entry.attribute();
+			String    sanitized = ("attr_" + name + "_" + attribute.getKey().getKey())
+			                     .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "_");
+			NamespacedKey key = NamespacedKey.fromString("bartizan:" + sanitized);
+			if (key == null) continue;
+
+			Collection<AttributeModifier> existingModifiers = meta.getAttributeModifiers(attribute);
+			if (existingModifiers != null) {
+				for (AttributeModifier existing : existingModifiers) {
+					if (existing.getKey().equals(key)) meta.removeAttributeModifier(attribute, existing);
+				}
+			}
+
+			meta.addAttributeModifier(attribute,
+			                          new AttributeModifier(key, entry.amount(), entry.operation(),
+			                                                EquipmentSlotGroup.MAINHAND));
+		}
+
+		item.setItemMeta(meta);
 	}
 
 	private void push(Player player, double powerUp, double push) {

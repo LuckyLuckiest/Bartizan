@@ -1,14 +1,18 @@
 package org.luckyraven.bartizan.configuration;
 
+import com.cryptomorin.xseries.XAttribute;
 import com.cryptomorin.xseries.XMaterial;
 import lombok.CustomLog;
 import org.bukkit.Material;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.util.Placeholder;
 import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.persistence.FileHandler;
 import org.luckyraven.keystone.persistence.config.ConfigIssue;
+import org.luckyraven.keystone.persistence.config.ConfigNode;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.FileHandlerReader;
 import org.luckyraven.keystone.persistence.config.MappingNode;
@@ -126,6 +130,7 @@ public class WeaponAddon {
 		weapon.setDurabilityData(new DurabilityData());
 		weapon.setSoundData(new SoundData());
 		weapon.getDurabilityData().setOnShot(onShotDurability);
+		applyHandling(information, shoot, weapon, report);
 		applyShootSounds(shoot, weapon, report);
 		applyReloadSoundsAndActionBar(root, weapon, report);
 		applyOptionalShootConfig(shoot, weapon, report);
@@ -301,6 +306,112 @@ public class WeaponAddon {
 		weapon.getSpreadData().setResetOnBound(bounds.get("Reset_On_Bound").asBool().orDefault(false));
 		weapon.getSpreadData().setBoundMinimum(bounds.get("Min").asDouble().orDefault(0.0));
 		weapon.getSpreadData().setBoundMaximum(bounds.get("Max").asDouble().orDefault(0.0));
+	}
+
+	/**
+	 * Parses {@code Information.Equip_Delay}/{@code Deny_Use_In_Crafting}/{@code Cancel}/{@code Attributes} and,
+	 * when a {@code Shoot:} section exists, {@code Shoot.Trigger}/{@code Circumstance}/{@code Destroy_When_Empty}/
+	 * {@code Reset_Fall_Distance} into a {@link HandlingData} (weapons-roadmap.md gate {@code HE}, part a). Every
+	 * key is optional and category-agnostic — {@code Trigger}/{@code Circumstance} only have an effect for GUN
+	 * weapons ({@code WeaponInteract}/{@code GunAction}).
+	 */
+	private void applyHandling(NodeReader information, @Nullable NodeReader shoot, Weapon weapon,
+	                           ConfigReport report) {
+		HandlingData handling = new HandlingData();
+
+		handling.setEquipDelay(information.get("Equip_Delay").asInt().min(0).orDefault(0));
+		handling.setDenyUseInCrafting(information.get("Deny_Use_In_Crafting").asBool().orDefault(true));
+		handling.setAttributes(parseAttributes(information, weapon.getName(), report));
+
+		MappingNode cancelSection = information.get("Cancel").asMapping().orNull();
+		if (cancelSection != null) {
+			NodeReader cancel = NodeReader.of(cancelSection, report);
+			handling.setCancel(new HandlingData.Cancel(
+					cancel.get("Drop_Item").asBool().orDefault(false),
+					cancel.get("Swap_Hands").asBool().orDefault(false),
+					cancel.get("Break_Blocks").asBool().orDefault(true),
+					cancel.get("Arm_Swing").asBool().orDefault(false)));
+		}
+
+		if (shoot != null) {
+			String triggerString = shoot.get("Trigger").asString().orNull();
+			if (triggerString != null) {
+				Optional<HandlingData.Trigger> trigger = HandlingData.Trigger.fromKey(triggerString);
+				if (trigger.isPresent()) handling.setTrigger(trigger.get());
+				else warnBadHandlingValue(shoot, "Trigger", triggerString, report);
+			}
+
+			MappingNode circumstanceSection = shoot.get("Circumstance").asMapping().orNull();
+			if (circumstanceSection != null) {
+				NodeReader circumstance = NodeReader.of(circumstanceSection, report);
+				for (HandlingData.Circumstance key : HandlingData.Circumstance.values()) {
+					String raw = circumstance.get(key.key()).asString().orNull();
+					if (raw == null) continue;
+
+					Optional<HandlingData.Rule> rule = HandlingData.Rule.fromKey(raw);
+					if (rule.isPresent()) handling.getCircumstances().put(key, rule.get());
+					else warnBadHandlingValue(circumstance, key.key(), raw, report);
+				}
+			}
+
+			handling.setDestroyWhenEmpty(shoot.get("Destroy_When_Empty").asBool().orDefault(false));
+			handling.setResetFallDistance(shoot.get("Reset_Fall_Distance").asBool().orDefault(false));
+		}
+
+		weapon.setHandlingData(handling);
+	}
+
+	/**
+	 * Parses {@code Information.Attributes} — a list of {@code "<attribute> <operation> <amount>"} strings.
+	 * {@link XAttribute#of(String)} resolves both the modern (1.21.2+) and legacy ({@code GENERIC_}-prefixed)
+	 * attribute names. A malformed entry (wrong token count, unrecognised attribute/operation, bad number) is a
+	 * {@link Severity#WARNING} — the entry is skipped, the rest of the file keeps loading.
+	 */
+	private List<HandlingData.AttributeEntry> parseAttributes(NodeReader information, String weaponName,
+	                                                          ConfigReport report) {
+		List<String> raw = information.get("Attributes").asList().ofStrings().orEmpty();
+		if (raw.isEmpty()) return List.of();
+
+		List<HandlingData.AttributeEntry> entries = new ArrayList<>();
+		for (String line : raw) {
+			String[] tokens = line.trim().split("\\s+");
+			if (tokens.length != 3) {
+				warnBadAttribute(information, weaponName, line, report);
+				continue;
+			}
+
+			Optional<XAttribute> xAttribute = XAttribute.of(tokens[0].toUpperCase(Locale.ROOT));
+			if (xAttribute.isEmpty()) {
+				warnBadAttribute(information, weaponName, line, report);
+				continue;
+			}
+
+			try {
+				AttributeModifier.Operation operation = AttributeModifier.Operation.valueOf(
+						tokens[1].toUpperCase(Locale.ROOT));
+				double amount = Double.parseDouble(tokens[2]);
+				entries.add(new HandlingData.AttributeEntry(xAttribute.get().get(), operation, amount));
+			} catch (IllegalArgumentException exception) {
+				warnBadAttribute(information, weaponName, line, report);
+			}
+		}
+		return entries;
+	}
+
+	private void warnBadAttribute(NodeReader information, String weaponName, String raw, ConfigReport report) {
+		ConfigNode node = information.get("Attributes").node();
+		report.add(Severity.WARNING, node != null ? node.location() : information.mapping().location(),
+		           "Information.Attributes",
+		           "weapon '" + weaponName + "' has an unrecognised Attributes entry '" + raw + "'",
+		           "handling.unknown_attribute");
+	}
+
+	private void warnBadHandlingValue(NodeReader parent, String key, String raw, ConfigReport report) {
+		ConfigNode node = parent.get(key).node();
+		String     parentPath = parent.mapping().path();
+		String     path       = parentPath == null || parentPath.isEmpty() ? key : parentPath + "." + key;
+		report.add(Severity.WARNING, node != null ? node.location() : parent.mapping().location(), path,
+		           "unrecognised value '" + raw + "' for " + path, "handling.unknown_" + key.toLowerCase(Locale.ROOT));
 	}
 
 	/**

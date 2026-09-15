@@ -11,6 +11,8 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.player.PlayerAnimationEvent;
+import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
@@ -25,6 +27,8 @@ import org.luckyraven.keystone.timer.SequenceTimer;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
+import org.luckyraven.bartizan.weapon.CircumstanceRules;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.weapon.dto.ScopeData;
 import org.luckyraven.bartizan.effect.EffectContext;
@@ -104,6 +108,13 @@ public class WeaponInteract implements Listener {
 	 */
 	private final Map<UUID, Long>                        pressLockUntilTick;
 	/**
+	 * {@code Information.Equip_Delay} gate — dedicated map, seeded in {@link #onWeaponHeld} and cleared on weapon
+	 * swap. Kept separate from {@link #pressLockUntilTick}: that map also carries the per-shot fire cooldown,
+	 * rewritten on every shot by {@link #engagePressHoldWatchdog(UUID, long)}, so sharing it here would refuse the
+	 * scope toggle for the whole fire-rate window after every shot, not just after an equip.
+	 */
+	private final Map<UUID, Long>                        equipDelayUntil;
+	/**
 	 * SINGLE/BURST held-trigger gate. After a SINGLE/BURST shot fires, an entry is inserted here for the weapon and a
 	 * release-detection watchdog is scheduled. While the entry exists, all incoming RMB events for the weapon are
 	 * dropped — this is what enforces one-shot-per-press despite Spigot's repeated PlayerInteractEvent stream while RMB
@@ -147,6 +158,7 @@ public class WeaponInteract implements Listener {
 		this.statusService      = statusService;
 		this.continuousFire     = new ConcurrentHashMap<>();
 		this.pressLockUntilTick = new ConcurrentHashMap<>();
+		this.equipDelayUntil    = new ConcurrentHashMap<>();
 		this.pressHoldState     = new ConcurrentHashMap<>();
 		this.releaseCallbacks   = new ConcurrentHashMap<>();
 		this.autoTasks          = new ConcurrentHashMap<>();
@@ -169,6 +181,14 @@ public class WeaponInteract implements Listener {
 		boolean rightClick = event.getAction() == Action.RIGHT_CLICK_AIR ||
 		                     event.getAction() == Action.RIGHT_CLICK_BLOCK;
 
+		// Shoot.Trigger: left_click (guns only) swaps which click fires and which toggles scope. Every other WM
+		// trigger type is deliberately unsupported.
+		// ponytail: PlayerInteractEntityEvent (right-click-on-entity firing) is not swapped — a left_click gun
+		// aimed at a mob keeps firing through EntityDamageByEntityEvent's melee-only path, i.e. it doesn't fire.
+		boolean gunLeftTrigger = weapon instanceof GunWeapon && isLeftClickTrigger(weapon);
+		boolean scopeClick     = gunLeftTrigger ? rightClick : leftClick;
+		boolean fireClick      = gunLeftTrigger ? leftClick : rightClick;
+
 		// scope toggle for any weapon type that has a scope configured
 		ScopeData scopeData     = weapon.getScopeData();
 		boolean   validateScope = true;
@@ -176,7 +196,8 @@ public class WeaponInteract implements Listener {
 			validateScope = scopeData.getLevel() > 0;
 		}
 
-		if (leftClick && !player.isSneaking() && validateScope && !weapon.isReloading()) {
+		if (scopeClick && !player.isSneaking() && validateScope && !weapon.isReloading() &&
+		    !isEquipDelayActive(weapon.getUuid())) {
 			event.setUseInteractedBlock(Event.Result.DENY);
 			event.setUseItemInHand(Event.Result.DENY);
 
@@ -199,13 +220,20 @@ public class WeaponInteract implements Listener {
 			return;
 		}
 
-		// no interruption while the weapon is reloading
+		// no interruption while the weapon is reloading — but Shoot.Circumstance.Reloading: deny must still fire
+		// ON_DENY on the press that triggered it, so the circumstance check runs BEFORE this early return. When
+		// Reloading is unconfigured (or every configured circumstance is satisfied), firstDenied is null and the
+		// early return stays exactly as silent as before.
 		if (gunWeapon.isReloading()) {
+			if (fireClick) {
+				HandlingData.Circumstance denied = CircumstanceRules.firstDenied(player, gunWeapon);
+				if (denied != null) fireDeny(gunWeapon, player, denied.key());
+			}
 			event.setCancelled(true);
 			return;
 		}
 
-		if (!rightClick) return;
+		if (!fireClick) return;
 
 		// cancel block interaction
 		event.setUseInteractedBlock(Event.Result.DENY);
@@ -225,16 +253,37 @@ public class WeaponInteract implements Listener {
 
 	@EventHandler
 	public void onBlockPlace(BlockPlaceEvent event) {
-		if (!weaponService.isWeapon(event.getPlayer().getInventory().getItemInMainHand())) return;
+		if (!cancelsBreakBlocks(event.getPlayer())) return;
 
 		event.setCancelled(true);
 	}
 
 	@EventHandler
 	public void onBlockBreak(BlockBreakEvent event) {
-		if (!weaponService.isWeapon(event.getPlayer().getInventory().getItemInMainHand())) return;
+		if (!cancelsBreakBlocks(event.getPlayer())) return;
 
 		event.setCancelled(true);
+	}
+
+	/**
+	 * {@code Information.Cancel.Arm_Swing} (default {@code false}): cancels the left-click arm-swing animation
+	 * while holding a weapon configured with the flag.
+	 */
+	@EventHandler
+	public void onPlayerAnimation(PlayerAnimationEvent event) {
+		if (event.getAnimationType() != PlayerAnimationType.ARM_SWING) return;
+
+		Player    player = event.getPlayer();
+		ItemStack item   = player.getInventory().getItemInMainHand();
+		if (!weaponService.isWeapon(item)) return;
+
+		Weapon weapon = weaponService.validateAndGetWeapon(player, item);
+		if (weapon == null) return;
+
+		HandlingData handling = weapon.getHandlingData();
+		if (handling != null && handling.getCancel().armSwing()) {
+			event.setCancelled(true);
+		}
 	}
 
 	@EventHandler
@@ -346,9 +395,10 @@ public class WeaponInteract implements Listener {
 			previousWeapon.unScope(player, true);
 			previousWeapon.getRecoil().resetRecoilPattern();
 
-			// drop the SINGLE/BURST press lock and held-trigger gate so the new selection starts on a clean trigger
-			// (applies to both gun and incendiary weapons, both of which share these maps)
+			// drop the SINGLE/BURST press lock, equip-delay gate and held-trigger gate so the new selection starts
+			// on a clean trigger (applies to both gun and incendiary weapons, all of which share these maps)
 			pressLockUntilTick.remove(weaponUuid);
+			equipDelayUntil.remove(weaponUuid);
 			pressHoldState.remove(weaponUuid);
 
 			// drop the melee dedup timestamp so swapping weapons doesn't carry stale gating across selections
@@ -383,6 +433,14 @@ public class WeaponInteract implements Listener {
 		if (newWeapon != null) {
 			EffectContext equipCtx = EffectContext.builder().weapon(newWeapon).source(player).build();
 			effectRunner.run(newWeapon, EffectHook.ON_EQUIP, equipCtx);
+
+			// Information.Equip_Delay: seed the dedicated gate — isPressGated (firing) and the scope-toggle branch
+			// in onPlayerInteract both consult it via isEquipDelayActive.
+			HandlingData handling = newWeapon.getHandlingData();
+			if (handling != null && handling.getEquipDelay() > 0) {
+				equipDelayUntil.put(newWeapon.getUuid(),
+				                   System.currentTimeMillis() + handling.getEquipDelay() * MILLIS_PER_TICK);
+			}
 		}
 	}
 
@@ -632,9 +690,48 @@ public class WeaponInteract implements Listener {
 			return true;
 		}
 
-		// cooldown gate (rapid release-and-press faster than the weapon's natural fire rate)
-		Long lockedUntil = pressLockUntilTick.get(weaponUuid);
+		// cooldown gate (rapid release-and-press faster than the weapon's natural fire rate), plus
+		// Information.Equip_Delay so a fresh equip can't skip its own delay window on the first press.
+		return isLockActive(pressLockUntilTick, weaponUuid) || isEquipDelayActive(weaponUuid);
+	}
+
+	/**
+	 * {@code Information.Equip_Delay}: {@code true} while a recently-equipped weapon's delay window (seeded in
+	 * {@link #onWeaponHeld}) hasn't elapsed yet. Read-only — unlike {@link #isPressGated(UUID)} this never mutates
+	 * {@link #pressHoldState}, so it is safe to call from the scope-toggle branch without side effects. Backed by
+	 * its own {@link #equipDelayUntil} map, not {@link #pressLockUntilTick} — see that field's javadoc.
+	 */
+	private boolean isEquipDelayActive(UUID weaponUuid) {
+		return isLockActive(equipDelayUntil, weaponUuid);
+	}
+
+	private boolean isLockActive(Map<UUID, Long> lockMap, UUID weaponUuid) {
+		Long lockedUntil = lockMap.get(weaponUuid);
 		return lockedUntil != null && System.currentTimeMillis() < lockedUntil;
+	}
+
+	private boolean isLeftClickTrigger(Weapon weapon) {
+		HandlingData handling = weapon.getHandlingData();
+		return handling != null && handling.getTrigger() == HandlingData.Trigger.LEFT_CLICK;
+	}
+
+	/**
+	 * {@code Information.Cancel.Break_Blocks} (default {@code true} — today's behaviour before gate {@code HE}).
+	 */
+	private boolean cancelsBreakBlocks(Player player) {
+		ItemStack item = player.getInventory().getItemInMainHand();
+		if (!weaponService.isWeapon(item)) return false;
+
+		Weapon weapon = weaponService.validateAndGetWeapon(player, item);
+		if (weapon == null) return false;
+
+		HandlingData handling = weapon.getHandlingData();
+		return handling == null || handling.getCancel().breakBlocks();
+	}
+
+	private void fireDeny(Weapon weapon, Player player, String reasonKey) {
+		EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).denyReason(reasonKey).build();
+		effectRunner.run(weapon, EffectHook.ON_DENY, ctx);
 	}
 
 	/**
@@ -689,6 +786,15 @@ public class WeaponInteract implements Listener {
 
 		if (isPressGated(weaponUuid)) return;
 
+		// Shoot.Circumstance: evaluated once per genuine press. Engage the same held-trigger watchdog on a denial
+		// so a held RMB doesn't re-fire ON_DENY every tick until release — matches the "once per press" contract.
+		HandlingData.Circumstance denied = CircumstanceRules.firstDenied(player, weapon);
+		if (denied != null) {
+			engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS);
+			fireDeny(weapon, player, denied.key());
+			return;
+		}
+
 		var projectileData = weapon.getProjectileData();
 		long lockTicks = Math.max((long) projectileData.getPerShot() * projectileData.getCooldown(),
 		                          MIN_PRESS_LOCK_TICKS);
@@ -707,6 +813,19 @@ public class WeaponInteract implements Listener {
 	private void shootFullAuto(GunWeapon weapon, Player player, ItemStack item) {
 		UUID weaponUuid = weapon.getUuid();
 		if (!autoTasks.containsKey(weaponUuid)) {
+			// Information.Equip_Delay / Shoot.Circumstance: only checked on the press that would start a fresh
+			// burst. Gated by the same press-hold watchdog shootOtherModes uses, so a denial doesn't re-fire
+			// ON_DENY on every repeated PlayerInteractEvent Spigot sends while RMB stays held — the entry only
+			// clears once the watchdog observes RMB has actually been released.
+			if (isPressGated(weaponUuid)) return;
+
+			HandlingData.Circumstance denied = CircumstanceRules.firstDenied(player, weapon);
+			if (denied != null) {
+				engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS);
+				fireDeny(weapon, player, denied.key());
+				return;
+			}
+
 			var autoTask = new FullAutoTask(plugin, weaponService, weapon, raytracer, player, item,
 			                                () -> {
 												autoTasks.remove(weaponUuid);

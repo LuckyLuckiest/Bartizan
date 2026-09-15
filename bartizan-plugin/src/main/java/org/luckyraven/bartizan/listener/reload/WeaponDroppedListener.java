@@ -13,6 +13,7 @@ import org.luckyraven.keystone.bean.listener.ListenerHandler;
 import org.luckyraven.keystone.util.ActionBarManager;
 import org.luckyraven.keystone.util.ChatUtil;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.event.WeaponReloadEvent;
 
@@ -48,6 +49,17 @@ public class WeaponDroppedListener implements Listener {
 			return;
 		}
 
+		// Information.Cancel.Drop_Item (default false): cancels the drop unconditionally — sneaking must never be
+		// a bypass. Set eagerly here so every "falls through without starting a reload" path below (no Reload:
+		// configured, empty inventory, etc.) stays cancelled too; only a tryReload that actually starts keeps the
+		// event cancelled for the same reason (the reload replacing the drop), which this pre-cancel doesn't
+		// interfere with. A normal (non-sneak) drop returns immediately, before even showing the drop hologram,
+		// since the item never actually leaves the hand.
+		boolean cancelDrop = cancelsDropItem(weapon);
+		if (cancelDrop) event.setCancelled(true);
+
+		if (!player.isSneaking() && cancelDrop) return;
+
 		// show the hologram when the weapon is dropped
 		if (weapon.isDropHologram()) {
 			item.setCustomName(ChatUtil.color(weapon.getDisplayName()));
@@ -72,6 +84,11 @@ public class WeaponDroppedListener implements Listener {
 
 		// don't drop the weapon — a reload just started
 		event.setCancelled(true);
+	}
+
+	private boolean cancelsDropItem(Weapon weapon) {
+		HandlingData handling = weapon.getHandlingData();
+		return handling != null && handling.getCancel().dropItem();
 	}
 
 }

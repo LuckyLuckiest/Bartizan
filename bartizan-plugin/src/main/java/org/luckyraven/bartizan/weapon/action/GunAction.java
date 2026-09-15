@@ -8,6 +8,7 @@ import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
@@ -93,6 +94,22 @@ public class GunAction {
 		}
 
 		weapon.updateWeapon(shooter, heldWeapon, shooter.getInventory().getHeldItemSlot());
+
+		// Shoot.Destroy_When_Empty / Reset_Fall_Distance: after the item update above, so a destroy wins over
+		// whatever updateWeapon just pushed to the slot. A full-auto loop holding a stale ItemStack reference
+		// notices the item is gone the same way it already notices an empty-handed player — GunAction.weaponShoot
+		// itself returns immediately next tick once WeaponService#getHeldWeaponItem no longer sees a weapon in
+		// hand, and WeaponInteract's AUTO watchdog then stops the task within a couple of ticks once the
+		// "still shooting" flag stops being refreshed by onPlayerInteract.
+		HandlingData handling = weapon.getHandlingData();
+		if (handling != null) {
+			if (handling.isResetFallDistance()) {
+				shooter.setFallDistance(0f);
+			}
+			if (handling.isDestroyWhenEmpty() && weapon.isMagazineEmpty()) {
+				weapon.removeWeapon(shooter, shooter.getInventory().getHeldItemSlot());
+			}
+		}
 
 		if (weapon.getRecoilData() != null) {
 			weapon.getRecoil().applyRecoil(shooter);

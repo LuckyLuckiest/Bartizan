@@ -113,6 +113,10 @@ biological status rather than a damage/duration percentage; jetpack-style extra 
 `fuel`/`fuel_current`/`fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code
 needs no edit), `BartizanItemPredicates.WEARABLE`.
 
+`Weapon#getHandlingData()` (nullable, gate `HE`) carries the interaction-handling rules — `Equip_Delay`,
+`Deny_Use_In_Crafting`, `Cancel.*`, `Attributes`, `Trigger`, `Circumstance`, `Destroy_When_Empty`,
+`Reset_Fall_Distance` — parsed from a weapon's `Information:`/`Shoot:` sections.
+
 ### Ammo type list + reload parity (`weapon.dto.AmmunitionData`/`ReloadData`, `weapon.WeaponTag`, gate `HG`)
 
 `AmmunitionData#getAmmoType()` (single `Ammunition`, nullable) is now a convenience accessor over

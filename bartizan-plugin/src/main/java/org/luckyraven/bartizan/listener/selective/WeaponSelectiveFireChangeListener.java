@@ -12,6 +12,7 @@ import org.luckyraven.keystone.bean.listener.ListenerHandler;
 import org.luckyraven.keystone.util.ActionBarManager;
 import org.luckyraven.keystone.util.ChatUtil;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.event.WeaponChangeSelectiveFireEvent;
 
@@ -27,15 +28,21 @@ public class WeaponSelectiveFireChangeListener implements Listener {
 
 	@EventHandler
 	public void onSwapHand(PlayerSwapHandItemsEvent event) {
-		Player player = event.getPlayer();
+		Player    player = event.getPlayer();
+		ItemStack item   = player.getInventory().getItemInMainHand();
+		Weapon    weapon = weaponService.validateAndGetWeapon(player, item);
+
+		// Information.Cancel.Swap_Hands (default false): block F outright while holding this weapon, regardless
+		// of sneaking or whether it has Selective_Fire configured at all.
+		if (weapon != null && cancelsSwapHands(weapon)) {
+			event.setCancelled(true);
+			return;
+		}
 
 		// check if the player is shifting
 		if (!player.isSneaking()) return;
 
 		// check if the player is holding a weapon with selective fire configured
-		ItemStack item   = player.getInventory().getItemInMainHand();
-		Weapon    weapon = weaponService.validateAndGetWeapon(player, item);
-
 		if (weapon == null) return;
 		if (weapon.getCurrentSelectiveFire() == null) return;
 
@@ -60,6 +67,11 @@ public class WeaponSelectiveFireChangeListener implements Listener {
 
 		ActionBarManager.send(player, "&6Selective Fire > &e" +
 		                              ChatUtil.capitalize(weapon.getCurrentSelectiveFire().name().toLowerCase()));
+	}
+
+	private boolean cancelsSwapHands(Weapon weapon) {
+		HandlingData handling = weapon.getHandlingData();
+		return handling != null && handling.getCancel().swapHands();
 	}
 
 }

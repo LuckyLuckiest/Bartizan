@@ -39,6 +39,21 @@ Information:
 
 # Shoot configuration
 Shoot:
+   # Which click fires the weapon; the other toggles scope. right_click is the default (shown here for
+   # documentation) — GUN weapons only. left_click swaps them: LMB fires, RMB scopes.
+   Trigger: right_click
+   # Circumstance rules: deny blocks firing while the circumstance is active, required blocks firing while it
+   # is NOT active. Sprinting is realistic for a rifle you're supposed to aim, not run-and-gun with. Every key
+   # below is independent and optional — shown here for documentation, only Sprinting is actually configured.
+   Circumstance:
+      Sprinting: deny
+      # Sneaking: deny
+      # Swimming: deny
+      # In_Midair: deny
+      # Reloading: deny
+      # Zooming: required
+      # Ammo_Empty: deny
+
    # The type of fire when using the weapon
    # SINGLE, BURST, AUTO
    Selective_Fire: auto

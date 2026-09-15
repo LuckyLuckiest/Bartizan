@@ -4,6 +4,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.luckyraven.keystone.timer.Timer;
+import org.luckyraven.bartizan.weapon.CircumstanceRules;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
@@ -85,7 +86,10 @@ public class FullAutoTask extends Timer {
 
 	@Override
 	public void run() {
-		if (!itemStack.hasItemMeta() || weapon.isReloading()) {
+		// Shoot.Circumstance is only checked on the press that starts this task otherwise — re-check it every tick
+		// so sustained AUTO fire stops the moment a circumstance goes from allowed to denied mid-burst (e.g.
+		// Sprinting: deny on a weapon that started firing while merely walking).
+		if (!itemStack.hasItemMeta() || weapon.isReloading() || CircumstanceRules.firstDenied(player, weapon) != null) {
 			cancel();
 			return;
 		}

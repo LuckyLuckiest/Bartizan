@@ -1,6 +1,7 @@
 package org.luckyraven.bartizan.api.testsupport;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Keyed;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Registry;
 import org.bukkit.Server;
@@ -109,7 +110,7 @@ public final class BukkitRegistryFixture {
 					if (args == null || args.length == 0 || !(args[0] instanceof NamespacedKey key)) {
 						return null;
 					}
-					return element(elementType, AIR_KEYS.contains(key.getKey()));
+					return element(elementType, key, AIR_KEYS.contains(key.getKey()));
 				case "stream":
 					return Stream.empty();
 				case "iterator":
@@ -131,14 +132,20 @@ public final class BukkitRegistryFixture {
 		                              new Class<?>[]{Registry.class}, handler);
 	}
 
-	/** A proxy standing in for one registry entry. Only {@code isAir()} carries real meaning. */
-	private static Object element(Class<?> elementType, boolean air) {
+	/**
+	 * A proxy standing in for one registry entry. {@code isAir()} and {@code getKey()} (via {@link Keyed}) carry
+	 * real meaning — the latter matters for anything resolving a {@link org.bukkit.attribute.Attribute} (or any
+	 * other {@code Keyed} constant) by name, e.g. XSeries' {@code XAttribute.of(String)}, whose registry scan
+	 * otherwise NPEs on a {@code null} key.
+	 */
+	private static Object element(Class<?> elementType, NamespacedKey key, boolean air) {
 		if (!elementType.isInterface()) {
 			return null;
 		}
 
 		InvocationHandler handler = (proxy, method, args) -> switch (method.getName()) {
 			case "isAir" -> air;
+			case "getKey" -> key;
 			case "hashCode" -> System.identityHashCode(proxy);
 			case "equals" -> proxy == args[0];
 			case "toString" -> "Proxy" + elementType.getSimpleName();

@@ -14,8 +14,28 @@ Information:
       - "&7.50 BMG bolt-action sniper rifle.&r"
       - "&7One shot. One kill. Don't miss.&r"
    Drop_Hologram: true
+   # Deny_Use_In_Crafting: true (default) — weapons can never be used as crafting ingredients. Only setting it
+   # false has any effect, since true is already the default.
+   # Deny_Use_In_Crafting: true
+   # Ticks after switching to this weapon before it can fire or scope. A heavy sniper takes a moment to shoulder.
+   Equip_Delay: 5
+   Cancel:
+      # Drop_Item: false (default) — sneaking still drops the weapon (or starts a sneak+Q reload) normally.
+      # Drop_Item: false
+      # Swap_Hands: false (default) — F still swaps the weapon to the offhand normally.
+      # Swap_Hands: false
+      # Break_Blocks: true (default) — this weapon cannot break or place blocks while held.
+      # Break_Blocks: true
+      # Cancels the left-click arm-swing animation while this weapon is held — sells the "heavy rifle" feel.
+      Arm_Swing: true
+   # Bukkit attribute modifiers applied to the item in the main-hand slot: "<attribute> <operation> <amount>".
+   # Carrying a sniper this heavy slows the player down.
+   Attributes:
+      - "MOVEMENT_SPEED ADD_SCALAR -0.05"
 
 Shoot:
+   # Destroy_When_Empty: false (default) — the AWP is a reloadable weapon, not a single-use throwable-like gun.
+   Destroy_When_Empty: false
    Selective_Fire: single
    Allowed_Modes:
       - single
