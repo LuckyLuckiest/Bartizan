@@ -582,7 +582,7 @@ and (where a mapping exists) every mechanic as Bartizan YAML, plus their players
 |---|---|---|
 | top-level title | file name + `Information.Name` | MiniMessage → `&` codes (`<gold>`→`&6`, `<gray>`→`&7`, `<bold>`→`&l`, `<reset>`→`&r`; `<#RRGGBB>`→`&#RRGGBB` if Keystone supports hex, else nearest code; unknown tags stripped) |
 | `Info.Weapon_Item.*` | `Information.*` | `Attributes` → `Information.Attributes` (`HE`) |
-| `Info.Weapon_Info_Display.Action_Bar.Message` | `HUD.Action_Bar` (`HD`) | placeholders `<ammo_left>`→`%ammo_left%`, `<firearm_state>`→`%reload_state%`, `<reload>`→`%reload%`, `<selective_fire>`→`%selective_fire%` |
+| `Info.Weapon_Info_Display.Action_Bar.Message` | `HUD.Action_Bar` (`HD`) | placeholders `<ammo_left>`→`%ammo_left%`, `<firearm_state>`→`%firearm_state%`, `<reload>`→`%reload%`, `<selective_fire>`→`%selective_fire%` |
 | `Info.Weapon_Equip_Delay`, `Cancel.*` | `Shoot.Equip_Delay`, `Information.Cancel.*` | `HE` |
 | `Info.*_Mechanics` | `Effects.On_Equip/On_Holster/…` | via the Mechanics translator |
 | `Skin.Default` (+ `ADD n` states) | `Information.Custom_Model_Data`, `Skins.<State>` | `HJ`; before `HJ` only `Default` |

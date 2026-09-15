@@ -104,3 +104,12 @@ Stats:
    Enabled: true             # per-player weapon statistics written to plugins/Bartizan/stats/<uuid>.json
    Assist_Window_Ticks: 100  # damage dealt within this many ticks before someone else's kill counts as an assist
    Autosave_Minutes: 5
+
+# Import: settings for /bartizan import weaponmechanics (weapons-roadmap.md gate HM). Missing entirely = both
+# defaults below.
+Import:
+   # Rebuilds a player's held/clicked WeaponMechanics item into its imported Bartizan equivalent (same title,
+   # carrying ammo-left over) whenever WmItemConverterListener sees one. Off by default so a server without WM
+   # installed never pays for the PDC read; the import command flips this in memory for the running session
+   # after a successful import - set it here too if you want that to survive a restart/reload.
+   Convert_WeaponMechanics_Items: false

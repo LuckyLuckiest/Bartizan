@@ -50,6 +50,10 @@ public enum BartizanMessages {
 	// commands - stats
 	NO_STATS("Errors.No_Stats", Type.ERROR),
 
+	// commands - import (gate HM)
+	IMPORT_NOT_FOUND("Errors.Import.Not_Found", Type.ERROR),
+	IMPORT_DONE("Commands.Import.Done", Type.COMMAND),
+
 	// death
 	DEAD_USING_WEAPON("Death.Weapon", Type.OTHER, true),
 	;

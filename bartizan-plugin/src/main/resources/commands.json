@@ -74,5 +74,9 @@
 	"stats_weapon": {
 		"usage": "/bartizan stats <player> <weapon>",
 		"description": "Shows a player's per-zone hit breakdown for one weapon."
+	},
+	"import_weaponmechanics": {
+		"usage": "/bartizan import weaponmechanics [--dry-run] [--force] [path]",
+		"description": "Imports every WeaponMechanics weapon, ammo and (where mapped) mechanic as Bartizan YAML. Default path is plugins/WeaponMechanics; --dry-run only writes the report, --force overwrites an existing weapon file."
 	}
 }

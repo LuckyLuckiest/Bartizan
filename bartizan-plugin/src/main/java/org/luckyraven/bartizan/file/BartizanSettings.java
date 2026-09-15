@@ -61,6 +61,14 @@ public class BartizanSettings implements FileInitializer {
 	 */
 	private static @Getter EffectsData defaultEffects = EffectsData.empty();
 
+	/**
+	 * {@code Import.Convert_WeaponMechanics_Items} (weapons-roadmap.md gate {@code HM}, §6.4) - whether
+	 * {@code WmItemConverterListener} rebuilds a held/clicked WeaponMechanics item into its imported Bartizan
+	 * equivalent. Defaults {@code false}. {@code /bartizan import weaponmechanics} may flip this in memory for the
+	 * running session without touching the file - see {@link #setConvertWeaponMechanicsItemsRuntimeOverride}.
+	 */
+	private static @Getter boolean convertWeaponMechanicsItems = false;
+
 	private final FileHandler fileHandler;
 
 	public BartizanSettings(FileManager fileManager) {
@@ -166,7 +174,19 @@ public class BartizanSettings implements FileInitializer {
 			statsAutosaveMinutes   = 5;
 		}
 
+		convertWeaponMechanicsItems = bool(section(root, "Import", report), "Convert_WeaponMechanics_Items", false);
+
 		if (!report.isEmpty()) report.log(log);
+	}
+
+	/**
+	 * Flips {@link #convertWeaponMechanicsItems} for the running session only - called by
+	 * {@code WmImportCommand} after an import so freshly-converted-on-the-fly WM items work immediately, without
+	 * requiring a restart. Reverts to whatever {@code settings.yml} says on the next {@code /bartizan reload} unless
+	 * the admin also edits the file.
+	 */
+	public static void setConvertWeaponMechanicsItemsRuntimeOverride(boolean enabled) {
+		convertWeaponMechanicsItems = enabled;
 	}
 
 }

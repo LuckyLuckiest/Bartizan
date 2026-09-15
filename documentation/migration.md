@@ -216,3 +216,30 @@ existing placed signs keep working without the owner re-placing them. This rewri
   `sealed` — reduces the incoming level of a biological status rather than a damage/duration percentage.
 - `Shoot.Charge_Feedback.Tracer_Color` now also defaults `Modifiers.Tracer` when the weapon declares no explicit
   tracer of its own, so a released biological shot draws a coloured line without any other config change.
+
+## 11. Moving off WeaponMechanics (gate `HM`)
+
+Not a Gangland-specific migration — for a server owner moving off the WeaponMechanics plugin entirely, or running
+both side by side while switching over weapon by weapon.
+
+`/bartizan import weaponmechanics [--dry-run] [--force] [path]` reads WM's `weapons/**/*.yml`,
+`projectiles/*.yml` and `ammos/*.yml` (default `path`: `plugins/WeaponMechanics`) and writes a Bartizan
+`plugins/Bartizan/weapon/<title>.yml` per weapon, translating what has a Bartizan equivalent and reporting
+everything that doesn't (approximated or dropped, never silent) to
+`plugins/Bartizan/import/weaponmechanics-<date>.txt`. `--dry-run` only writes that report; a weapon file is never
+overwritten without `--force`. See `org.luckyraven.bartizan.importer.wm` in the package map below for the
+translator classes, and `documentation/weapons-roadmap.md` §6 for the full mapping table.
+
+Coverage, by design (see the roadmap's §6 "Deliberately not doing" list and the importer's own report lines for
+specifics): gun/throwable/melee weapons import; WM's spring-back recoil model (`Speed`/`Damping`/`Smoothing`),
+spread images, multi-layer airstrikes, per-block explosion regeneration tuning, `Firearm_Action`'s open/close
+animation and `WeaponMechanicsCosmetics`-only sections (`Trail`, `Bullet_Zip`, `Third_Person_Pose`) have no
+Bartizan equivalent and are reported, not translated. A WM weapon shaped like neither a gun, a throwable nor a
+melee weapon (no `Shoot.Projectile_Speed`, no `Explosion`, no `Melee.Enable_Melee` — e.g. a consumable like WM's
+own `Stim`) is skipped entirely.
+
+Players' existing WM items keep working without being reissued: `WmItemConverterListener` (gated by
+`settings.yml`'s `Import.Convert_WeaponMechanics_Items`, flipped on for the running session by a successful
+import) rebuilds a held/clicked/carried item that still carries WM's own `weaponmechanics:weapon-title` NBT tag
+into its imported Bartizan equivalent, carrying `ammo-left` over, the moment it's next held, clicked, or the
+player logs in.

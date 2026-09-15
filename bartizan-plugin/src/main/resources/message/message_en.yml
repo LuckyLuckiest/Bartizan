@@ -20,6 +20,8 @@ Commands:
    Wearable:
       Gave: "Gave &b%name% &7x&b%amount%&7."
       List_Header: "List of wearables"
+   Import:
+      Done: "&7Imported &b%weapons%&7 weapon(s) from WeaponMechanics: &b%mapped%&7 mapped, &e%approximated%&7 approximated, &c%dropped%&7 dropped. Report saved to &3%report%&7."
 
 Errors:
    Prefix: "&4Error&7: "
@@ -33,6 +35,8 @@ Errors:
       Invalid: "Invalid wearable: &c%name%"
       Not_Registered: "Wearable not registered: &c%key%"
       Not_Wearable: "Not a registered wearable!"
+   Import:
+      Not_Found: "&cWeaponMechanics folder not found at &3%path%&c."
 
 Information:
    Prefix: "&8&l[&7Information&8&l]&7 "
