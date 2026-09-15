@@ -197,7 +197,7 @@ public class BeamAction {
 		                                     .build();
 		effectRunner.run(weapon, EffectHook.ON_BEAM_FIRE, beamCtx);
 
-		new BeamRenderer().render(plugin, world, WeaponMuzzle.compute(player, direction), endPoint,
+		new BeamRenderer().render(plugin, world, WeaponMuzzle.compute(player, direction, weapon), endPoint,
 		                         beamData.getRender());
 
 		if (beamData.isScorchBlocks()) {
@@ -229,7 +229,7 @@ public class BeamAction {
 		BeamData.PreviewData preview  = beamData.getPreview();
 
 		Vector   direction = player.getEyeLocation().getDirection().normalize();
-		Location muzzle    = WeaponMuzzle.compute(player, direction);
+		Location muzzle    = WeaponMuzzle.compute(player, direction, weapon);
 		World    world     = muzzle.getWorld();
 		if (world == null) return;
 

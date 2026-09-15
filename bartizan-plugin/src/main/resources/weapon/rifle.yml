@@ -114,6 +114,14 @@ Shoot:
             # The maximum value for the random value
             Max: 1.5
 
+      # Percent deltas applied to the current spread while the given condition holds (summed, then clamped at 0)
+      # - e.g. Zooming: -40 tightens spread 40% while scoped, In_Midair: 100 doubles it while airborne. All keys
+      # optional, default 0 (no effect).
+      Modify_Spread_When:
+         Zooming: -40
+         Sprinting: 60
+         In_Midair: 100
+
    # The screen shake of the player
    Recoil:
       # The recoil effect of the player screen
@@ -128,6 +136,15 @@ Shoot:
          - 0;0
          - 0.5;1
          - 1;1
+      # Random: gaussian recoil instead of a fixed Pattern step - Mean_X/Mean_Y center the yaw/pitch kick,
+      # Variance_X/Variance_Y are used directly as the gaussian standard deviation (sigma), not squared/rooted,
+      # despite the name. Configuring both Random and Pattern is a warning; Random wins.
+      # Uncomment to use gaussian recoil instead of the Pattern above.
+      # Random:
+      #    Mean_X: 2.0
+      #    Mean_Y: 1.0
+      #    Variance_X: 1.5
+      #    Variance_Y: 0.5
 
    Sound:
       # The default sound that would be used when there is no custom sound available
@@ -172,6 +189,15 @@ Shoot:
          Sound: sound.gta.bullet_fly_by
          Volume: 1.0
          Pitch: 1.0
+
+   # Where the tracer/particle visuals and any slow-projectile (ROCKET/FLARE) spawn from - the hitscan ray itself
+   # always starts at the shooter's eye. Each value is a "right up forward" triple in blocks; Scope is used while
+   # scoped, else Left_Hand/Right_Hand by the player's main hand. Values below match the plugin's hardcoded
+   # defaults, so this whole section is a no-op unless changed.
+   Muzzle_Offset:
+      Right_Hand: "0.3 -0.2 0"
+      Left_Hand: "-0.3 -0.2 0"
+      Scope: "0.3 -0.2 0"
 
 # Ammunition configuration
 Ammunition:
@@ -258,6 +284,10 @@ Modifiers:
 
    # Penetration - blocksThrough-entitiesThrough-damageReductionPerPenetration
    Penetration: 2-3-0.25
+   # Pierce_Entities: sugar for an entities-only Penetration (equivalent to Penetration: 0-<n>-0) when you don't
+   # need block penetration or damage reduction. Ignored here since Penetration above is already set (configuring
+   # both is a warning; Penetration always wins).
+   # Pierce_Entities: 2
 
    # Ricochet (list) - maxBounces-MATERIAL1,MATERIAL2-damageRetention
    Ricochet:

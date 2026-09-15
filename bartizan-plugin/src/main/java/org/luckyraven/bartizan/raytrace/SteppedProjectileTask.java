@@ -9,15 +9,21 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
+import org.luckyraven.bartizan.api.weapon.dto.SoundData;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Per-tick driver for slow visual projectiles (rockets, flares, throwables). Wraps a cosmetic Bukkit projectile entity
@@ -46,10 +52,11 @@ public class SteppedProjectileTask {
 	private final int                 maxTicks;
 	private final EffectRunner        effectRunner;
 
-	private Location       lastLoc;
-	private RepeatingTimer timer;
-	private int            tickCounter;
-	private boolean        finished;
+	private Location         lastLoc;
+	private RepeatingTimer   timer;
+	private int              tickCounter;
+	private boolean          finished;
+	private final Set<UUID>  flybyNotified = new HashSet<>();
 
 	public SteppedProjectileTask(JavaPlugin plugin, WeaponRaytracer raytracer, WeaponVisualSpawner visualSpawner,
 	                             Projectile visual, RaytraceContext ctx, boolean explodeOnTerminate,
@@ -100,6 +107,7 @@ public class SteppedProjectileTask {
 			}
 
 			raytracer.advanceSegment(ctx, lastLoc, currentLoc);
+			checkFlyby(lastLoc, currentLoc);
 
 			// Ray exhausted: either the loop's distance budget is gone, the iteration cap was hit,
 			// or a non-penetrable target stopped it. Pick the last tracer point as the impact site
@@ -117,6 +125,36 @@ public class SteppedProjectileTask {
 			lastLoc = currentLoc;
 		});
 		timer.start(false);
+	}
+
+	/**
+	 * {@code Shoot.Sound.Flyby_*} for ROCKET/FLARE: same proximity check {@code WeaponRaytracerImpl.playFlybySounds}
+	 * runs for hitscan, applied to just the segment travelled this tick since a slow projectile has no full
+	 * polyline up front. Each player is notified at most once per projectile (gate {@code HE} part b review
+	 * item (g)).
+	 */
+	private void checkFlyby(Location from, Location to) {
+		SoundData sounds = ctx.getRequest().getWeapon().getSoundData();
+		if (sounds == null || sounds.getFlybyRange() <= 0) return;
+
+		SoundEffect sound = sounds.getFlybyCustom() != null ? sounds.getFlybyCustom() : sounds.getFlybyDefault();
+		if (sound == null) return;
+
+		World world = from.getWorld();
+		if (world == null) return;
+
+		double       range   = sounds.getFlybyRange();
+		LivingEntity shooter = ctx.getRequest().getShooter();
+		for (Player player : world.getPlayers()) {
+			if (player.equals(shooter) || flybyNotified.contains(player.getUniqueId())) continue;
+
+			double dist = WeaponRaytracerImpl.pointToSegmentDistance(
+					player.getEyeLocation().toVector(), from.toVector(), to.toVector());
+			if (dist <= range) {
+				sound.playSound(player);
+				flybyNotified.add(player.getUniqueId());
+			}
+		}
 	}
 
 	private Location lastTracerPoint() {

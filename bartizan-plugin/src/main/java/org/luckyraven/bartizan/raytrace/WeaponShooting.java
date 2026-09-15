@@ -8,11 +8,13 @@ import org.bukkit.Location;
 import org.bukkit.entity.Fireball;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
+import org.luckyraven.bartizan.api.weapon.dto.SpreadData;
 import org.luckyraven.bartizan.api.weapon.ProjectileState;
 import org.luckyraven.bartizan.api.weapon.ProjectileType;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
@@ -29,11 +31,6 @@ import org.luckyraven.bartizan.effect.EffectRunner;
  * sound to shooter, item update) live in the callers.
  */
 public final class WeaponShooting {
-
-	/**
-	 * Default pellet count for SPREAD weapons. Mirrors the hardcoded value in legacy {@code Spread}.
-	 */
-	public static final int SPREAD_PELLET_COUNT = 8;
 
 	private WeaponShooting() {
 	}
@@ -61,7 +58,7 @@ public final class WeaponShooting {
 		ProjectileType type           = projectileData.getType();
 
 		return switch (type) {
-			case BULLET, SPREAD -> fireHitscan(raytracer, shooter, weapon, projectileData, type);
+			case BULLET, SPREAD -> fireHitscan(raytracer, shooter, weapon, projectileData);
 			case ROCKET, FLARE -> {
 				fireSlow(plugin, raytracer, shooter, weapon, projectileData, type, effectRunner);
 				yield false;
@@ -70,17 +67,18 @@ public final class WeaponShooting {
 	}
 
 	private static boolean fireHitscan(WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon,
-	                                ProjectileData projectileData, ProjectileType type) {
-		int      pelletCount = type == ProjectileType.SPREAD ? SPREAD_PELLET_COUNT : 1;
-		Vector   aimDir      = shooter.getEyeLocation().getDirection();
-		Location origin      = shooter.getEyeLocation();
-		double   distance    = projectileData.getDistance();
-		double   baseDamage  = projectileData.getDamage();
+	                                ProjectileData projectileData) {
+		int      pelletCount      = projectileData.getPellets();
+		Vector   aimDir           = shooter.getEyeLocation().getDirection();
+		Location origin           = shooter.getEyeLocation();
+		double   distance         = projectileData.getDistance();
+		double   baseDamage       = projectileData.getDamage();
+		double   spreadMultiplier = spreadMultiplier(shooter, weapon);
 
 		boolean hitEntity = false;
 
 		for (int i = 0; i < pelletCount; i++) {
-			Vector pelletDir = weapon.getSpread().applySpread(aimDir.clone()).normalize();
+			Vector pelletDir = weapon.getSpread().applySpread(aimDir.clone(), spreadMultiplier).normalize();
 
 			RaytraceRequest request = RaytraceRequest.builder()
 			                                         .shooter(shooter)
@@ -91,6 +89,7 @@ public final class WeaponShooting {
 			                                         .baseDamage(baseDamage)
 			                                         .gravity(projectileData.getGravity())
 			                                         .projectileSpeed(projectileData.getSpeed())
+			                                         .playFlyby(i == 0)
 			                                         .build();
 
 			if (raytracer.fireInstant(request)) hitEntity = true;
@@ -99,11 +98,36 @@ public final class WeaponShooting {
 		return hitEntity;
 	}
 
+	/**
+	 * {@code Spread.Modify_Spread_When}: sums the percent deltas for every currently-active condition
+	 * (zooming/sneaking/sprinting/midair/swimming) and converts to the multiplier
+	 * {@link org.luckyraven.bartizan.api.weapon.spread.SpreadManager#applySpread(Vector, double)} expects, floored
+	 * at 0 so a large negative sum can't invert the spread direction.
+	 */
+	private static double spreadMultiplier(LivingEntity shooter, GunWeapon weapon) {
+		SpreadData data = weapon.getSpreadData();
+		if (data == null) return 1.0;
+
+		double deltaPercent = 0.0;
+
+		if (weapon.getScopeData() != null && weapon.getScopeData().isScoped()) {
+			deltaPercent += data.getZoomingModifier();
+		}
+		if (shooter instanceof Player player) {
+			if (player.isSneaking()) deltaPercent += data.getSneakingModifier();
+			if (player.isSprinting()) deltaPercent += data.getSprintingModifier();
+		}
+		if (!shooter.isOnGround()) deltaPercent += data.getInMidairModifier();
+		if (shooter.isSwimming()) deltaPercent += data.getSwimmingModifier();
+
+		return Math.max(0.0, 1 + deltaPercent / 100.0);
+	}
+
 	private static void fireSlow(JavaPlugin plugin, WeaponRaytracer raytracer, LivingEntity shooter, GunWeapon weapon,
 	                             ProjectileData projectileData, ProjectileType type, EffectRunner effectRunner) {
 		Vector   aimDir         = shooter.getEyeLocation().getDirection();
-		Location muzzle         = WeaponMuzzle.compute(shooter, aimDir);
-		Vector   spreadDir      = weapon.getSpread().applySpread(aimDir).normalize();
+		Location muzzle         = WeaponMuzzle.compute(shooter, aimDir, weapon);
+		Vector   spreadDir      = weapon.getSpread().applySpread(aimDir, spreadMultiplier(shooter, weapon)).normalize();
 		Vector   launchVelocity = spreadDir.clone().multiply(projectileData.getSpeed());
 
 		Class<? extends Projectile> visualClass = type == ProjectileType.ROCKET ? Fireball.class : Firework.class;

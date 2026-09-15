@@ -22,6 +22,7 @@ import org.luckyraven.bartizan.ammo.AmmunitionManager;
 import org.luckyraven.bartizan.configuration.parser.*;
 import org.luckyraven.bartizan.api.weapon.dto.*;
 import org.luckyraven.bartizan.api.weapon.WeaponType;
+import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -231,6 +232,15 @@ public class WeaponAddon {
 			weapon.getDurabilityData().setConsumeOnTime(consumeOnTime);
 		}
 
+		MappingNode muzzleOffsetSection = shoot.get("Muzzle_Offset").asMapping().orNull();
+		if (muzzleOffsetSection != null) {
+			NodeReader muzzleOffset = NodeReader.of(muzzleOffsetSection, report);
+			weapon.setMuzzleOffsetData(new MuzzleOffsetData(
+					parseMuzzleOffset(muzzleOffset, "Right_Hand", report),
+					parseMuzzleOffset(muzzleOffset, "Left_Hand", report),
+					parseMuzzleOffset(muzzleOffset, "Scope", report)));
+		}
+
 		MappingNode recoilSection = shoot.get("Recoil").asMapping().orNull();
 		if (recoilSection != null) {
 			NodeReader recoil = NodeReader.of(recoilSection, report);
@@ -241,6 +251,22 @@ public class WeaponAddon {
 			weapon.getRecoilData().setPattern(
 					recoil.get("Pattern").asList().ofStrings().orEmpty()
 							.stream().map(s -> s.split(";")).toList());
+
+			MappingNode randomSection = recoil.get("Random").asMapping().orNull();
+			if (randomSection != null) {
+				NodeReader randomReader = NodeReader.of(randomSection, report);
+				weapon.getRecoilData().setRandom(new RecoilData.RecoilRandom(
+						randomReader.get("Mean_X").asDouble().orDefault(0.0),
+						randomReader.get("Mean_Y").asDouble().orDefault(0.0),
+						randomReader.get("Variance_X").asDouble().min(0).orDefault(0.0),
+						randomReader.get("Variance_Y").asDouble().min(0).orDefault(0.0)));
+
+				if (!weapon.getRecoilData().getPattern().isEmpty()) {
+					report.add(Severity.WARNING, recoilSection.location(), recoilSection.path(),
+					           "Recoil.Random and Recoil.Pattern both configured - Random takes precedence",
+					           "recoil.random_and_pattern");
+				}
+			}
 		}
 
 		MappingNode spreadSection = shoot.get("Spread").asMapping().orNull();
@@ -251,6 +277,16 @@ public class WeaponAddon {
 		weapon.setSpreadData(new SpreadData());
 		weapon.getSpreadData().setStart(spread.get("Starting_Spread").asDouble().orDefault(0.0));
 		weapon.getSpreadData().setResetTime(spread.get("Time").asInt().orDefault(0));
+
+		MappingNode modifySpreadSection = spread.get("Modify_Spread_When").asMapping().orNull();
+		if (modifySpreadSection != null) {
+			NodeReader modifySpread = NodeReader.of(modifySpreadSection, report);
+			weapon.getSpreadData().setZoomingModifier(modifySpread.get("Zooming").asDouble().orDefault(0.0));
+			weapon.getSpreadData().setSneakingModifier(modifySpread.get("Sneaking").asDouble().orDefault(0.0));
+			weapon.getSpreadData().setSprintingModifier(modifySpread.get("Sprinting").asDouble().orDefault(0.0));
+			weapon.getSpreadData().setInMidairModifier(modifySpread.get("In_Midair").asDouble().orDefault(0.0));
+			weapon.getSpreadData().setSwimmingModifier(modifySpread.get("Swimming").asDouble().orDefault(0.0));
+		}
 
 		MappingNode spreadChangeSection = spread.get("Change").asMapping().orNull();
 		if (spreadChangeSection == null) return;
@@ -384,6 +420,42 @@ public class WeaponAddon {
 			weapon.setReloadActionBarData(new ReloadActionBarData());
 			weapon.getReloadActionBarData().setReloading(actionBar.get("Reloading").asString().orNull());
 			weapon.getReloadActionBarData().setOpening(actionBar.get("Opening").asString().orNull());
+		}
+	}
+
+	/**
+	 * Parses one {@code Shoot.Muzzle_Offset.<key>} entry: a space-separated {@code "right up forward"} triple in
+	 * blocks (e.g. {@code "0.3 -0.2 0.5"}). An entirely absent key silently falls back to {@link WeaponMuzzle}'s
+	 * historical constants (0 for the forward component, which has no legacy equivalent) — {@code Left_Hand}'s
+	 * right-component fallback is mirrored to the opposite side ({@code -RIGHT_OFFSET}) since it sits on the
+	 * shooter's other hand. A configured-but-unparsable component is a {@code ConfigReport} WARNING
+	 * ({@code shoot.muzzle_offset}), not a silent catch.
+	 */
+	private MuzzleOffsetData.Offset parseMuzzleOffset(NodeReader muzzleOffset, String key, ConfigReport report) {
+		String raw            = muzzleOffset.get(key).asString().orDefault("").trim();
+		double rightFallback = "Left_Hand".equals(key) ? -WeaponMuzzle.RIGHT_OFFSET : WeaponMuzzle.RIGHT_OFFSET;
+		if (raw.isEmpty()) {
+			return new MuzzleOffsetData.Offset(rightFallback, WeaponMuzzle.DOWN_OFFSET, 0.0);
+		}
+
+		String[] parts = raw.split("\\s+");
+		return new MuzzleOffsetData.Offset(
+				parseOffsetComponent(muzzleOffset, key, parts, 0, rightFallback, report),
+				parseOffsetComponent(muzzleOffset, key, parts, 1, WeaponMuzzle.DOWN_OFFSET, report),
+				parseOffsetComponent(muzzleOffset, key, parts, 2, 0.0, report));
+	}
+
+	private double parseOffsetComponent(NodeReader muzzleOffset, String key, String[] parts, int index,
+	                                    double fallback, ConfigReport report) {
+		if (index >= parts.length) return fallback;
+		try {
+			return Double.parseDouble(parts[index]);
+		} catch (NumberFormatException exception) {
+			MappingNode mapping = muzzleOffset.mapping();
+			report.add(Severity.WARNING, mapping.location(), mapping.path() + "." + key,
+			           "malformed Muzzle_Offset." + key + " component '" + parts[index] + "' - using default",
+			           "shoot.muzzle_offset");
+			return fallback;
 		}
 	}
 

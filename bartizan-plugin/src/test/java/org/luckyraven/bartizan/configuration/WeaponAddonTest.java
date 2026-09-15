@@ -95,13 +95,14 @@ class WeaponAddonTest {
 				assertNotNull(weapon, "no weapon registered for " + weaponFile.getName());
 
 				// the legacy Shoot.Sound.* lowering (EffectsSectionParser.lowerLegacySounds) must have actually
-				// run into exactly one ON_SHOOT spec whenever the weapon configures a shot sound.
+				// run into exactly one sound spec plus the shared muzzle-flash spec (gate HE part b review:
+				// the flash must actually fire for every shipped gun) whenever the weapon configures a shot sound.
 				SoundData sounds = weapon.getSoundData();
 				if (sounds != null && (sounds.getShotDefault() != null || sounds.getShotCustom() != null)) {
 					assertTrue(weapon.getEffects().has(EffectHook.ON_SHOOT),
 					           weaponFile.getName() + " has a shoot sound but no lowered ON_SHOOT effect");
-					assertEquals(1, weapon.getEffects().forHook(EffectHook.ON_SHOOT).size(),
-					             weaponFile.getName() + " should lower to exactly one ON_SHOOT spec");
+					assertEquals(2, weapon.getEffects().forHook(EffectHook.ON_SHOOT).size(),
+					             weaponFile.getName() + " should lower to exactly one sound spec + muzzle flash");
 				}
 			});
 		}

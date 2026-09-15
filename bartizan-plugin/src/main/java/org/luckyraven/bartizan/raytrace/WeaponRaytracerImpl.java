@@ -16,6 +16,8 @@ import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
+import org.luckyraven.bartizan.api.weapon.dto.SoundData;
+import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
 import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
@@ -195,6 +197,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		}
 
 		flushTracer(ctx);
+		playFlybySounds(ctx);
 
 		return ctx.isHitEntity();
 	}
@@ -517,7 +520,8 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 	/**
 	 * Fires a block-only impact event so listeners can react to "weapon X struck block Y" without an entity being
 	 * involved. Unlike entity impacts, this never applies damage by itself — block damage is handled separately by
-	 * {@link #applyBlockBreak} via {@link BlockDamageManager}.
+	 * {@link #applyBlockBreak} via {@link BlockDamageManager}. Also spawns the cosmetic block-crack particle and
+	 * fires {@link EffectHook#ON_BLOCK_HIT} for every un-cancelled block hit, gun or not.
 	 */
 	private void handleBlockImpact(Location impactPt, Block block, BlockFace face, RaytraceContext ctx) {
 		WeaponRaytraceImpactEvent event = new WeaponRaytraceImpactEvent(
@@ -529,9 +533,118 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 			return;
 		}
 
+		spawnBlockCrackParticles(impactPt, block);
+
+		Weapon        weapon  = ctx.getRequest().getWeapon();
+		EffectContext effectCtx = EffectContext.builder()
+		                                       .weapon(weapon)
+		                                       .source(ctx.getRequest().getShooter())
+		                                       .impact(impactPt)
+		                                       .distance(ctx.getRequest().getOrigin().distance(impactPt))
+		                                       .build();
+		effectRunner.run(weapon, EffectHook.ON_BLOCK_HIT, effectCtx);
+
 		if (ctx.getRequest().getImpactHandler() != null) {
 			ctx.getRequest().getImpactHandler().accept(event);
 		}
+	}
+
+	/**
+	 * Cosmetic block-crack particles at every block hit — {@code XParticle.BLOCK} resolves the legacy
+	 * {@code BLOCK_CRACK}/current {@code BLOCK} rename across versions, sized with the struck block's own
+	 * {@code BlockData} so the particle matches the block's texture.
+	 * <p>
+	 * // ponytail: hardcoded 8-particle/0.15 spread cosmetic, no per-weapon config key — add one if anyone asks.
+	 */
+	private void spawnBlockCrackParticles(Location impactPt, Block block) {
+		World world = impactPt.getWorld();
+		if (world == null) return;
+
+		world.spawnParticle(XParticle.BLOCK.get(), impactPt, 8, 0.15, 0.15, 0.15, 0.0, block.getBlockData());
+	}
+
+	/**
+	 * {@code Shoot.Sound.Flyby_*}: plays the fly-by sound to every online player in the shooter's world (except the
+	 * shooter) whose eye location comes within {@code Flyby_Range} of the ray's path — the polyline formed by the
+	 * raytrace origin followed by {@link RaytraceContext#getTracerSegments()}.
+	 * <p>
+	 * // ponytail: a ray that hits any entity skips flyby for the whole ray rather than excluding just the struck
+	 * player — the ray's entity hit isn't attributable to one player here without listening for
+	 * WeaponRaytraceImpactEvent; a penetrating shot that also grazes a second, unhit player is rare enough not to
+	 * warrant that. Revisit if that's ever reported as wrong in practice.
+	 */
+	private void playFlybySounds(RaytraceContext ctx) {
+		if (ctx.isHitEntity()) return;
+		if (!ctx.getRequest().isPlayFlyby()) return;
+
+		SoundData sounds = ctx.getRequest().getWeapon().getSoundData();
+		if (sounds == null || sounds.getFlybyRange() <= 0) return;
+
+		SoundEffect sound = sounds.getFlybyCustom() != null ? sounds.getFlybyCustom() : sounds.getFlybyDefault();
+		if (sound == null) return;
+
+		List<Location> segments = ctx.getTracerSegments();
+		if (segments.isEmpty()) return;
+
+		Location originLoc = ctx.getRequest().getOrigin();
+		World    world      = originLoc.getWorld();
+		if (world == null) return;
+
+		double range = sounds.getFlybyRange();
+
+		// Budget: skip players farther than range + the furthest point on the polyline from the origin before
+		// doing exact segment math. The furthest point is not necessarily the longest single leg — on a
+		// multi-leg ray (penetration, ricochet) the far end can be the SUM of legs travelled from the origin.
+		double furthest = 0;
+		for (Location point : segments) {
+			furthest = Math.max(furthest, originLoc.distance(point));
+		}
+		double prefilterRadius = range + furthest;
+
+		Vector       origin         = originLoc.toVector();
+		List<Vector> segmentVectors = segments.stream().map(Location::toVector).toList();
+		LivingEntity shooter        = ctx.getRequest().getShooter();
+
+		for (Player player : world.getPlayers()) {
+			if (player.equals(shooter)) continue;
+
+			Vector eye = player.getEyeLocation().toVector();
+			if (eye.distance(origin) > prefilterRadius) continue;
+
+			if (distanceToPolyline(eye, origin, segmentVectors) <= range) {
+				sound.playSound(player);
+			}
+		}
+	}
+
+	/**
+	 * Shortest distance from {@code point} to the polyline {@code origin -> segments[0] -> segments[1] -> ...}.
+	 * Pure math (no Bukkit world access) so it's unit-testable without mocking Bukkit — see
+	 * {@code WeaponRaytracerFlybyMathTest}.
+	 */
+	static double distanceToPolyline(Vector point, Vector origin, List<Vector> segments) {
+		double closest = Double.MAX_VALUE;
+		Vector previous = origin;
+		for (Vector segment : segments) {
+			closest = Math.min(closest, pointToSegmentDistance(point, previous, segment));
+			previous = segment;
+		}
+		return closest;
+	}
+
+	/**
+	 * Shortest distance from {@code point} to the segment {@code [a, b]}.
+	 */
+	static double pointToSegmentDistance(Vector point, Vector a, Vector b) {
+		Vector ab            = b.clone().subtract(a);
+		double lengthSquared = ab.lengthSquared();
+		if (lengthSquared < 1e-9) return point.distance(a);
+
+		double t = point.clone().subtract(a).dot(ab) / lengthSquared;
+		t = Math.max(0.0, Math.min(1.0, t));
+
+		Vector closest = a.clone().add(ab.multiply(t));
+		return point.distance(closest);
 	}
 
 	private void applyBlockBreak(Block block, Weapon weapon) {
@@ -606,9 +719,11 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 	                            Particle.DustOptions options, int fixedPointCount) {
 		Particle dustParticle = XParticle.DUST.get();
 
-		// The first leg starts at the visual muzzle (offset right of the shooter), not at the
-		// raytrace origin (which is the eye location). Subsequent legs follow the actual ray.
-		Location previous = WeaponMuzzle.compute(ctx.getRequest().getShooter(), ctx.getRequest().getDirection());
+		// The first leg starts at the visual muzzle (offset right of the shooter, per the weapon's configured
+		// Shoot.Muzzle_Offset if any), not at the raytrace origin (which is the eye location). Subsequent legs
+		// follow the actual ray.
+		Location previous = WeaponMuzzle.compute(ctx.getRequest().getShooter(), ctx.getRequest().getDirection(),
+		                                         ctx.getRequest().getWeapon());
 		for (Location point : segments) {
 			if (previous.getWorld() == null || !previous.getWorld().equals(point.getWorld())) {
 				previous = point;

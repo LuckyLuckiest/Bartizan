@@ -116,7 +116,7 @@ public class IncendiaryAction {
 		// fire spray
 		Location eye    = player.getEyeLocation();
 		Vector   dir    = eye.getDirection().normalize();
-		Location muzzle = WeaponMuzzle.compute(player, dir);
+		Location muzzle = WeaponMuzzle.compute(player, dir, weapon);
 
 		double flatBonus = weapon.getModifiersData().hasFlatDamage() ?
 		                   weapon.getModifiersData().getFlatDamage().bonus() :

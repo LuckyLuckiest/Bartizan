@@ -4,17 +4,29 @@ import org.bukkit.entity.Player;
 import org.luckyraven.keystone.exception.PluginException;
 import org.luckyraven.keystone.nms.PacketBridge;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.RecoilData;
 
 import java.util.List;
+import java.util.Random;
 
 public class RecoilManager {
 
 	private final Weapon weapon;
+	private final Random random;
 
 	private int playerPatternIndex;
 
 	public RecoilManager(Weapon weapon) {
+		this(weapon, new Random());
+	}
+
+	/**
+	 * Test-only seam: inject a fixed {@link Random} so {@code RecoilManagerTest} can pin
+	 * {@link #applyRecoil(Player)}'s gaussian ({@code Recoil.Random}) branch.
+	 */
+	RecoilManager(Weapon weapon, Random random) {
 		this.weapon = weapon;
+		this.random = random;
 
 		this.playerPatternIndex = 0;
 	}
@@ -25,6 +37,12 @@ public class RecoilManager {
 
 	public void applyRecoil(Player player) {
 		if (weapon.getRecoilData() == null) return;
+		RecoilData.RecoilRandom randomConfig = weapon.getRecoilData().getRandom();
+		if (randomConfig != null) {
+			applyRandomRecoil(player, randomConfig);
+			return;
+		}
+
 		List<String[]> recoilPattern = weapon.getRecoilData().getPattern();
 
 		// Check if a recoil pattern is available and not empty
@@ -82,6 +100,39 @@ public class RecoilManager {
 	@Override
 	public String toString() {
 		return "Recoil{playerPatternIndex=" + playerPatternIndex + "}";
+	}
+
+	/**
+	 * {@code Recoil.Random}: gaussian yaw/pitch kick instead of a fixed pattern step, using {@link #random} so the
+	 * distribution is pinnable in tests. Keeps the same sneak/scope dampening as the pattern branch.
+	 */
+	private void applyRandomRecoil(Player player, RecoilData.RecoilRandom randomConfig) {
+		float yaw   = (float) gaussian(randomConfig.meanX(), randomConfig.varianceX());
+		float pitch = (float) gaussian(randomConfig.meanY(), randomConfig.varianceY());
+
+		float finalYaw   = yaw;
+		float finalPitch = pitch;
+
+		if (player.isSneaking()) {
+			if (weapon.getScopeData() != null && weapon.getScopeData().isScoped()) {
+				finalYaw /= 2;
+				finalPitch /= 2;
+			} else {
+				finalYaw /= 4;
+				finalPitch /= 4;
+			}
+		}
+
+		recoil(player, finalYaw, finalPitch);
+	}
+
+	/**
+	 * {@code Recoil.Random.Variance_X/Y} is used directly as the gaussian standard deviation (sigma), not
+	 * squared/rooted first — matches the roadmap's 1:1 {@code Variance_X} -> sigma mapping (WM parity), despite
+	 * the historical "variance" name in {@link RecoilData.RecoilRandom}.
+	 */
+	private double gaussian(double mean, double variance) {
+		return mean + random.nextGaussian() * Math.max(0.0, variance);
 	}
 
 	private void applyDefaultRecoil(Player player, Weapon weapon) {

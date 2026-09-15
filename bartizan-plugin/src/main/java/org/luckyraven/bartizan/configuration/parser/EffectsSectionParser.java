@@ -32,7 +32,25 @@ import java.util.stream.Collectors;
  */
 public final class EffectsSectionParser {
 
+	/**
+	 * The default {@code On_Shoot} muzzle-flash particle, shared by {@link #builtInDefaults()} (the
+	 * {@code Default_Effects} fallback) and {@link #lowerLegacySounds} (appended alongside the lowered
+	 * {@code Shoot.Sound.*} spec for every shipped gun) so the flash actually plays regardless of which of those
+	 * two paths ends up populating a weapon's {@code On_Shoot} hook.
+	 */
+	private static final EffectSpec MUZZLE_FLASH = buildMuzzleFlash();
+
 	private EffectsSectionParser() {
+	}
+
+	private static EffectSpec buildMuzzleFlash() {
+		Map<String, String> muzzleFlash = new LinkedHashMap<>();
+		muzzleFlash.put("Particle", "SMOKE_NORMAL");
+		muzzleFlash.put("Count", "6");
+		muzzleFlash.put("Offset", "0.05 0.05 0.05");
+		muzzleFlash.put("Speed", "0.02");
+		muzzleFlash.put("At", "muzzle");
+		return new EffectSpec("particle", muzzleFlash);
 	}
 
 	/**
@@ -69,14 +87,23 @@ public final class EffectsSectionParser {
 	}
 
 	/**
-	 * The three feedback entries {@code settings.yml} ships under {@code Default_Effects:} (weapons-roadmap.md
-	 * gate {@code HA}, follow-up review item C), mirrored here in code for {@code BartizanSettings} to fall back
-	 * to when the root {@code Default_Effects:} key is entirely absent from the loaded file — Keystone never
-	 * merges a missing section into an upgraded pre-HA server's file, so crit/deny/explosion feedback would
-	 * otherwise go silent rather than falling back to these.
+	 * The four feedback entries {@code settings.yml} ships under {@code Default_Effects:} (weapons-roadmap.md gate
+	 * {@code HA}, follow-up review item C; the {@code On_Shoot} muzzle flash added at gate {@code HE} part b),
+	 * mirrored here in code for {@code BartizanSettings} to fall back to when the root {@code Default_Effects:}
+	 * key is entirely absent from the loaded file — Keystone never merges a missing section into an upgraded
+	 * pre-HA server's file, so crit/deny/explosion/muzzle-flash feedback would otherwise go silent rather than
+	 * falling back to these.
+	 * <p>
+	 * The {@link #MUZZLE_FLASH} spec here is the same instance {@link #lowerLegacySounds} appends alongside the
+	 * lowered shot-sound spec for every shipped gun — so this fallback (used only when a weapon configures
+	 * neither a shot sound nor its own {@code Effects.On_Shoot} list) and the sound-lowering path (used by every
+	 * shipped gun) both actually produce the flash, instead of only one of them (gate {@code HE} part b review:
+	 * previously only this fallback carried it, so it never fired for any shipped gun).
 	 */
 	public static EffectsData builtInDefaults() {
 		EffectsData data = EffectsData.empty();
+
+		data.put(EffectHook.ON_SHOOT, List.of(MUZZLE_FLASH));
 
 		Map<String, String> critical = new LinkedHashMap<>();
 		critical.put("Sound", "ITEM_SHIELD_BREAK");
@@ -112,27 +139,34 @@ public final class EffectsSectionParser {
 		// present, else vanilla — never both. At/Target below reproduce which shots broadcast vs play privately
 		// pre-HA: shot keeps a broadcast At (the gun path already was); impact broadcasts at the hit; empty-mag,
 		// scope and reload start/end had no location and played privately to the shooter only (no At).
-		lowerPair(effects, EffectHook.ON_SHOOT, sounds.getShotDefault(), sounds.getShotCustom(), "source", "source");
+		//
+		// ON_SHOOT also appends MUZZLE_FLASH: every shipped gun has a Shoot.Sound.Default_Sound, so this lowering
+		// — not builtInDefaults()'s Default_Effects fallback — is what actually populates ON_SHOOT for those guns;
+		// without appending it here the flash never fires for any of them (gate HE part b review).
+		lowerPair(effects, EffectHook.ON_SHOOT, sounds.getShotDefault(), sounds.getShotCustom(), "source", "source",
+		         true);
 		lowerPair(effects, EffectHook.ON_EMPTY, sounds.getEmptyMagDefault(), sounds.getEmptyMagCustom(), "source",
-		         null);
+		         null, false);
 		lowerPair(effects, EffectHook.ON_HIT, sounds.getImpactDefault(), sounds.getImpactCustom(), "source",
-		         "impact");
+		         "impact", false);
 		lowerPair(effects, EffectHook.ON_SCOPE_IN, sounds.getScopeDefault(), sounds.getScopeCustom(), "source",
-		         null);
+		         null, false);
 		lowerPair(effects, EffectHook.ON_RELOAD_START, sounds.getReloadDefaultBefore(), sounds.getReloadCustomStart(),
-		         "source", null);
+		         "source", null, false);
 		lowerPair(effects, EffectHook.ON_RELOAD_END, sounds.getReloadDefaultAfter(), sounds.getReloadCustomEnd(),
-		         "source", null);
+		         "source", null, false);
 	}
 
 	private static void lowerPair(EffectsData effects, EffectHook hook, @Nullable SoundEffect vanilla,
-	                              @Nullable SoundEffect custom, String target, @Nullable String at) {
+	                              @Nullable SoundEffect custom, String target, @Nullable String at,
+	                              boolean includeMuzzleFlash) {
 		if (effects.has(hook)) return;
 
 		SoundEffect chosen = custom != null ? custom : vanilla;
 		if (chosen == null) return;
 
-		effects.put(hook, List.of(soundSpec(custom != null ? "custom_sound" : "sound", chosen, target, at)));
+		EffectSpec soundSpec = soundSpec(custom != null ? "custom_sound" : "sound", chosen, target, at);
+		effects.put(hook, includeMuzzleFlash ? List.of(soundSpec, MUZZLE_FLASH) : List.of(soundSpec));
 	}
 
 	private static EffectSpec soundSpec(String type, SoundEffect sound, String target, @Nullable String at) {

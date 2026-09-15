@@ -36,6 +36,12 @@ public class RaytraceRequest {
 	private final Consumer<WeaponRaytraceImpactEvent> impactHandler;
 	private final double                              gravity;
 	private final double                              projectileSpeed;
+	/**
+	 * Whether {@code WeaponRaytracerImpl.playFlybySounds} should run for this request. Defaults to {@code true};
+	 * a multi-pellet shot (shotgun spread) sets this {@code false} on every pellet but the first so a bystander
+	 * hears the fly-by sound once per shot, not once per pellet.
+	 */
+	private final boolean                             playFlyby;
 
 	private RaytraceRequest(Builder b) {
 		this.shooter         = b.shooter;
@@ -50,6 +56,7 @@ public class RaytraceRequest {
 		this.impactHandler   = b.impactHandler;
 		this.gravity         = b.gravity;
 		this.projectileSpeed = b.projectileSpeed;
+		this.playFlyby       = b.playFlyby;
 	}
 
 	public static Builder builder() {
@@ -70,6 +77,7 @@ public class RaytraceRequest {
 		private Consumer<WeaponRaytraceImpactEvent> impactHandler;
 		private double                              gravity         = 0.0;
 		private double                              projectileSpeed = 1.0;
+		private boolean                             playFlyby       = true;
 
 		public Builder shooter(LivingEntity shooter) {
 			this.shooter = shooter;
@@ -128,6 +136,11 @@ public class RaytraceRequest {
 
 		public Builder projectileSpeed(double projectileSpeed) {
 			this.projectileSpeed = projectileSpeed;
+			return this;
+		}
+
+		public Builder playFlyby(boolean playFlyby) {
+			this.playFlyby = playFlyby;
 			return this;
 		}
 

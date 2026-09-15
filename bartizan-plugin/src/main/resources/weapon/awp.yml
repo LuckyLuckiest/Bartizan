@@ -56,9 +56,15 @@ Shoot:
       Amount: 0.25
       Push: 0.2
       Power_Up: 0.001
-      Pattern:
-         - 8;0
-         - 0;0
+      # Gaussian recoil instead of a fixed Pattern - a heavy sniper kick with a bit of shot-to-shot variance
+      # rather than the exact same kick every time. Variance_X/Variance_Y are used directly as the gaussian
+      # standard deviation (sigma), not squared/rooted, despite the name.
+      Random:
+         # 4.0: matches the old Pattern's [8;0, 0;0] average of 4 per shot.
+         Mean_X: 4.0
+         Mean_Y: 0.0
+         Variance_X: 1.5
+         Variance_Y: 0.5
 
    Sound:
       Default_Sound:

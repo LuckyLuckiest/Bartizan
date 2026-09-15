@@ -4,6 +4,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.RecoilData;
@@ -13,6 +14,7 @@ import org.luckyraven.keystone.nms.PacketBridge;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
@@ -99,6 +101,54 @@ class RecoilManagerTest {
 		assertRotation(-2f + 1, 1f - 1);
 	}
 
+	@Test
+	@DisplayName("Recoil.Random: gaussian yaw/pitch from the injected Random, not sneaking")
+	void randomRecoil_notSneaking_usesGaussianMeanAndVariance() {
+		when(player.isSneaking()).thenReturn(false);
+		Weapon weapon = weaponWithRandom(new RecoilData.RecoilRandom(2.0, 1.0, 4.0, 1.0), null);
+		RecoilManager manager = new RecoilManager(weapon, new FixedGaussianRandom(1.0));
+
+		manager.applyRecoil(player);
+
+		// nextGaussian() pinned to 1.0 -> Variance_X/Y are used directly as sigma (not sqrt'd) -> yaw = 2.0 +
+		// 1.0*4.0 = 6.0; pitch = 1.0 + 1.0*1.0 = 2.0
+		assertRotation(-6f + 1, 2f - 1);
+	}
+
+	@Test
+	@DisplayName("Recoil.Random: sneaking+scoped halves the gaussian result, same as the pattern branch")
+	void randomRecoil_sneakingAndScoped_halvesAmount() {
+		when(player.isSneaking()).thenReturn(true);
+		Weapon weapon = weaponWithRandom(new RecoilData.RecoilRandom(2.0, 1.0, 4.0, 1.0), true);
+		RecoilManager manager = new RecoilManager(weapon, new FixedGaussianRandom(1.0));
+
+		manager.applyRecoil(player);
+
+		// Same sigma-not-sqrt gaussian as the previous test (yaw 6.0, pitch 2.0) before the sneak+scoped halving.
+		float expectedYaw   = 6f / 2;
+		float expectedPitch = 2f / 2;
+		assertRotation(-expectedYaw + 1, expectedPitch - 1);
+	}
+
+	@Test
+	@DisplayName("Recoil.Random takes precedence over Recoil.Pattern when both are configured")
+	void randomRecoil_takesPrecedenceOverPattern() {
+		when(player.isSneaking()).thenReturn(false);
+		Weapon         weapon         = mock(Weapon.class);
+		RecoilData     data           = new RecoilData();
+		List<String[]> mustNotBeRead = new ArrayList<>();
+		mustNotBeRead.add(new String[]{"99", "99"});
+		data.setPattern(mustNotBeRead);
+		data.setRandom(new RecoilData.RecoilRandom(2.0, 1.0, 0.0, 0.0));
+		when(weapon.getRecoilData()).thenReturn(data);
+		when(weapon.getScopeData()).thenReturn(null);
+		RecoilManager manager = new RecoilManager(weapon, new FixedGaussianRandom(0.0));
+
+		manager.applyRecoil(player);
+
+		assertRotation(-2f + 1, 1f - 1);
+	}
+
 	private void assertRotation(float expectedYaw, float expectedPitch) {
 		assertEquals(player, adapter.lastViewer);
 		assertEquals(expectedYaw, adapter.lastDeltaYaw, 0.0001f);
@@ -123,6 +173,23 @@ class RecoilManagerTest {
 		return weapon;
 	}
 
+	private Weapon weaponWithRandom(RecoilData.RecoilRandom randomConfig, Boolean scoped) {
+		Weapon     weapon     = mock(Weapon.class);
+		RecoilData recoilData = new RecoilData();
+		recoilData.setRandom(randomConfig);
+		when(weapon.getRecoilData()).thenReturn(recoilData);
+
+		if (scoped == null) {
+			when(weapon.getScopeData()).thenReturn(null);
+		} else {
+			ScopeData scopeData = new ScopeData();
+			scopeData.setScoped(scoped);
+			when(weapon.getScopeData()).thenReturn(scopeData);
+		}
+
+		return weapon;
+	}
+
 	private Weapon weaponWithPattern(List<String[]> pattern) {
 		Weapon     weapon     = mock(Weapon.class);
 		RecoilData recoilData = new RecoilData();
@@ -131,6 +198,25 @@ class RecoilManagerTest {
 		when(weapon.getRecoilData()).thenReturn(recoilData);
 		when(weapon.getScopeData()).thenReturn(null);
 		return weapon;
+	}
+
+	/**
+	 * Fake {@link Random} whose {@code nextGaussian()} always returns the same fixed value, so the
+	 * {@code Recoil.Random} branch's arithmetic is fully deterministic without depending on {@link Random}'s
+	 * actual (if reproducible) algorithm.
+	 */
+	private static final class FixedGaussianRandom extends Random {
+
+		private final double value;
+
+		FixedGaussianRandom(double value) {
+			this.value = value;
+		}
+
+		@Override
+		public double nextGaussian() {
+			return value;
+		}
 	}
 
 	private static final class CapturingPacketAdapter implements PacketAdapter {

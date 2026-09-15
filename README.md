@@ -56,9 +56,10 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
                                        .weapon                 Weapon + 6 subclasses (incl. BeamWeapon), WeaponType, ThrowableType,
                                                                 SelectiveFire, WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
-                                       .weapon.dto              22 config records (AmmunitionData, ChargeData, BeamData,
-                                                                StatusData, DamageData, EffectHook, EffectSpec, EffectsData,
-                                                                HudData, ...)
+                                       .weapon.dto              23 config records (AmmunitionData, ChargeData, BeamData,
+                                                                StatusData, DamageData, EffectHook (22 hooks, incl.
+                                                                On_Block_Hit), EffectSpec, EffectsData, HudData,
+                                                                MuzzleOffsetData, ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager + action/*
                                        .weapon.recoil            RecoilManager

@@ -20,7 +20,16 @@ public class SpreadManager {
 	private long   lastShotTime;
 
 	public SpreadManager(Weapon weapon) {
-		this.random = new Random();
+		this(weapon, new Random());
+	}
+
+	/**
+	 * Test-only seam: inject a fixed/seeded {@link Random} so {@code SpreadManagerTest} can pin the
+	 * multiplier-scaling arithmetic deterministically with a non-zero {@code currentSpread}, instead of relying
+	 * on {@code currentSpread == 0} to cancel the randomness out (which proves nothing about the multiplier).
+	 */
+	SpreadManager(Weapon weapon, Random random) {
+		this.random = random;
 		this.weapon = weapon;
 		SpreadData data = weapon.getSpreadData();
 		this.currentSpread = data != null ? data.getStart() : 0.0;
@@ -35,14 +44,30 @@ public class SpreadManager {
 	 * @return The vector with spread applied
 	 */
 	public Vector applySpread(Vector originalVector) {
+		return applySpread(originalVector, 1.0);
+	}
+
+	/**
+	 * Applies spread to the given direction vector, scaling {@link #currentSpread} by {@code multiplier} before
+	 * sampling the random offset — the caller (e.g. {@code WeaponShooting.fireHitscan}) computes this from
+	 * {@code Spread.Modify_Spread_When} (zooming/sneaking/sprinting/midair/swimming).
+	 *
+	 * @param originalVector The original direction vector
+	 * @param multiplier Scales the effective spread for this shot only; {@code currentSpread} itself still
+	 * 		accumulates/resets by the unscaled value so the multiplier never distorts the weapon's own bloom curve
+	 *
+	 * @return The vector with spread applied
+	 */
+	public Vector applySpread(Vector originalVector, double multiplier) {
 		SpreadData spreadData = weapon.getSpreadData();
 		if (spreadData == null) return originalVector;
 
 		checkSpreadReset(spreadData);
 
-		double offsetX = (random.nextDouble() - 0.5) * currentSpread;
-		double offsetY = (random.nextDouble() - 0.5) * currentSpread;
-		double offsetZ = (random.nextDouble() - 0.5) * currentSpread;
+		double effectiveSpread = currentSpread * multiplier;
+		double offsetX = (random.nextDouble() - 0.5) * effectiveSpread;
+		double offsetY = (random.nextDouble() - 0.5) * effectiveSpread;
+		double offsetZ = (random.nextDouble() - 0.5) * effectiveSpread;
 
 		updateSpread(spreadData);
 

@@ -6,8 +6,11 @@ import org.bukkit.Material;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.MappingNode;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.keystone.persistence.config.Severity;
+import org.luckyraven.bartizan.api.weapon.BeamWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
+import org.luckyraven.bartizan.api.weapon.dto.BeamData;
 import org.luckyraven.bartizan.api.weapon.dto.ModifiersData;
 import org.luckyraven.bartizan.api.weapon.modifiers.BreakMode;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.*;
@@ -47,7 +50,7 @@ public final class ModifiersSectionParser {
 		weapon.setModifiersData(new ModifiersData());
 
 		applyBreakBlocks(modifiers, weapon);
-		applyPenetration(modifiers, weapon);
+		applyPenetration(modifiers, weapon, report);
 		applyRicochet(modifiers, weapon);
 		applyTracer(modifiers, weapon);
 		applyArmorPiercing(modifiers, weapon);
@@ -79,19 +82,61 @@ public final class ModifiersSectionParser {
 		}
 	}
 
-	private static void applyPenetration(NodeReader modifiers, Weapon weapon) {
+	/**
+	 * {@code Penetration} plus its {@code Pierce_Entities} sugar: when no {@code Penetration} string is
+	 * configured, {@code Pierce_Entities: <n>} sets an entities-only {@code PenetrationModifier(0, n, 0.0)}.
+	 * Configuring both is a {@link Severity#WARNING} — {@code Penetration} always wins.
+	 */
+	private static void applyPenetration(NodeReader modifiers, Weapon weapon, ConfigReport report) {
 		String penetrationString = modifiers.get("Penetration").asString().orNull();
-		if (penetrationString == null) return;
+		int    pierceEntities    = modifiers.get("Pierce_Entities").asInt().min(0).orDefault(0);
 
-		String[] parts = penetrationString.split("-");
-		if (parts.length != 3) return;
+		if (penetrationString != null) {
+			String[] parts = penetrationString.split("-");
+			if (parts.length == 3) {
+				try {
+					weapon.getModifiersData()
+					      .setPenetration(new PenetrationModifier(Integer.parseInt(parts[0].trim()),
+					                                              Integer.parseInt(parts[1].trim()),
+					                                              Double.parseDouble(parts[2].trim())));
+				} catch (NumberFormatException ignored) { }
+			}
 
-		try {
-			weapon.getModifiersData()
-			      .setPenetration(new PenetrationModifier(Integer.parseInt(parts[0].trim()),
-			                                              Integer.parseInt(parts[1].trim()),
-			                                              Double.parseDouble(parts[2].trim())));
-		} catch (NumberFormatException ignored) { }
+			if (pierceEntities > 0) {
+				MappingNode mapping = modifiers.mapping();
+				report.add(Severity.WARNING, mapping.location(), mapping.path(),
+				           "Modifiers.Penetration and Pierce_Entities both configured - Penetration takes "
+				           + "precedence", "modifiers.pierce_entities_and_penetration");
+			}
+			warnIfBeamPierceOverridden(modifiers, weapon, report);
+			return;
+		}
+
+		if (pierceEntities > 0) {
+			weapon.getModifiersData().setPenetration(new PenetrationModifier(0, pierceEntities, 0.0));
+			warnIfBeamPierceOverridden(modifiers, weapon, report);
+		}
+	}
+
+	/**
+	 * {@code ModifiersSectionParser.apply} runs before {@code BeamWeaponParser.lowerPierce}, so a
+	 * {@code Modifiers.Penetration}/{@code Pierce_Entities} config on a BEAM weapon silently wins over
+	 * {@code Shoot.Beam.Pierce} — {@code lowerPierce} sees {@code hasPenetration()} already true and skips.
+	 * Same warning family as the {@code Penetration}/{@code Pierce_Entities} collision above, so the file author
+	 * finds out instead of quietly losing the beam's own pierce config.
+	 */
+	private static void warnIfBeamPierceOverridden(NodeReader modifiers, Weapon weapon, ConfigReport report) {
+		if (!(weapon instanceof BeamWeapon beamWeapon)) return;
+
+		BeamData.PierceData pierce = beamWeapon.getBeam().getPierce();
+		boolean beamPierceConfigured = pierce.entities() != -1 || pierce.blocks() != 0
+		                                || pierce.damageMultiplierPerTarget() != 0.85;
+		if (!beamPierceConfigured) return;
+
+		MappingNode mapping = modifiers.mapping();
+		report.add(Severity.WARNING, mapping.location(), mapping.path(),
+		           "Modifiers.Penetration/Pierce_Entities and Shoot.Beam.Pierce both configured - Modifiers takes "
+		           + "precedence", "modifiers.pierce_entities_and_beam_pierce");
 	}
 
 	private static void applyRicochet(NodeReader modifiers, Weapon weapon) {

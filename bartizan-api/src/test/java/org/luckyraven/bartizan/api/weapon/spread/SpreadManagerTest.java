@@ -7,6 +7,8 @@ import org.luckyraven.bartizan.api.weapon.dto.SpreadData;
 import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 
+import java.util.Random;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -108,6 +110,44 @@ class SpreadManagerTest {
 		manager.applySpread(new Vector(0, 0, 1)); // 0.05 + 1.0 >= 0.5 -> Reset_On_Bound -> back to Starting_Spread
 
 		assertEquals(0.05, manager.getCurrentSpread());
+	}
+
+	@Test
+	@DisplayName("applySpread(vector, multiplier) scales the effective spread without disturbing currentSpread's own accumulation")
+	void applySpread_withMultiplier_scalesEffectiveSpreadOnly() {
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+		// Large bound + reset window so only the multiplier scaling is under test, not clamping/reset.
+		weapon.setSpreadData(spreadData(0.10, Integer.MAX_VALUE, 0.0, false, 0.0, 10.0));
+		SpreadManager manager = new SpreadManager(weapon);
+
+		// multiplier 0.0 collapses the random offset to zero -> direction passes through unchanged (after
+		// normalize, still the unit vector it started as).
+		Vector zeroed = manager.applySpread(new Vector(0, 0, 1), 0.0);
+		assertEquals(new Vector(0, 0, 1), zeroed);
+
+		// currentSpread itself is untouched by the multiplier - still 0.10 (changeBase is 0.0 here).
+		assertEquals(0.10, manager.getCurrentSpread(), 0.0001);
+	}
+
+	@Test
+	@DisplayName("applySpread(vector) with no multiplier argument is equivalent to multiplier 1.0")
+	void applySpread_noMultiplierArg_matchesMultiplierOne() {
+		// A non-zero starting spread, so the random offset actually matters here - with currentSpread == 0 the
+		// multiplier is multiplied against zero either way and the assertion would hold no matter what the
+		// no-arg overload actually delegated to. Two managers seeded identically so their Random draws the same
+		// sequence, one exercised through the no-arg overload and the other through the explicit multiplier.
+		SpreadData data = spreadData(0.2, Integer.MAX_VALUE, 0.0, false, 0.0, 10.0);
+
+		GunWeapon noArgWeapon = WeaponFixtures.gunWeapon(30, 1);
+		noArgWeapon.setSpreadData(data);
+		SpreadManager noArgManager = new SpreadManager(noArgWeapon, new Random(42));
+
+		GunWeapon explicitWeapon = WeaponFixtures.gunWeapon(30, 1);
+		explicitWeapon.setSpreadData(data);
+		SpreadManager explicitManager = new SpreadManager(explicitWeapon, new Random(42));
+
+		assertEquals(noArgManager.applySpread(new Vector(0, 0, 1)),
+		             explicitManager.applySpread(new Vector(0, 0, 1), 1.0));
 	}
 
 	@Test

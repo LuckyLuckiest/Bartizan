@@ -52,7 +52,7 @@ public class EffectContext {
 		return builder()
 				.weapon(weapon)
 				.source(shooter)
-				.muzzle(WeaponMuzzle.compute(shooter, lookDirection))
+				.muzzle(WeaponMuzzle.compute(shooter, lookDirection, weapon))
 				.ammoLeft(weapon.getAmmunitionData() != null ? weapon.getCurrentMagCapacity() : 0)
 				.ammoMax(weapon.getAmmunitionData() != null ? weapon.getAmmunitionData().getMaxMagCapacity() : 0);
 	}

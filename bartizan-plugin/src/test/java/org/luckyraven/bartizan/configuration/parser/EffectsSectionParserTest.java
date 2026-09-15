@@ -188,17 +188,23 @@ class EffectsSectionParserTest {
 	}
 
 	@Test
-	@DisplayName("legacy sound lowering fills On_Shoot only when the weapon declared no On_Shoot list")
+	@DisplayName("legacy sound lowering fills On_Shoot (sound + muzzle flash) only when the weapon declared no "
+	             + "On_Shoot list")
 	void legacyLowering_onlyWhenNoExplicitList() {
 		SoundData sounds = new SoundData();
 		sounds.setShotDefault(new SoundEffect(SoundEffect.SoundType.VANILLA, "ENTITY_GENERIC_EXPLODE", 1.0F, 1.0F));
 
-		// No On_Shoot declared -> lowering fills it.
+		// No On_Shoot declared -> lowering fills it with the sound plus the shared muzzle-flash spec (gate HE
+		// part b review: the flash must actually fire for every shipped gun, not just the Default_Effects
+		// fallback).
 		EffectsData undeclared = EffectsData.empty();
 		EffectsSectionParser.lowerLegacySounds(sounds, undeclared);
-		assertEquals(1, undeclared.forHook(EffectHook.ON_SHOOT).size());
-		assertEquals("sound", undeclared.forHook(EffectHook.ON_SHOOT).get(0).type());
-		assertEquals("ENTITY_GENERIC_EXPLODE", undeclared.forHook(EffectHook.ON_SHOOT).get(0).arg("Sound"));
+		List<EffectSpec> onShoot = undeclared.forHook(EffectHook.ON_SHOOT);
+		assertEquals(2, onShoot.size());
+		assertEquals("sound", onShoot.get(0).type());
+		assertEquals("ENTITY_GENERIC_EXPLODE", onShoot.get(0).arg("Sound"));
+		assertEquals("particle", onShoot.get(1).type());
+		assertEquals("muzzle", onShoot.get(1).arg("At"));
 
 		// Weapon already declared its own On_Shoot list -> lowering must not touch it.
 		EffectsData declared = EffectsData.empty();
@@ -209,7 +215,8 @@ class EffectsSectionParserTest {
 	}
 
 	@Test
-	@DisplayName("legacy sound lowering with both slots set emits exactly one custom_sound spec, never both")
+	@DisplayName("legacy sound lowering with both slots set emits exactly one sound spec (custom_sound, never "
+	             + "both) plus the muzzle flash")
 	void legacyLowering_bothSlotsSet_emitsOnlyCustomSound() {
 		SoundData sounds = new SoundData();
 		sounds.setShotDefault(new SoundEffect(SoundEffect.SoundType.VANILLA, "ENTITY_GENERIC_EXPLODE", 1.0F, 1.0F));
@@ -219,15 +226,22 @@ class EffectsSectionParserTest {
 		EffectsSectionParser.lowerLegacySounds(sounds, data);
 
 		List<EffectSpec> onShoot = data.forHook(EffectHook.ON_SHOOT);
-		assertEquals(1, onShoot.size());
+		assertEquals(2, onShoot.size());
 		assertEquals("custom_sound", onShoot.get(0).type());
 		assertEquals("mypack:shoot", onShoot.get(0).arg("Sound"));
+		assertEquals("particle", onShoot.get(1).type());
 	}
 
 	@Test
 	@DisplayName("builtInDefaults mirrors settings.yml's shipped Default_Effects entries (gate HA follow-up item C)")
 	void builtInDefaults_mirrorsShippedEntries() {
 		EffectsData data = EffectsSectionParser.builtInDefaults();
+
+		List<EffectSpec> muzzleFlash = data.forHook(EffectHook.ON_SHOOT);
+		assertEquals(1, muzzleFlash.size());
+		assertEquals("particle", muzzleFlash.get(0).type());
+		assertEquals("SMOKE_NORMAL", muzzleFlash.get(0).arg("Particle"));
+		assertEquals("muzzle", muzzleFlash.get(0).arg("At"));
 
 		List<EffectSpec> critical = data.forHook(EffectHook.ON_CRITICAL);
 		assertEquals(1, critical.size());

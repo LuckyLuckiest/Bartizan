@@ -23,6 +23,9 @@ Shoot:
    Projectile:
       Speed: 4
       Type: SPREAD
+      # Pellets fired per trigger pull for a SPREAD weapon. Defaults to 8 for SPREAD (1 for every other type) when
+      # omitted - spelled out here since this is the default anyway.
+      Pellets: 8
       Damage:
          Base: 3
          Explosion_Damage: 0

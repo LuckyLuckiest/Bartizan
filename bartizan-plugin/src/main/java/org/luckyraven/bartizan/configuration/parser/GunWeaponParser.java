@@ -49,6 +49,12 @@ public class GunWeaponParser {
 		String         projectileTypeString = projectile.get("Type").asString().required().orDefault("BULLET");
 		ProjectileType projectileType       = ProjectileType.getType(projectileTypeString);
 
+		// Pellets: hitscan "burst" count per shot - historically hardcoded to 8 for SPREAD and 1 for every other
+		// type (the old WeaponShooting.SPREAD_PELLET_COUNT constant). Now user-configurable; the type-based
+		// default is preserved for files that don't set it.
+		int defaultPellets    = projectileType == ProjectileType.SPREAD ? 8 : 1;
+		int projectilePellets = projectile.get("Pellets").asInt().min(1).orDefault(defaultPellets);
+
 		MappingNode damageSection = projectile.get("Damage").asMapping().required().orNull();
 		if (damageSection == null) {
 			throw new InvalidConfigurationException(
@@ -109,6 +115,7 @@ public class GunWeaponParser {
 		                                              .distance(projectileDistance)
 		                                              .particle(projectileParticle)
 		                                              .gravity(projectileGravity)
+		                                              .pellets(projectilePellets)
 		                                              .build();
 
 		GunWeapon gun = new GunWeapon(null, base.fileName(), base.displayName(), base.category(),

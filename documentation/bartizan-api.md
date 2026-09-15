@@ -141,8 +141,9 @@ ambient-particle/`messageSpread` fields the service ticks. The runtime that owns
 ### Effects (`weapon.dto.{EffectHook, EffectSpec, EffectsData}`)
 
 Gate `HA`'s feedback engine model, added at the api layer so a consumer can read what a weapon will do without
-depending on `bartizan-plugin`. `EffectHook` is the v1 set of ~21 feedback hooks (`ON_SHOOT`, `ON_HIT`, `ON_KILL`,
-`ON_CRITICAL`, …); `key()`/`fromKey(String)` round-trip the `Capitalized_Underscore` YAML spelling (`On_Shoot`).
+depending on `bartizan-plugin`. `EffectHook` is the v1 set of ~22 feedback hooks (`ON_SHOOT`, `ON_HIT`,
+`ON_BLOCK_HIT` (added gate `HE` part b — a hitscan ray striking a block), `ON_KILL`, `ON_CRITICAL`, …);
+`key()`/`fromKey(String)` round-trip the `Capitalized_Underscore` YAML spelling (`On_Shoot`).
 `EffectSpec` is an immutable `(type, args)` record for one configured effect entry, with typed arg accessors (`arg`,
 `intArg`, `doubleArg`). `EffectsData` is the hook → effect-list table (`forHook`, `has`, `put`, `empty()`).
 `Weapon#getEffects()` exposes a weapon's parsed `Effects:` section (never `null`, empty when none configured). The

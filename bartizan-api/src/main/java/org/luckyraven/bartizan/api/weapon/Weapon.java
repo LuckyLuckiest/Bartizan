@@ -61,6 +61,12 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	private       RecoilData             recoilData;
 	private       ScopeData              scopeData;
 	private       SpreadData             spreadData;
+	/**
+	 * {@code Shoot.Muzzle_Offset}, parsed by {@code WeaponAddon.applyOptionalShootConfig}. {@code null} when
+	 * unconfigured — {@code WeaponMuzzle.compute} falls back to its historical hardcoded offset in that case.
+	 */
+	@Nullable
+	private       MuzzleOffsetData       muzzleOffsetData;
 	private       EffectsData            effects = EffectsData.empty();
 	@Nullable
 	private       HudData                hudData;
@@ -494,6 +500,9 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		if (this.scopeData != null) this.scopeData.setScoped(false);
 
 		this.spreadData           = source.spreadData != null ? source.spreadData.clone() : null;
+		// MuzzleOffsetData is a fully immutable record - sharing the same instance across template copies is
+		// safe, no clone() needed.
+		this.muzzleOffsetData     = source.muzzleOffsetData;
 		this.effects              = source.effects != null ? source.effects.clone() : EffectsData.empty();
 		this.hudData              = source.hudData != null ? source.hudData.clone() : null;
 		this.recoil               = new RecoilManager(this);
