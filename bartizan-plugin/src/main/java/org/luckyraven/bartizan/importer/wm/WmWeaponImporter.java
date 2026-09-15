@@ -225,10 +225,6 @@ public final class WmWeaponImporter {
 		return base;
 	}
 
-	private static String capitalize(String key) {
-		return key.substring(0, 1).toUpperCase(Locale.ROOT) + key.substring(1).toLowerCase(Locale.ROOT);
-	}
-
 	// -------------------------------------------------------------------------
 	// Melee
 	// -------------------------------------------------------------------------
