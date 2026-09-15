@@ -1,25 +1,38 @@
 package org.luckyraven.bartizan.configuration.parser;
 
+import com.cryptomorin.xseries.XMaterial;
+import com.cryptomorin.xseries.particles.XParticle;
 import lombok.CustomLog;
+import org.bukkit.Material;
+import org.bukkit.Particle;
 import org.bukkit.configuration.InvalidConfigurationException;
+import org.jetbrains.annotations.Nullable;
+import org.luckyraven.keystone.persistence.config.ConfigNode;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.MappingNode;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.keystone.persistence.config.Severity;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
 import org.luckyraven.bartizan.configuration.parser.AmmunitionSectionParser.ParsedAmmo;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
+import org.luckyraven.bartizan.api.weapon.dto.BouncyData;
 import org.luckyraven.bartizan.api.weapon.dto.DropoffStep;
 import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
 import org.luckyraven.bartizan.api.weapon.dto.ExplosionData.Shape;
 import org.luckyraven.bartizan.api.weapon.dto.ExplosionData.Trigger;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
+import org.luckyraven.bartizan.api.weapon.dto.VisualData;
 import org.luckyraven.bartizan.api.weapon.ProjectileType;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.util.BlockGroupResolver;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -137,8 +150,17 @@ public class GunWeaponParser {
 		// semantic by reading as double and casting — keeps existing configs working without surfacing a type error.
 		int     projectileCooldown = (int) projectile.get("Cooldown").asDouble().min(0).orDefault(0.0);
 		int     projectileDistance = projectile.get("Distance").asInt().min(0).orDefault(0);
+		// Particle: gate HI part b wires this up to draw a per-tick tracer segment for ROCKET/FLARE — dead
+		// (parsed, never read) before that gate.
 		boolean projectileParticle = projectile.get("Particle").asBool().orDefault(false);
 		double  projectileGravity  = projectile.get("Gravity").asDouble().orDefault(0.0);
+
+		double  projectileDrag           = projectile.get("Drag").asDouble().min(0).max(1).orDefault(0.0);
+		boolean projectileExtinguishWater = projectile.get("Extinguish_In_Water").asBool().orDefault(false);
+		int     projectileAliveTicks     = projectile.get("Alive_Ticks").asInt().min(0).orDefault(0);
+		Particle projectileTrail         = parseTrail(projectile, report, base.fileName());
+		VisualData projectileVisual      = parseVisual(projectile, projectileType, report, base.fileName());
+		BouncyData projectileBouncy      = parseBouncy(projectile, report);
 
 		MappingNode weaponConsumedSection = shoot.get("Weapon_Consumed").asMapping().required().orNull();
 		int         weaponConsumedOnShot  = 0;
@@ -166,6 +188,12 @@ public class GunWeaponParser {
 		                                              .particle(projectileParticle)
 		                                              .gravity(projectileGravity)
 		                                              .pellets(projectilePellets)
+		                                              .drag(projectileDrag)
+		                                              .visual(projectileVisual)
+		                                              .bouncy(projectileBouncy)
+		                                              .extinguishInWater(projectileExtinguishWater)
+		                                              .aliveTicks(projectileAliveTicks)
+		                                              .trail(projectileTrail)
 		                                              .build();
 
 		GunWeapon gun = new GunWeapon(null, base.fileName(), base.displayName(), base.category(),
@@ -195,6 +223,105 @@ public class GunWeaponParser {
 		gun.setExplosionData(explosionData);
 
 		return gun;
+	}
+
+	/**
+	 * {@code Projectile.Visual} (gate {@code HI} part b): which cosmetic entity the stepped-flight task drives.
+	 * Absent entirely, or missing just {@code Type}, falls back to the historical hardcoded visual — {@code
+	 * fireball} for ROCKET, {@code firework} for every other type (FLARE). An unrecognised {@code Type} string is
+	 * a {@link Severity#WARNING} falling back to that same type-based default, rather than failing the load.
+	 */
+	private static VisualData parseVisual(NodeReader projectile, ProjectileType type, ConfigReport report,
+	                                      String fileName) {
+		VisualData.VisualType fallback = type == ProjectileType.ROCKET
+		                                  ? VisualData.VisualType.FIREBALL
+		                                  : VisualData.VisualType.FIREWORK;
+
+		MappingNode visualSection = projectile.get("Visual").asMapping().orNull();
+		if (visualSection == null) {
+			return new VisualData(fallback, null, 0, null);
+		}
+
+		NodeReader visual = NodeReader.of(visualSection, report);
+		String     raw    = visual.get("Type").asString().orNull();
+
+		VisualData.VisualType visualType = fallback;
+		if (raw != null) {
+			try {
+				visualType = VisualData.VisualType.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+			} catch (IllegalArgumentException exception) {
+				ConfigNode node = visual.get("Type").node();
+				report.add(Severity.WARNING, node != null ? node.location() : visualSection.location(),
+				          childPath(visual, "Type"),
+				          "unknown Projectile.Visual.Type '" + raw + "' in weapon '" + fileName + "'",
+				          "projectile.unknown_visual_type");
+			}
+		}
+
+		Material item  = resolveMaterial(visual.get("Item").asString().orNull());
+		int      cmd   = visual.get("Custom_Model_Data").asInt().min(0).orDefault(0);
+		Material block = resolveMaterial(visual.get("Block").asString().orNull());
+
+		return new VisualData(visualType, item, cmd, block);
+	}
+
+	@Nullable
+	private static Material resolveMaterial(@Nullable String materialName) {
+		if (materialName == null) return null;
+		return XMaterial.matchXMaterial(materialName).map(XMaterial::get).orElse(null);
+	}
+
+	/**
+	 * {@code Projectile.Bouncy} (gate {@code HI} part b): {@code Default} is the multiplier applied to any block
+	 * not otherwise listed ({@code 0.0} = no bounce — matches the historical behaviour of terminating on first
+	 * block contact); every other key is a material or {@link BlockGroupResolver} block-group name with its own
+	 * multiplier. Absent entirely -&gt; {@code null}, meaning every block hit still terminates the projectile.
+	 */
+	@Nullable
+	private static BouncyData parseBouncy(NodeReader projectile, ConfigReport report) {
+		MappingNode bouncySection = projectile.get("Bouncy").asMapping().orNull();
+		if (bouncySection == null) return null;
+
+		NodeReader bouncy   = NodeReader.of(bouncySection, report);
+		double     fallback = bouncy.get("Default").asDouble().min(0).orDefault(0.0);
+
+		Map<Material, Double> perMaterial = new HashMap<>();
+		for (String key : bouncy.keys()) {
+			if (key.equalsIgnoreCase("Default")) continue;
+
+			double multiplier = bouncy.get(key).asDouble().min(0).orDefault(fallback);
+			for (Material material : BlockGroupResolver.resolve(key)) {
+				perMaterial.put(material, multiplier);
+			}
+		}
+
+		return new BouncyData(fallback, perMaterial);
+	}
+
+	/**
+	 * {@code Projectile.Trail} (gate {@code HI} part b): a particle spawned once at the projectile's position
+	 * every tick. Absent -&gt; {@code null} (no trail). An unrecognised particle name is a
+	 * {@link Severity#WARNING} — the trail is simply skipped at runtime rather than failing the load.
+	 */
+	@Nullable
+	private static Particle parseTrail(NodeReader projectile, ConfigReport report, String fileName) {
+		String raw = projectile.get("Trail").asString().orNull();
+		if (raw == null) return null;
+
+		Particle trail = XParticle.of(raw).map(XParticle::get).orElse(null);
+		if (trail == null) {
+			ConfigNode node = projectile.get("Trail").node();
+			report.add(Severity.WARNING, node != null ? node.location() : projectile.mapping().location(),
+			          childPath(projectile, "Trail"),
+			          "'" + raw + "' is not a recognised particle in weapon '" + fileName + "' — no trail will be drawn",
+			          "projectile.unknown_trail");
+		}
+		return trail;
+	}
+
+	private static String childPath(NodeReader parent, String key) {
+		String parentPath = parent.mapping().path();
+		return parentPath == null || parentPath.isEmpty() ? key : parentPath + "." + key;
 	}
 
 }

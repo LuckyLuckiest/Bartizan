@@ -297,6 +297,25 @@ Since gate `HA`, `fireInstant` returns `boolean` — `hitEntity`, whether a livi
 event was not cancelled and, on the default damage path, the damage was not blocked). The raytracer itself no
 longer fires `ON_MISS`; the firing action decides whether and when to run it off this return value.
 
+### `raytrace.WeaponVisualSpawner` — `spawnVisual` (gate `HI` part b)
+
+`spawnVisual(VisualData, Location, Vector direction)` spawns the cosmetic entity a stepped slow projectile
+(`SteppedProjectileTask` in `bartizan-plugin`) drives for `Shoot.Projectile.Visual` — `FIREBALL`/`FIREWORK` (the
+historical ROCKET/FLARE visuals) plus four new entity kinds: `DROPPED_ITEM`, `FALLING_BLOCK`, `ARMOR_STAND` and
+`PRIMED_TNT`. Unlike the older `spawnCosmetic(Class<T extends Projectile>, LivingEntity, Location, Vector)` (kept
+as-is for callers that still want vanilla-physics-driven Projectile visuals), the caller repositions the returned
+entity itself every tick — "server path is the truth" — so `spawnVisual` only sets up a plausible first frame
+(silent, no gravity, no vanilla interaction) and takes no `shooter` parameter. Every entity either method returns
+is registered cosmetic the same way, so `ProjectileDamageListener` ignores it regardless of which method spawned
+it.
+
+`VisualData(VisualType type, @Nullable Material item, int customModelData, @Nullable Material block)` and
+`BouncyData(double defaultMultiplier, Map<Material, Double> perMaterial)` (`weapon.dto`) are the two new records
+backing this — `ProjectileData#getVisual()`/`#getBouncy()`. Both are parsed by `bartizan-plugin`'s
+`GunWeaponParser`, which always fills in a non-`null` `VisualData` (type-based default when `Visual:` is absent or
+malformed) for any `ProjectileData` it builds; a `null` `visual`/`bouncy` therefore only occurs on a bare
+`ProjectileData` built directly by a test fixture or other code outside that parser.
+
 ## Item vocabulary (`weapon:` / `ammo:` / `wearable:` strings)
 
 Bartizan registers a Keystone `org.luckyraven.keystone.item.spi.ItemVocabulary` (`namespace() == "bartizan"`) so

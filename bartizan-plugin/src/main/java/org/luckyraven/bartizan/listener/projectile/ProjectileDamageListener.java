@@ -1,6 +1,5 @@
 package org.luckyraven.bartizan.listener.projectile;
 
-import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -30,11 +29,11 @@ public class ProjectileDamageListener implements Listener {
 
 	@EventHandler(priority = EventPriority.LOWEST)
 	public void onProjectileEntityDamage(EntityDamageByEntityEvent event) {
-		if (!(event.getDamager() instanceof Projectile projectile)) return;
-
-		// Cosmetic visuals do not drive damage — cancel the event so no downstream listener
-		// (including cops-n-crooks NPC AI) reacts to a purely visual projectile hitting an entity.
-		if (visualSpawner.isCosmetic(projectile.getEntityId())) {
+		// Cosmetic visuals do not drive damage — cancel the event so no downstream listener (including
+		// cops-n-crooks NPC AI) reacts to a purely visual entity hitting something. Checked directly against the
+		// damager's entity id (not narrowed to `instanceof Projectile`) since gate HI part b's Projectile.Visual
+		// can drive a FallingBlock/Item/ArmorStand/TNTPrimed visual too, none of which are a Projectile.
+		if (visualSpawner.isCosmetic(event.getDamager().getEntityId())) {
 			event.setCancelled(true);
 		}
 	}

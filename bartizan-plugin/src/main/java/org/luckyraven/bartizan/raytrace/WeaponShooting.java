@@ -5,16 +5,15 @@ import org.luckyraven.bartizan.api.raytrace.RaytraceContext;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 
 import org.bukkit.Location;
-import org.bukkit.entity.Fireball;
-import org.bukkit.entity.Firework;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Projectile;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.api.weapon.dto.SpreadData;
+import org.luckyraven.bartizan.api.weapon.dto.VisualData;
 import org.luckyraven.bartizan.api.weapon.ProjectileState;
 import org.luckyraven.bartizan.api.weapon.ProjectileType;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
@@ -131,9 +130,8 @@ public final class WeaponShooting {
 		Vector   spreadDir      = weapon.getSpread().applySpread(aimDir, spreadMultiplier(shooter, weapon)).normalize();
 		Vector   launchVelocity = spreadDir.clone().multiply(projectileData.getSpeed());
 
-		Class<? extends Projectile> visualClass = type == ProjectileType.ROCKET ? Fireball.class : Firework.class;
-		Projectile visual = raytracer.getVisualSpawner()
-		                             .spawnCosmetic(visualClass, shooter, muzzle, launchVelocity);
+		VisualData visualData = projectileData.getVisual() != null ? projectileData.getVisual() : defaultVisual(type);
+		Entity     visual     = raytracer.getVisualSpawner().spawnVisual(visualData, muzzle, launchVelocity, shooter);
 		if (visual == null) {
 			return;
 		}
@@ -150,8 +148,11 @@ public final class WeaponShooting {
 		ProjectileState state = new ProjectileState(weapon);
 		RaytraceContext ctx   = new RaytraceContext(request, state);
 
-		double speedPerTick = Math.max(0.1, projectileData.getSpeed());
-		int    maxTicks     = (int) Math.ceil(projectileData.getDistance() / speedPerTick) * 2 + 20;
+		// Projectile.Alive_Ticks (gate HI part b) overrides this historical computed lifetime when configured
+		// (> 0); <= 0 means "unset".
+		double speedPerTick    = Math.max(0.1, projectileData.getSpeed());
+		int    computedMaxTicks = (int) Math.ceil(projectileData.getDistance() / speedPerTick) * 2 + 20;
+		int    aliveTicks       = projectileData.getAliveTicks() > 0 ? projectileData.getAliveTicks() : computedMaxTicks;
 
 		// Radius and damage are two distinct config values: Explosion_Radius sizes the blast, Explosion_Damage is
 		// the damage dealt at its centre. Reading the radius off the damage produced 50-block rocket blasts.
@@ -163,31 +164,47 @@ public final class WeaponShooting {
 		double        explosionRadius = explode ? ed.getRadius() : 0;
 		double        explosionDamage = explode ? ed.getDamage() : 0;
 
-		new SteppedProjectileTask(plugin, raytracer, raytracer.getVisualSpawner(), visual, ctx, explode,
-		                          explosionRadius, explosionDamage, maxTicks, effectRunner).start();
+		new SteppedProjectileTask(plugin, raytracer, raytracer.getVisualSpawner(), visual, muzzle.clone(),
+		                          launchVelocity, ctx, explode, explosionRadius, explosionDamage, aliveTicks,
+		                          effectRunner, projectileData).start();
+	}
+
+	/**
+	 * Falls back to the historical hardcoded visual (ROCKET -> fireball, FLARE -> firework) for a
+	 * {@code ProjectileData} built without a {@code Visual:} — {@code GunWeaponParser} always fills one in, so
+	 * this only guards bare test fixtures/older code paths.
+	 */
+	private static VisualData defaultVisual(ProjectileType type) {
+		VisualData.VisualType visualType = type == ProjectileType.FLARE
+		                                    ? VisualData.VisualType.FIREWORK
+		                                    : VisualData.VisualType.FIREBALL;
+		return new VisualData(visualType, null, 0, null);
 	}
 
 	/**
 	 * Gate {@code HI-a}: launches a single stepped projectile from an explicit {@code origin}/{@code direction}
 	 * rather than the shooter's eye — {@code ExplosionHandler} uses this to spawn cluster/airstrike sub-munitions.
-	 * Mirrors {@link #fireSlow} without editing it (that method, and {@code SteppedProjectileTask}'s constructor
-	 * this still calls, belong to gate {@code HI-b}). Always spawns a {@code Fireball} visual and deals no direct
-	 * hit damage of its own ({@code baseDamage: 0}) — a sub-munition's only payload is the explosion it carries.
+	 * Mirrors {@link #fireSlow}. A sub-munition inherits the parent gun's {@code Projectile} block (visual,
+	 * gravity, drag, bounce, trail) so it flies like the parent; a throwable parent has no such block, so it gets
+	 * a bare fireball. Deals no direct hit damage of its own ({@code baseDamage: 0}) — a sub-munition's only
+	 * payload is the explosion it carries — and never plays its own fly-by sound (the parent explosion already did).
 	 */
 	public static void launch(JavaPlugin plugin, WeaponRaytracer raytracer, LivingEntity shooter, Weapon weapon,
 	                          Location origin, Vector direction, EffectRunner effectRunner, int depth) {
 		Vector unitDir = direction.clone().normalize();
 
-		Projectile visual = raytracer.getVisualSpawner()
-		                             .spawnCosmetic(Fireball.class, shooter, origin, direction.clone());
+		ProjectileData projectileData = weapon instanceof GunWeapon gun
+		                                ? gun.getProjectileData()
+		                                : ProjectileData.builder().type(ProjectileType.ROCKET).speed(direction.length()).build();
+		VisualData visualData = projectileData.getVisual() != null
+		                        ? projectileData.getVisual()
+		                        : defaultVisual(ProjectileType.ROCKET);
+		Entity visual = raytracer.getVisualSpawner().spawnVisual(visualData, origin, direction.clone(), shooter);
 		if (visual == null) {
 			return;
 		}
 
-		// Gate HI-a review fix: a cluster/airstrike sub-munition inherits the parent weapon's Projectile.Gravity
-		// (guns only — throwables have no such config) so the stepped task can arc it back down instead of
-		// flying dead straight, and never plays its own fly-by sound (the parent explosion already did).
-		double gravity = weapon instanceof GunWeapon gun ? gun.getProjectileData().getGravity() : 0.0;
+		double gravity = projectileData.getGravity();
 
 		RaytraceRequest request = RaytraceRequest.builder()
 		                                         .shooter(shooter)
@@ -209,8 +226,9 @@ public final class WeaponShooting {
 		double  explosionRadius = explode ? explosionData.getRadius() : 0;
 		double  explosionDamage = explode ? explosionData.getDamage() : 0;
 
-		new SteppedProjectileTask(plugin, raytracer, raytracer.getVisualSpawner(), visual, ctx, explode,
-		                          explosionRadius, explosionDamage, 200, effectRunner).start();
+		new SteppedProjectileTask(plugin, raytracer, raytracer.getVisualSpawner(), visual, origin.clone(),
+		                          direction.clone(), ctx, explode, explosionRadius, explosionDamage, 200, effectRunner,
+		                          projectileData).start();
 	}
 
 }

@@ -58,12 +58,12 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .weapon                 Weapon + 6 subclasses (incl. BeamWeapon), WeaponType, ThrowableType,
                                                                 SelectiveFire, WeaponTag, ProjectileType, ProjectileState, WeaponCatalog,
                                                                 BodyZone (gate HK)
-                                       .weapon.dto              24 config records (AmmunitionData, ChargeData, BeamData,
+                                       .weapon.dto              26 config records (AmmunitionData, ChargeData, BeamData,
                                                                 StatusData, DamageData, DropoffStep, ExplosionData (gate
                                                                 HI-a, incl. nested Cluster/Airstrike/Detonation),
-                                                                EffectHook (26 hooks, incl. On_Block_Hit and the zone
-                                                                hooks), EffectSpec, EffectsData, HudData, HandlingData,
-                                                                MuzzleOffsetData, ...)
+                                                                VisualData, BouncyData (gate HI-b), EffectHook (26 hooks,
+                                                                incl. On_Block_Hit and the zone hooks), EffectSpec,
+                                                                EffectsData, HudData, HandlingData, MuzzleOffsetData, ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager, DamageMath, ExplosionMath + action/*
                                        .weapon.recoil            RecoilManager
@@ -87,7 +87,8 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                                                 death/fire/player/projectile/reload/selective/wearable
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
-                                                                ExplosionHandler (gate HI-a, unified AOE explosions), BeamRenderer, HitZone
+                                                                ExplosionHandler (gate HI-a, unified AOE explosions), ProjectileMotion,
+                                                                BeamRenderer, HitZone
                                        .stats                  StatsService, StatsListener, PlayerStats, WeaponStat
                                        .status                 StatusEffectService, ActiveStatus, StatusListener
                                        .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser

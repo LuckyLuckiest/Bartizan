@@ -32,9 +32,19 @@ public class RaytraceContext {
 	/**
 	 * Set by {@code WeaponRaytracerImpl.handleEntityImpact} the moment a ray actually strikes an entity. Read by
 	 * {@code WeaponRaytracerImpl.fireInstant} after the ray finishes to decide whether {@code EffectHook.ON_MISS}
-	 * should fire (weapons-roadmap.md gate {@code HA}, §1).
+	 * should fire (weapons-roadmap.md gate {@code HA}, §1). Sticky for the whole flight and set on every hit —
+	 * penetrating or not — so it is unsuitable for deciding when a stepped projectile's flight should end; see
+	 * {@link #terminalHit} for that.
 	 */
 	private boolean  hitEntity;
+	/**
+	 * Set by {@code WeaponRaytracerImpl.advanceRay} only when an entity hit does NOT penetrate (the ray's remaining
+	 * distance is zeroed for good). Unlike {@link #hitEntity} — which a penetrating hit also sets — this is the
+	 * correct flag for {@code SteppedProjectileTask} to terminate a rocket/flare's flight on, so
+	 * {@code Modifiers.Penetration}'s {@code Pierce_Entities} keeps the projectile flying through a penetrating hit
+	 * (HI-b review #4).
+	 */
+	private boolean  terminalHit;
 
 	public RaytraceContext(RaytraceRequest request, ProjectileState state) {
 		this.request        = request;

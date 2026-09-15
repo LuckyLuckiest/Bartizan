@@ -1,0 +1,103 @@
+# +--------------+ #
+# |  Flare Gun   | #
+# +--------------+ #
+
+Information:
+   Name: "&6Flare Gun&r"
+   Category: gun
+   Material: WOODEN_HOE
+   Durability:
+      Base: 100
+      Change:
+         On_Shot: 0
+   Lore:
+      - "&7Fires a bright, slow-arcing flare.&r"
+      - "&7Lights up the sky. And whatever it's aimed at.&r"
+   Drop_Hologram: true
+
+Shoot:
+   Selective_Fire: single
+   Allowed_Modes:
+      - single
+
+   Projectile:
+      Speed: 2
+      Type: FLARE
+      # A FLARE's slow-flight visual and physics (gate HI part b) — arcs down under a light gravity and burns a
+      # trail of flame behind it, but never explodes (Type: FLARE never reads Damage.Explosion_*).
+      Visual:
+         Type: firework
+      Gravity: 0.03
+      Trail: FLAME
+      Damage:
+         Base: 2
+      Consumed_Amount: 1
+      Per_Shot: 1
+      Cooldown: 3
+      Distance: 40
+      Particle: true
+
+   Weapon_Consumed:
+      Consume_On_Shot: 0
+      Time: -1
+
+   Spread:
+      Starting_Spread: 0.0
+      Time: 1
+      Change:
+         Base: 0.0
+         Bounds:
+            Reset_On_Bound: true
+            Min: 0.0
+            Max: 0.0
+
+   Recoil:
+      Amount: 0.1
+      Push: 0.05
+      Power_Up: 0.0001
+      Pattern:
+         - 1;0
+         - 0;0
+
+   Sound:
+      Default_Sound:
+         Sound: ENTITY_FIREWORK_ROCKET_LAUNCH
+         Volume: 1.0
+         Pitch: 1.4
+      Empty_Default_Sound:
+         Sound: BLOCK_NOTE_BLOCK_HAT
+         Volume: 1.0
+         Pitch: 0.6
+      Impact_Default_Sound:
+         Sound: ENTITY_FIREWORK_ROCKET_TWINKLE
+         Volume: 1.0
+         Pitch: 1.0
+
+Ammunition:
+   Capacity: 4
+   Ammo_Type: flare
+   Consume: 1
+   Restore: 1
+
+Reload:
+   Cooldown: 2
+
+   Sound:
+      Default_Sound_Before:
+         Sound: BLOCK_IRON_TRAPDOOR_OPEN
+         Volume: 1.0
+         Pitch: 1.0
+      Default_Sound_After:
+         Sound: BLOCK_IRON_TRAPDOOR_CLOSE
+         Volume: 1.0
+         Pitch: 1.0
+
+   Action_Bar:
+      Reloading: "&6Loading flare...&r"
+      Opening: "&6Opening...&r"
+
+   Type: instant
+
+Death_Messages:
+   - "&6%victim% was blinded by %killer%'s flare."
+   - "&6%killer% lit up %victim% with a flare gun."

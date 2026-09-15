@@ -1,17 +1,24 @@
 package org.luckyraven.bartizan.configuration.parser;
 
 import org.bukkit.Material;
+import org.bukkit.Particle;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
+import org.luckyraven.bartizan.api.testsupport.BukkitRegistryFixture;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.WeaponType;
+import org.luckyraven.bartizan.api.weapon.dto.BouncyData;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
+import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
+import org.luckyraven.bartizan.api.weapon.dto.VisualData;
 import org.luckyraven.keystone.persistence.config.ConfigDocument;
 import org.luckyraven.keystone.persistence.config.ConfigParser;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.keystone.persistence.config.Severity;
 
 import java.io.StringReader;
 import java.nio.file.Path;
@@ -25,7 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Covers the new {@code Shoot.Projectile.Damage} keys gate {@code HF} adds — {@code Dropoff}, the hit-zone deltas
  * ({@code Body}/{@code Arms}/{@code Legs}/{@code Feet}/{@code Back}), {@code Armor_Damage}, {@code Owner_Immunity},
- * {@code Ignore_Teams} and {@code Knockback} — including their defaults when unset.
+ * {@code Ignore_Teams} and {@code Knockback} — including their defaults when unset. Also covers the
+ * {@code Shoot.Projectile} keys gate {@code HI} part b adds — {@code Visual}, {@code Bouncy}, {@code Drag},
+ * {@code Extinguish_In_Water}, {@code Alive_Ticks} and {@code Trail}.
  */
 @DisplayName("GunWeaponParser — Damage: keys (gate HF)")
 class GunWeaponParserTest {
@@ -34,6 +43,11 @@ class GunWeaponParserTest {
 
 	private GunWeaponParser parser;
 	private ConfigReport    report;
+
+	@BeforeAll
+	static void bootstrapBukkitRegistry() {
+		BukkitRegistryFixture.install();
+	}
 
 	@BeforeEach
 	void setUp() {
@@ -118,6 +132,166 @@ class GunWeaponParserTest {
 				""");
 
 		assertEquals(1, gun.getDamageData().getDropoff().size());
+	}
+
+	@Test
+	@DisplayName("Visual absent -> ROCKET defaults to fireball, FLARE defaults to firework")
+	void visualAbsent_defaultsByType() throws Exception {
+		GunWeapon rocket = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Type: ROCKET
+				      Damage:
+				         Base: 10
+				""");
+		assertEquals(VisualData.VisualType.FIREBALL, rocket.getProjectileData().getVisual().type());
+
+		report = new ConfigReport();
+		GunWeapon flare = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Type: FLARE
+				      Damage:
+				         Base: 10
+				""");
+		assertEquals(VisualData.VisualType.FIREWORK, flare.getProjectileData().getVisual().type());
+	}
+
+	@Test
+	@DisplayName("full Visual: block parses Type/Item/Custom_Model_Data/Block")
+	void visualFullBlock_parsesEveryKey() throws Exception {
+		GunWeapon gun = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Type: ROCKET
+				      Damage:
+				         Base: 10
+				      Visual:
+				         Type: falling_block
+				         Item: FEATHER
+				         Custom_Model_Data: 7
+				         Block: STONE
+				""");
+
+		VisualData visual = gun.getProjectileData().getVisual();
+		assertEquals(VisualData.VisualType.FALLING_BLOCK, visual.type());
+		assertEquals(Material.FEATHER, visual.item());
+		assertEquals(7, visual.customModelData());
+		assertEquals(Material.STONE, visual.block());
+	}
+
+	@Test
+	@DisplayName("unknown Visual.Type is a WARNING and falls back to the type-based default")
+	void visualUnknownType_warnsAndFallsBack() throws Exception {
+		GunWeapon gun = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Type: ROCKET
+				      Damage:
+				         Base: 10
+				      Visual:
+				         Type: not_a_real_type
+				""");
+
+		assertEquals(VisualData.VisualType.FIREBALL, gun.getProjectileData().getVisual().type());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("projectile.unknown_visual_type")));
+	}
+
+	@Test
+	@DisplayName("Bouncy: Default plus a per-material override resolved through BlockGroupResolver")
+	void bouncy_defaultAndPerMaterial() throws Exception {
+		GunWeapon gun = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Damage:
+				         Base: 10
+				      Bouncy:
+				         Default: 0.2
+				         GLASS: 0.6
+				""");
+
+		BouncyData bouncy = gun.getProjectileData().getBouncy();
+		assertEquals(0.2, bouncy.defaultMultiplier(), 1e-9);
+		assertEquals(0.6, bouncy.multiplierFor(Material.GLASS), 1e-9);
+		assertEquals(0.2, bouncy.multiplierFor(Material.STONE), 1e-9, "unlisted material falls back to Default");
+	}
+
+	@Test
+	@DisplayName("Bouncy absent -> null (every block hit still terminates the projectile)")
+	void bouncyAbsent_isNull() throws Exception {
+		GunWeapon gun = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Damage:
+				         Base: 10
+				""");
+
+		assertNull(gun.getProjectileData().getBouncy());
+	}
+
+	@Test
+	@DisplayName("Drag/Extinguish_In_Water/Alive_Ticks/Trail default to 0/false/0/null")
+	void newScalarKeys_absent_allDefault() throws Exception {
+		GunWeapon gun = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Damage:
+				         Base: 10
+				""");
+
+		ProjectileData pd = gun.getProjectileData();
+		assertEquals(0.0, pd.getDrag(), 1e-9);
+		assertFalse(pd.isExtinguishInWater());
+		assertEquals(0, pd.getAliveTicks());
+		assertNull(pd.getTrail());
+	}
+
+	@Test
+	@DisplayName("Drag/Extinguish_In_Water/Alive_Ticks/Trail all parse when set")
+	void newScalarKeys_allSet() throws Exception {
+		GunWeapon gun = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Damage:
+				         Base: 10
+				      Drag: 0.1
+				      Extinguish_In_Water: true
+				      Alive_Ticks: 150
+				      Trail: FLAME
+				""");
+
+		ProjectileData pd = gun.getProjectileData();
+		assertEquals(0.1, pd.getDrag(), 1e-9);
+		assertTrue(pd.isExtinguishInWater());
+		assertEquals(150, pd.getAliveTicks());
+		assertEquals(Particle.FLAME, pd.getTrail());
+	}
+
+	@Test
+	@DisplayName("unrecognised Trail particle is a WARNING and leaves the trail null")
+	void trailUnknownParticle_warnsAndStaysNull() throws Exception {
+		GunWeapon gun = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Damage:
+				         Base: 10
+				      Trail: not_a_real_particle
+				""");
+
+		assertNull(gun.getProjectileData().getTrail());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING && issue.code().equals("projectile.unknown_trail")));
 	}
 
 	private GunWeapon parse(String yaml) throws Exception {

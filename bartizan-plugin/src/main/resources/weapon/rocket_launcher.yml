@@ -53,7 +53,30 @@ Shoot:
       Per_Shot: 1
       Cooldown: 10
       Distance: 80
+      # [Visual] the cosmetic entity the stepped-flight task drives every tick. Type: fireball is also the
+      # default for ROCKET when Visual: is left out entirely — spelled out here for clarity.
+      Visual:
+         Type: fireball
+      # [Drag] fractional per-tick speed loss applied after Gravity — 0.0 (default) means the rocket never
+      # slows down in flight.
+      Drag: 0.0
+      # [Particle] draws the weapon's Modifiers.Tracer (or a default gray dust line when none is configured)
+      # along each tick's travelled segment, so the rocket leaves a visible trail behind it.
       Particle: true
+      # [Bouncy] uncomment to let the rocket survive a block hit instead of exploding on first contact.
+      # Default is the multiplier used for any block not listed below (0.0 = no bounce); every other key is a
+      # material or block-group name (see BlockGroupResolver) with its own multiplier.
+      # Bouncy:
+      #    Default: 0.0
+      #    GLASS: 0.4
+      # [Extinguish_In_Water] uncomment so the rocket fizzles out (no explosion) the instant it touches water,
+      # instead of continuing to fly through it.
+      # Extinguish_In_Water: true
+      # [Alive_Ticks] uncomment to override the flight's lifetime — otherwise it's computed from Speed/Distance.
+      # Alive_Ticks: 200
+      # [Trail] uncomment to spawn an extra particle at the rocket's position every tick, on top of the
+      # Particle: tracer line above.
+      # Trail: SMOKE_LARGE
 
    Weapon_Consumed:
       Consume_On_Shot: 0

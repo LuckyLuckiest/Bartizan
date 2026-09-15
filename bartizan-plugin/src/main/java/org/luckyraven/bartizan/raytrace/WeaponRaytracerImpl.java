@@ -39,6 +39,7 @@ import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.raytrace.WeaponVisualSpawner;
 import org.luckyraven.bartizan.wearable.WearableService;
+import org.luckyraven.keystone.bean.BeanLifecycle;
 
 import java.util.List;
 import java.util.Random;
@@ -67,7 +68,7 @@ import java.util.Random;
  * {@code isRaytraceDamageInProgress()}/{@code setRaytraceDamageInProgress(boolean)} ThreadLocal flag lives on the
  * interface itself now (static members), not on this class.
  */
-public class WeaponRaytracerImpl implements WeaponRaytracer {
+public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 
 	/**
 	 * Length of each straight-line segment used to approximate the parabolic drop arc beyond the effective range.
@@ -97,7 +98,9 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		this.random             = new Random();
 	}
 
-	private static Vector blockFaceNormal(BlockFace face) {
+	// Package-visible (not private) so SteppedProjectileTask's own block raytrace — used for Projectile.Bouncy
+	// physics rather than the shared damage pipeline below — can reuse the same face-to-normal mapping.
+	static Vector blockFaceNormal(BlockFace face) {
 		return switch (face) {
 			case DOWN -> new Vector(0, -1, 0);
 			case NORTH -> new Vector(0, 0, -1);
@@ -112,9 +115,10 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 	// Public entry points
 	// ------------------------------------------------------------------
 
+	// Delegates to ProjectileMotion (gate HI part b) so bullet ricochet and Projectile.Bouncy share one reflection
+	// formula instead of two copies drifting apart.
 	private static Vector reflect(Vector velocity, Vector normal) {
-		double dot = velocity.dot(normal);
-		return velocity.clone().subtract(normal.clone().multiply(2 * dot));
+		return ProjectileMotion.reflect(velocity, normal);
 	}
 
 	/**
@@ -170,6 +174,17 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		return visualSpawner;
 	}
 
+	/**
+	 * Removes every still-flying cosmetic visual on plugin disable / server stop (HI-b review #5) — otherwise a
+	 * visual type that never self-expires on its own (an {@code ARMOR_STAND} or a {@code PRIMED_TNT} with its fuse
+	 * held at {@code Integer.MAX_VALUE}) is orphaned in the world once its driving {@code SteppedProjectileTask}
+	 * stops ticking.
+	 */
+	@Override
+	public void onShutdown() {
+		visualSpawner.removeAll();
+	}
+
 	// ------------------------------------------------------------------
 	// Impact handling
 	// ------------------------------------------------------------------
@@ -194,8 +209,11 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		}
 
 		// If the ray exhausted its effective range without a terminal hit and gravity is configured,
-		// continue the bullet beyond the effective range with a parabolic drop until it lands.
-		if (request.getGravity() > 0 && ctx.getRemaining() <= 0) {
+		// continue the bullet beyond the effective range with a parabolic drop until it lands. !isHitEntity()
+		// guards against the entity-hit branch below now also zeroing remaining (gate HI part b) — without it, a
+		// gravity gun that lands a direct hit within its effective range would incorrectly keep extending the
+		// arc past the entity it just hit.
+		if (request.getGravity() > 0 && ctx.getRemaining() <= 0 && !ctx.isHitEntity()) {
 			extendWithGravity(ctx);
 		}
 
@@ -220,6 +238,12 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		ctx.setCurrentOrigin(from.clone());
 		ctx.setCurrentDir(segment.clone().normalize());
 		ctx.setRemaining(segment.length() + 0.01);
+		// Reset here (not just at the extendWithGravity call site) so a stepped slow projectile — which reuses one
+		// ctx across its whole flight, one advanceSegment call per tick — gets a full iteration budget every tick
+		// instead of hitting getMaxIterations() from tick 9 onward and going blind (HI-b review #1).
+		// ponytail: not pinned with a mocked-World test — that needs a full World/RayTraceResult mock harness this
+		// suite doesn't have yet; RaytraceContextTest pins the sibling terminalHit flag (review #4) instead.
+		ctx.setIterations(0);
 
 		while (advanceRay(ctx, ctx.getRemaining())) {
 			// loop until advanceRay reports stop
@@ -265,14 +289,15 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 					dir.getZ() * nextTraveled
 			);
 
-			// Reset iteration counter so each segment gets a full budget — without this,
-			// iterations accumulate across segments and hit the cap prematurely.
-			ctx.setIterations(0);
+			// advanceSegment resets the iteration budget itself now (HI-b review #1).
 			advanceSegment(ctx, current, next);
 
-			// advanceSegment sets remaining = segment.length + 0.01, then advanceRay
-			// zeros it on miss but leaves it positive on a terminal hit.
-			if (ctx.getRemaining() > 0.02) {
+			// advanceSegment sets remaining = segment.length + 0.01, then advanceRay zeros it on miss but leaves it
+			// positive on a terminal (non-penetrating) hit. isHitEntity() must also stop the arc — without it, a
+			// non-penetrating entity hit (which also zeroes remaining, see advanceRay) reads as a miss here and the
+			// arc keeps extending straight through the entity, re-running handleEntityImpact on later segments
+			// (HI-b review #2).
+			if (ctx.getRemaining() > 0.02 || ctx.isHitEntity()) {
 				break;
 			}
 
@@ -356,6 +381,15 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 				ctx.setRemaining(ctx.getRemaining() - advanceDist);
 				return true;
 			}
+
+			// gate HI part b: a non-penetrating entity hit now zeroes remaining too (previously only a clean miss
+			// did), so SteppedProjectileTask can detect "this tick hit something" without polling the vanilla
+			// visual entity's isDead()/isValid() state. Guarded above for fireInstant's gravity-extension check.
+			ctx.setRemaining(0);
+			// Distinct from hitEntity (set unconditionally by handleEntityImpact above, penetrating or not) so a
+			// Pierce_Entities hit — which continues in the branch above instead of reaching here — doesn't make
+			// SteppedProjectileTask terminate the flight early (HI-b review #4).
+			ctx.setTerminalHit(true);
 			return false;
 		}
 
