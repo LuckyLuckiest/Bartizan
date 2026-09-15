@@ -1,10 +1,14 @@
 package org.luckyraven.bartizan.weapon.action;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.luckyraven.keystone.util.ActionBarManager;
+import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
+import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
+import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.bartizan.api.weapon.dto.BiologicalData;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.effect.EffectContext;
@@ -48,6 +52,14 @@ public class BiologicalAction {
 	 */
 	public void fire(Player player, int level) {
 		if (level <= 0) return;
+
+		// HK: WeaponShootEvent fired once per trigger pull, before ammo is consumed below - cancelling costs
+		// the caller nothing, matching the "fire before consumption" contract used across the other custom-path
+		// actions.
+		WeaponShootEvent shootEvent = new WeaponShootEvent(weapon, player);
+		Bukkit.getPluginManager().callEvent(shootEvent);
+		if (shootEvent.isCancelled()) return;
+
 		if (!weapon.consumeShot()) return;
 		weaponService.persistHeldWeapon(weapon, player);
 
@@ -150,6 +162,18 @@ public class BiologicalAction {
 															 for (PotionEffect effect : effects) {
 																 target.addPotionEffect(effect);
 															 }
+
+															 // HK: canonical WeaponEntityDamageEvent (BIOLOGICAL) once the status has
+															 // actually landed - no per-zone data (a single-ray charge shot has no head
+															 // bonus of its own), player shooters only (this action's own signature).
+															 // damage = 0: no target.damage() call happens on this path - the status ticks
+															 // its own damage later via StatusEffectService, so reporting `damage` (the raw
+															 // base-damage number) here would misreport an immediate hit that never landed.
+															 Bukkit.getPluginManager().callEvent(
+																	 new WeaponEntityDamageEvent(weapon, target, 0, player,
+																	                             weapon.getName(), DamageKind.BIOLOGICAL, null,
+																	                             player.getEyeLocation()
+																	                                   .distance(event.getImpactPoint())));
 														 }
 													 }
 												 })

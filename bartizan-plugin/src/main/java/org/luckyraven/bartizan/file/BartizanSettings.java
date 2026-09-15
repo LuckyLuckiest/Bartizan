@@ -47,6 +47,15 @@ public class BartizanSettings implements FileInitializer {
 	private static @Getter double damageModifierShielding;
 
 	/**
+	 * {@code Stats:} — per-player weapon statistics (weapons-roadmap.md gate {@code HK}). All default to the
+	 * values below (matching the shipped {@code settings.yml}) with a logged warning when the whole section is
+	 * absent.
+	 */
+	private static @Getter boolean statsEnabled = true;
+	private static @Getter int     statsAssistWindowTicks = 100;
+	private static @Getter int     statsAutosaveMinutes = 5;
+
+	/**
 	 * Fallback effect lists used when a weapon declares no {@code Effects:} list for a given hook (weapons-roadmap.md
 	 * gate {@code HA}, §1 "Global defaults"). Never {@code null} — empty when {@code Default_Effects:} is absent.
 	 */
@@ -142,6 +151,19 @@ public class BartizanSettings implements FileInitializer {
 			damageModifierSprinting     = 0;
 			damageModifierInMidair      = 0;
 			damageModifierShielding     = 0;
+		}
+
+		if (root != null && root.has("Stats")) {
+			NodeReader stats = section(root, "Stats", report);
+			statsEnabled           = bool(stats, "Enabled", true);
+			statsAssistWindowTicks = intVal(stats, "Assist_Window_Ticks", 100);
+			statsAutosaveMinutes   = intVal(stats, "Autosave_Minutes", 5);
+		} else {
+			log.warn("settings.yml has no Stats section; using the built-in defaults (Enabled: true, "
+			         + "Assist_Window_Ticks: 100, Autosave_Minutes: 5) — add the section to customise them");
+			statsEnabled           = true;
+			statsAssistWindowTicks = 100;
+			statsAutosaveMinutes   = 5;
 		}
 
 		if (!report.isEmpty()) report.log(log);

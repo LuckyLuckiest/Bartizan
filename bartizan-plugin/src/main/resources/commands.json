@@ -58,5 +58,17 @@
 	"bartizan_reload": {
 		"usage": "/bartizan reload",
 		"description": "Reloads Bartizan's files and beans."
+	},
+	"stats_self": {
+		"usage": "/bartizan stats",
+		"description": "Shows your own weapon statistics."
+	},
+	"stats_player": {
+		"usage": "/bartizan stats <player>",
+		"description": "Shows a player's weapon statistics (works offline too). Usable from console."
+	},
+	"stats_weapon": {
+		"usage": "/bartizan stats <player> <weapon>",
+		"description": "Shows a player's per-zone hit breakdown for one weapon."
 	}
 }

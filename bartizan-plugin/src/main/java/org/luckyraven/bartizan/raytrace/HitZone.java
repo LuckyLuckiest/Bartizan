@@ -4,6 +4,7 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.Nullable;
+import org.luckyraven.bartizan.api.weapon.BodyZone;
 
 /**
  * Resolves which body zone a raytrace impact landed in, plus whether the shot came from behind the victim
@@ -21,12 +22,12 @@ import org.jetbrains.annotations.Nullable;
  * shot travelling the same way the victim is looking entered through their back. {@code LivingEntity#getLocation()}
  * only carries head yaw, which approximates body yaw; a victim looking sharply sideways from their body can throw
  * this off.
+ *
+ * <p>{@code zone} is {@link BodyZone} (moved to {@code bartizan-api} at gate {@code HK}) rather than a
+ * plugin-local enum, so {@code WeaponEntityDamageEvent}/{@code stats.StatsService} can read it without depending
+ * on this plugin-only record.
  */
-public record HitZone(Zone zone, boolean back) {
-
-	public enum Zone {
-		HEAD, BODY, ARMS, LEGS, FEET
-	}
+public record HitZone(BodyZone zone, boolean back) {
 
 	public static HitZone of(Vector impactPt, LivingEntity victim, Vector shotDir) {
 		BoundingBox box      = victim.getBoundingBox();
@@ -41,13 +42,13 @@ public record HitZone(Zone zone, boolean back) {
 
 		double relHeight = bbHeight > 1e-9 ? (cy - box.getMinY()) / bbHeight : 0.5;
 
-		Zone zone;
+		BodyZone zone;
 		if (relHeight >= 0.75) {
-			zone = Zone.HEAD;
+			zone = BodyZone.HEAD;
 		} else if (relHeight <= 0.12) {
-			zone = Zone.FEET;
+			zone = BodyZone.FEET;
 		} else if (relHeight <= 0.35) {
-			zone = Zone.LEGS;
+			zone = BodyZone.LEGS;
 		} else {
 			double halfWidth = Math.max(box.getWidthX(), box.getWidthZ()) / 2.0;
 
@@ -59,7 +60,7 @@ public record HitZone(Zone zone, boolean back) {
 			double lateralDist    = shotHorizontal != null
 			                        ? Math.abs(cx * shotHorizontal.getZ() - cz * shotHorizontal.getX())
 			                        : Math.hypot(cx, cz);
-			zone = (halfWidth > 1e-9 && lateralDist >= 0.75 * halfWidth) ? Zone.ARMS : Zone.BODY;
+			zone = (halfWidth > 1e-9 && lateralDist >= 0.75 * halfWidth) ? BodyZone.ARMS : BodyZone.BODY;
 		}
 
 		return new HitZone(zone, isBackHit(victim, shotDir));

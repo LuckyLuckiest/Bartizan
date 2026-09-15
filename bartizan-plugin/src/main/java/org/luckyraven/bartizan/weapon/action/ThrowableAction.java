@@ -17,6 +17,7 @@ import org.luckyraven.bartizan.api.weapon.dto.ThrowableData;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
 import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
+import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.bartizan.api.weapon.modifiers.DamageMath;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
@@ -76,6 +77,13 @@ public class ThrowableAction {
 
 	public void activate(Player player) {
 		ThrowableData data = weapon.getThrowableData();
+
+		// HK: WeaponShootEvent fired once per trigger pull, before the held stack is decremented below - cancelling
+		// costs the caller nothing, matching the "fire before consumption" contract used across the other
+		// custom-path actions.
+		WeaponShootEvent shootEvent = new WeaponShootEvent(weapon, player);
+		Bukkit.getPluginManager().callEvent(shootEvent);
+		if (shootEvent.isCancelled()) return;
 
 		if (player.getGameMode() != GameMode.CREATIVE) {
 			decrementHeldStack(player);

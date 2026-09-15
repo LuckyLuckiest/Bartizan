@@ -174,16 +174,19 @@ have no "disable vanilla knockback" concept). `DropoffStep(double distance, doub
 `DamageMath` (new, `weapon.modifiers`) holds the pure math: `dropoff(List<DropoffStep>, double distance)`,
 `percentMultiplier(double percentSum)` (the `settings.yml Damage_Modifiers` formula, floored at `0`), and
 `explosionKnockbackFactor(double knockback, double distance, double radius)` (shared by rocket and grenade
-explosions). The hit-zone classification itself (`HEAD`/`BODY`/`ARMS`/`LEGS`/`FEET` + a `back` flag) and the
-`Owner_Immunity`/`Ignore_Teams` skip rule live in `bartizan-plugin` (`raytrace.HitZone`, `weapon.DamageRules`) —
-neither is referenced by an api type's public signature, so neither moved to `bartizan-api`.
+explosions). The hit-zone classification itself (a `back` flag plus which zone — `HEAD`/`BODY`/`ARMS`/`LEGS`/
+`FEET`) and the `Owner_Immunity`/`Ignore_Teams` skip rule live in `bartizan-plugin` (`raytrace.HitZone`,
+`weapon.DamageRules`), but the zone enum itself moved to `bartizan-api.weapon.BodyZone` at gate `HK` —
+`WeaponEntityDamageEvent#getZone()` needed it in its own public signature, so unlike `HitZone`/`DamageRules`
+(neither referenced by an api type, so neither moved) it could not stay plugin-only. `HitZone`'s own `zone()`
+accessor now returns `BodyZone` rather than a plugin-local enum.
 
 ### Events (`org.luckyraven.bartizan.api.event`)
 
 `WeaponEvent`, `WeaponShootEvent`, `WeaponRaytraceImpactEvent` (cancelling suppresses damage only — penetration and
-ricochet counters still advance), `WeaponEntityDamageEvent`, `WeaponKillEntityEvent`, `WeaponReloadEvent` /
-`WeaponReloadStartEvent` / `WeaponReloadCompleteEvent`, `WeaponChangeSelectiveFireEvent`, `WeaponChargeLevelEvent`,
-`WeaponBeamFireEvent`.
+ricochet counters still advance), `WeaponEntityDamageEvent`, `WeaponKillEntityEvent`, `WeaponAssistEvent` (gate
+`HK`), `WeaponReloadEvent` / `WeaponReloadStartEvent` / `WeaponReloadCompleteEvent`, `WeaponChangeSelectiveFireEvent`,
+`WeaponChargeLevelEvent`, `WeaponBeamFireEvent`.
 `WeaponStatusApplyEvent`, `WeaponStatusExpireEvent`.
 
 `WeaponStatusApplyEvent` (weapon, `@Nullable` shooter, victim, `level`; cancellable) fires before
@@ -196,8 +199,10 @@ consumed), `DEATH`, or `QUIT` (weapons-roadmap.md gate `HB`, §2.2).
 increment for a charge-then-release weapon — `bartizan-plugin`'s `ChargeController` (biological and beam, gate
 `HC`) raises it alongside the `On_Charge_Level`/`On_Charge_Full` effect hooks.
 
-`WeaponBeamFireEvent` (weapon, player, `level`, `origin`, `direction`; cancellable — cancelling suppresses the shot
-but does not refund ammo already consumed) fires just before a beam's ray is cast, gate `HC`. It deviates from
+`WeaponBeamFireEvent` (weapon, player, `level`, `origin`, `direction`; cancellable) fires just before a beam's ray
+is cast, gate `HC`, before ammo is consumed (fixed at gate `HK` review — previously the magazine was decremented
+first with no refund on cancel) — cancelling it, or the `WeaponShootEvent` fired right after, costs the shooter
+nothing. It deviates from
 weapons-roadmap.md §3.2's description of an event that "carries level and the ordered target list": the beam ray
 streams hits one at a time through `RaytraceRequest`'s impact handler rather than pre-computing a target list
 before firing, so there is no target list to carry — only `level`, `origin` and `direction` at fire time.
@@ -209,10 +214,27 @@ own `WeaponReloadListener` skips `ON_RELOAD_END` in that case, since `ON_RELOAD_
 `WeaponEntityDamageEvent.weaponName()` / `.kind()` replace the old `ThrowableAction` static maps
 (`pendingKillerWeapon`, `pendingVehicleExplosionDamage`) — the firing action stamps both at construction time, so a
 listener never looks up a short-lived side table keyed by entity UUID. `kind()` returns a `DamageKind` enum
-(`DIRECT`, `EXPLOSION`, `FIRE`, `BIOLOGICAL`, `MELEE`), but **as of 0.1.0 only `ThrowableAction` fires this event,
-and always with `DamageKind.EXPLOSION`** (both its area-damage site and its direct-hit site) — the other four
-values exist for a future firing action to use, not because anything currently produces them. Do not branch on
-`kind()` expecting the other four values to occur yet.
+(`DIRECT`, `EXPLOSION`, `FIRE`, `BIOLOGICAL`, `MELEE`). As of gate `HK` every value is actually produced:
+`DIRECT` by the default raytracer damage path (guns) and by `BeamAction`'s short-circuited impact handler,
+`EXPLOSION` by `ThrowableAction`, `FIRE` by `IncendiaryAction`, `BIOLOGICAL` by `BiologicalAction`, and `MELEE` by
+`MeleeAction` — each fires it only for a `Player` shooter, after it has applied its own damage. `getZone()`
+(`@Nullable` `BodyZone` — `HEAD`/`BODY`/`ARMS`/`LEGS`/`FEET`, promoted from the plugin-only `raytrace.HitZone`
+record) and `getDistance()` are new at gate `HK`; both are `null`/`0` unless the firing path computed them (guns
+and beams carry a real zone, the other three custom-path actions carry `null` — they have no single impact
+direction to classify a zone against). The pre-`HK` six-argument constructor still exists and delegates with
+`null`/`0`, so an existing caller compiles unchanged.
+
+`WeaponAssistEvent` (`weaponName`, `assister: Player`, `victim: LivingEntity`, `@Nullable killer: Entity`; not
+cancellable, gate `HK`) is fired by `stats.StatsService` when a player who damaged a victim within
+`settings.yml Stats.Assist_Window_Ticks` of that victim's death (recorded off `WeaponEntityDamageEvent`, keyed by
+`victim -> attacker -> last hit`) did not land the kill themselves.
+
+`stats.StatsService`/`WeaponStat`'s accuracy (`hits * 100.0 / shots`, `StatsCommand`): `shots` counts one
+`WeaponShootEvent` per trigger pull, but a `SPREAD` (shotgun) shot can register several `hits` — one per pellet
+that lands — from that single pull, so a `SPREAD` weapon's accuracy can read above 100%. Deliberately not
+"fixed" by counting `Pellets` shots per pull instead — `WeaponShootEvent` fires once per pull, and inflating
+`shots` to match `hits`' granularity would just move the mismatch onto every other stat that assumes one shot per
+pull (e.g. ammo/damage-per-shot displays elsewhere).
 
 ### `raytrace.WeaponRaytracer`
 

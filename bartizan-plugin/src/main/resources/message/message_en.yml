@@ -26,6 +26,7 @@ Errors:
    Player_Not_Found: "&cPlayer not found: &3%player%&c."
    Not_Valid_Weapon: "&cInvalid weapon type &3%args%&c."
    Not_Valid_Ammo: "&cInvalid ammunition type &3%args%&c."
+   No_Stats: "&cNo stats recorded for &3%player%&c."
    Wearable:
       Invalid: "Invalid wearable: &c%name%"
       Not_Registered: "Wearable not registered: &c%key%"

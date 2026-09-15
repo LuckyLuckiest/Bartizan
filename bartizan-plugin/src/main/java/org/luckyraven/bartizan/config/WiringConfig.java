@@ -22,6 +22,7 @@ import org.luckyraven.bartizan.hud.HudService;
 import org.luckyraven.bartizan.hud.PlaceholderApiSupport;
 import org.luckyraven.bartizan.npc.NpcWeaponFactoryImpl;
 import org.luckyraven.bartizan.raytrace.WeaponRaytracerImpl;
+import org.luckyraven.bartizan.stats.StatsService;
 import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 import org.luckyraven.bartizan.weapon.WeaponService;
@@ -141,6 +142,18 @@ public final class WiringConfig {
 
 		PlaceholderApiSupport.registerIfPresent(bartizan, weaponService);
 
+		return service;
+	}
+
+	/**
+	 * Per-player weapon statistics (weapons-roadmap.md gate {@code HK}) - Gson flat files under
+	 * {@code plugins/Bartizan/stats/}, no database. Same wall-clock-derived tick-equivalent clock
+	 * {@code statusEffectService} uses.
+	 */
+	@Bean
+	public StatsService statsService() {
+		StatsService service = new StatsService(bartizan, () -> System.currentTimeMillis() / 50L);
+		service.start();
 		return service;
 	}
 

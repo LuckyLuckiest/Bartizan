@@ -47,7 +47,8 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .ammo                   Ammunition, AmmunitionCatalog
                                        .combat                 CombatEligibility
                                        .event                  WeaponEvent, WeaponShootEvent, WeaponRaytraceImpactEvent,
-                                                                WeaponEntityDamageEvent, WeaponKillEntityEvent,
+                                                                WeaponEntityDamageEvent (zone/distance, gate HK), WeaponKillEntityEvent,
+                                                                WeaponAssistEvent (gate HK),
                                                                 WeaponReloadEvent/Start/Complete, WeaponChangeSelectiveFireEvent,
                                                                 WeaponChargeLevelEvent, WeaponBeamFireEvent,
                                                                 WeaponStatusApplyEvent, WeaponStatusExpireEvent
@@ -55,7 +56,8 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .npc                    NpcWeaponFactory, NpcWeaponController
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
                                        .weapon                 Weapon + 6 subclasses (incl. BeamWeapon), WeaponType, ThrowableType,
-                                                                SelectiveFire, WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
+                                                                SelectiveFire, WeaponTag, ProjectileType, ProjectileState, WeaponCatalog,
+                                                                BodyZone (gate HK)
                                        .weapon.dto              23 config records (AmmunitionData, ChargeData, BeamData,
                                                                 StatusData, DamageData, DropoffStep, EffectHook (26 hooks,
                                                                 incl. On_Block_Hit and the zone hooks), EffectSpec,
@@ -70,7 +72,7 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
 bartizan-plugin org.luckyraven.bartizan                       Bartizan, BartizanApiImpl
                                        .ammo                   AmmunitionManager
                                        .bootstrap              BartizanContext, DefaultListenerService
-                                       .command(.data|.wearable) WeaponCommand/Give/Get/Info/List, Ammunition*, Wearable*, DebugCommand
+                                       .command(.data|.wearable) WeaponCommand/Give/Get/Info/List, Ammunition*, Wearable*, DebugCommand, StatsCommand
                                        .config                 KernelConfig, FilesConfig, WiringConfig, ItemConfig
                                        .configuration(.parser) WeaponAddon, AmmunitionAddon, the 13 YAML section parsers (incl. BeamWeaponParser,
                                                                 HudSectionParser)
@@ -81,10 +83,10 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .item                   converters, serializers, refreshers, WeaponItemApiImpl, BartizanItemVocabulary
                                        .listener(.*)           WeaponInteract, ScopeJumpListener, WeaponCraftingListener,
                                                                 death/fire/player/projectile/reload/selective/wearable
-                                       .metrics                WeaponMetrics
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
                                                                 BeamRenderer, HitZone
+                                       .stats                  StatsService, StatsListener, PlayerStats, WeaponStat
                                        .status                 StatusEffectService, ActiveStatus, StatusListener
                                        .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser
                                        .weapon(.action)        WeaponService, WeaponManager, DamageRules, CircumstanceRules,

@@ -13,9 +13,13 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.luckyraven.bartizan.api.event.WeaponBeamFireEvent;
+import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
+import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
+import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.BeamWeapon;
+import org.luckyraven.bartizan.api.weapon.BodyZone;
 import org.luckyraven.bartizan.api.weapon.dto.BeamData;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
@@ -85,9 +89,10 @@ public class BeamAction {
 
 		BeamData beamData     = weapon.getBeam();
 		int      ammoPerLevel = beamData.getAmmoPerLevel();
+		boolean  tracksAmmo   = weapon.getReloadData() != null;
 		int      actualLevel;
 
-		if (weapon.getReloadData() == null) {
+		if (!tracksAmmo) {
 			// No Reload:/Ammunition: configured — infinite ammo, matches Weapon#isMagazineEmpty's own convention.
 			actualLevel = level;
 		} else {
@@ -96,16 +101,26 @@ public class BeamAction {
 				EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 				return;
 			}
-			weapon.setCurrentMagCapacity(weapon.getCurrentMagCapacity() - ammoPerLevel * actualLevel);
-			weaponService.persistHeldWeapon(weapon, player);
 		}
 
 		Location origin    = player.getEyeLocation();
 		Vector   direction = origin.getDirection().normalize();
 
+		// HK: both events fired, and checked, BEFORE the ammo block below — matches the "fire before
+		// consumption" contract used across the other custom-path actions, so a listener cancelling either one
+		// costs the shooter nothing (no magazine decrement to refund).
 		WeaponBeamFireEvent fireEvent = new WeaponBeamFireEvent(weapon, player, actualLevel, origin, direction);
 		Bukkit.getPluginManager().callEvent(fireEvent);
 		if (fireEvent.isCancelled()) return;
+
+		WeaponShootEvent shootEvent = new WeaponShootEvent(weapon, player);
+		Bukkit.getPluginManager().callEvent(shootEvent);
+		if (shootEvent.isCancelled()) return;
+
+		if (tracksAmmo) {
+			weapon.setCurrentMagCapacity(weapon.getCurrentMagCapacity() - ammoPerLevel * actualLevel);
+			weaponService.persistHeldWeapon(weapon, player);
+		}
 
 		if (weapon.getRecoilData() != null) {
 			weapon.getRecoil().applyRecoil(player);
@@ -151,15 +166,21 @@ public class BeamAction {
 															 return;
 														 }
 
-														 boolean headshot = HitZone.of(
-																 event.getImpactPoint().toVector(), living, direction)
-																 .zone() == HitZone.Zone.HEAD;
+														 BodyZone hitZone = HitZone.of(
+																 event.getImpactPoint().toVector(), living, direction).zone();
+														 boolean headshot = hitZone == BodyZone.HEAD;
 														 double dmg = event.getDamage()
 														              + (headshot ? beamData.getDamage().head() : 0.0);
 
 														 living.setNoDamageTicks(0);
 														 living.setInvulnerable(false);
 														 living.damage(dmg, player);
+
+														 // HK: canonical WeaponEntityDamageEvent (DIRECT) for the beam's short-circuited impact
+														 // handler, so StatsService/other listeners see beam hits the same way gun hits are seen.
+														 Bukkit.getPluginManager().callEvent(
+															 new WeaponEntityDamageEvent(weapon, living, dmg, player, weapon.getName(),
+																 DamageKind.DIRECT, hitZone, origin.distance(event.getImpactPoint())));
 
 														 double knockback = beamData.getDamage().knockback();
 														 if (knockback != 0.0) {

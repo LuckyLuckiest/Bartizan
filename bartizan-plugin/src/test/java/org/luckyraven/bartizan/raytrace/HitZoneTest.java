@@ -6,6 +6,7 @@ import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.luckyraven.bartizan.api.weapon.BodyZone;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -51,7 +52,7 @@ class HitZoneTest {
 		LivingEntity victim = victim(new Vector(1, 0, 0));
 		HitZone zone = HitZone.of(new Vector(0, 1.6, 0), victim, new Vector(0, 0, 1));
 
-		assertEquals(HitZone.Zone.HEAD, zone.zone());
+		assertEquals(BodyZone.HEAD, zone.zone());
 	}
 
 	@Test
@@ -60,7 +61,7 @@ class HitZoneTest {
 		LivingEntity victim = victim(new Vector(1, 0, 0));
 		HitZone zone = HitZone.of(new Vector(0, 0.1, 0), victim, new Vector(0, 0, 1));
 
-		assertEquals(HitZone.Zone.FEET, zone.zone());
+		assertEquals(BodyZone.FEET, zone.zone());
 	}
 
 	@Test
@@ -69,7 +70,7 @@ class HitZoneTest {
 		LivingEntity victim = victim(new Vector(1, 0, 0));
 		HitZone zone = HitZone.of(new Vector(0, 0.5, 0), victim, new Vector(0, 0, 1));
 
-		assertEquals(HitZone.Zone.LEGS, zone.zone());
+		assertEquals(BodyZone.LEGS, zone.zone());
 	}
 
 	@Test
@@ -78,7 +79,7 @@ class HitZoneTest {
 		LivingEntity victim = victim(new Vector(1, 0, 0));
 		HitZone zone = HitZone.of(new Vector(0, 1.0, 0), victim, new Vector(0, 0, 1));
 
-		assertEquals(HitZone.Zone.BODY, zone.zone());
+		assertEquals(BodyZone.BODY, zone.zone());
 	}
 
 	@Test
@@ -88,7 +89,7 @@ class HitZoneTest {
 		LivingEntity victim = victim(new Vector(1, 0, 0));
 		HitZone zone = HitZone.of(new Vector(0.4, 1.0, 0), victim, new Vector(0, 0, 1));
 
-		assertEquals(HitZone.Zone.ARMS, zone.zone());
+		assertEquals(BodyZone.ARMS, zone.zone());
 	}
 
 	@Test
@@ -97,7 +98,7 @@ class HitZoneTest {
 		LivingEntity victim = victim(new Vector(1, 0, 0));
 		HitZone zone = HitZone.of(new Vector(0.3, 1.0, 0), victim, new Vector(0, 0, 1));
 
-		assertEquals(HitZone.Zone.BODY, zone.zone());
+		assertEquals(BodyZone.BODY, zone.zone());
 	}
 
 	@Test
@@ -109,7 +110,7 @@ class HitZoneTest {
 		LivingEntity victim = victim(new Vector(1, 0, 0), NARROW_BOX);
 		HitZone zone = HitZone.of(new Vector(0, 1.0, -0.5), victim, new Vector(0, 0, 1));
 
-		assertEquals(HitZone.Zone.BODY, zone.zone());
+		assertEquals(BodyZone.BODY, zone.zone());
 	}
 
 	@Test
@@ -119,7 +120,7 @@ class HitZoneTest {
 		LivingEntity victim = victim(new Vector(1, 0, 0), NARROW_BOX);
 		HitZone zone = HitZone.of(new Vector(0.28, 1.0, -0.5), victim, new Vector(0, 0, 1));
 
-		assertEquals(HitZone.Zone.ARMS, zone.zone());
+		assertEquals(BodyZone.ARMS, zone.zone());
 	}
 
 	@Test

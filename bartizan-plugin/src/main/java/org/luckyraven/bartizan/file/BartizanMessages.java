@@ -45,6 +45,9 @@ public enum BartizanMessages {
 	WEARABLE_NOT_REGISTERED("Errors.Wearable.Not_Registered", Type.PREFIX),
 	WEARABLE_NOT_WEARABLE("Errors.Wearable.Not_Wearable", Type.PREFIX),
 
+	// commands - stats
+	NO_STATS("Errors.No_Stats", Type.ERROR),
+
 	// death
 	DEAD_USING_WEAPON("Death.Weapon", Type.OTHER, true),
 	;

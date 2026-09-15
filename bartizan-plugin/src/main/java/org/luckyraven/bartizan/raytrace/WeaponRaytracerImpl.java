@@ -32,6 +32,7 @@ import org.luckyraven.bartizan.api.weapon.modifiers.action.BlockBreakModifier;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.RicochetModifier;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.TracerModifier;
 import org.luckyraven.bartizan.api.weapon.ProjectileState;
+import org.luckyraven.bartizan.api.weapon.BodyZone;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.raytrace.RaytraceContext;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
@@ -416,10 +417,10 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		double distance = ctx.getRequest().getOrigin().distance(impactPt);
 
 		// --- Compute damage (gun-specific extras only when applicable) ---
-		boolean      criticalHit = false;
-		HitZone.Zone zone        = null;
-		boolean      backHit     = false;
-		double       damage      = ctx.getState().getCurrentDamage();
+		boolean  criticalHit = false;
+		BodyZone zone        = null;
+		boolean  backHit     = false;
+		double   damage      = ctx.getState().getCurrentDamage();
 
 		if (hit instanceof LivingEntity living) {
 			if (weapon instanceof GunWeapon gun) {
@@ -527,7 +528,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 			if (shooter instanceof Player player) {
 				Bukkit.getPluginManager().callEvent(
 						new WeaponEntityDamageEvent(weapon, living, event.getDamage(), player, weapon.getName(),
-						                            DamageKind.DIRECT));
+						                            DamageKind.DIRECT, zone, distance));
 			}
 
 			if (weapon instanceof GunWeapon gun) {
@@ -573,7 +574,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		}
 	}
 
-	private static double zoneDelta(DamageData dd, HitZone.Zone zone) {
+	private static double zoneDelta(DamageData dd, BodyZone zone) {
 		return switch (zone) {
 			case HEAD -> dd.getHeadDamage();
 			case BODY -> dd.getBodyDamage();

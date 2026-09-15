@@ -1,10 +1,14 @@
 package org.luckyraven.bartizan.weapon.action;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 import org.luckyraven.keystone.util.ParticleUtil;
+import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
+import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
+import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.MeleeData;
 import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
@@ -76,6 +80,12 @@ public class MeleeAction {
 			return false;
 		}
 		cooldowns.put(weaponUuid, now);
+
+		// HK: WeaponShootEvent fired once per trigger pull, before consumption (melee consumes no ammo here —
+		// only the cooldown above, which stays claimed on cancel like a missed swing would).
+		WeaponShootEvent shootEvent = new WeaponShootEvent(weapon, player);
+		Bukkit.getPluginManager().callEvent(shootEvent);
+		if (shootEvent.isCancelled()) return false;
 
 		Vector lookDir = player.getEyeLocation().getDirection().normalize();
 		double range   = data.getRange();
@@ -160,6 +170,7 @@ public class MeleeAction {
 		if (!hitInThisSwing.add(target.getUniqueId())) return;
 
 		Player player = event.getShooter() instanceof Player p ? p : null;
+		double healthBefore = target.getHealth();
 
 		if (ap != null && ap.armorBypass() > 0) {
 			double armoredDmg = baseDmg * (1.0 - ap.armorBypass());
@@ -173,6 +184,18 @@ public class MeleeAction {
 		} else {
 			pendingDamage.add(target.getUniqueId());
 			target.damage(baseDmg, player);
+		}
+
+		// If health didn't decrease, a protection plugin blocked the damage (same "damageBlocked" shape as
+		// WeaponRaytracerImpl.handleEntityImpact) — the hit didn't land, so skip the event below.
+		boolean damageBlocked = target.isValid() && !target.isDead() && target.getHealth() >= healthBefore;
+
+		// HK: canonical WeaponEntityDamageEvent (MELEE) after damage is applied — no per-zone data (melee's cone
+		// swing has no single impact point/direction to run HitZone.of against), player shooters only.
+		if (player != null && !damageBlocked) {
+			Bukkit.getPluginManager().callEvent(
+					new WeaponEntityDamageEvent(weapon, target, baseDmg, player, weapon.getName(), DamageKind.MELEE,
+					                            null, player.getEyeLocation().distance(event.getImpactPoint())));
 		}
 
 		if (target.isDead() || knockback <= 0) return;

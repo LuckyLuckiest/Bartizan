@@ -96,3 +96,11 @@ Damage_Modifiers:
    Sprinting: 0             # percent added when the victim is sprinting
    In_Midair: 0             # percent added when the victim is not touching the ground
    Shielding: 0             # percent added when the victim is blocking with a shield
+
+# Stats: per-player weapon statistics (weapons-roadmap.md gate HK), written to
+# plugins/Bartizan/stats/<uuid>.json (Gson, not a database - see the top of this file). Removing this whole
+# section restores the same defaults below (BartizanSettings logs one warning when it does).
+Stats:
+   Enabled: true             # per-player weapon statistics written to plugins/Bartizan/stats/<uuid>.json
+   Assist_Window_Ticks: 100  # damage dealt within this many ticks before someone else's kill counts as an assist
+   Autosave_Minutes: 5

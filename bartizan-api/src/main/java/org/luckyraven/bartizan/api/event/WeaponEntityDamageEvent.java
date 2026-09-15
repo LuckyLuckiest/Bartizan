@@ -6,6 +6,8 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.luckyraven.bartizan.api.weapon.BodyZone;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 
 import java.util.Objects;
@@ -28,6 +30,13 @@ public class WeaponEntityDamageEvent extends WeaponEvent {
 	private final double damage;
 	private final Player shooter;
 
+	/** Where the hit landed, when the firing action knows (gate {@code HK}) — {@code null} otherwise. */
+	@Nullable
+	private final BodyZone zone;
+
+	/** Distance from the shooter's origin to the impact point (gate {@code HK}); {@code 0} when not carried. */
+	private final double distance;
+
 	@Getter(AccessLevel.NONE)
 	private final String weaponName;
 
@@ -36,12 +45,23 @@ public class WeaponEntityDamageEvent extends WeaponEvent {
 
 	public WeaponEntityDamageEvent(Weapon weapon, Entity entity, double damage, Player shooter, String weaponName,
 	                               DamageKind kind) {
+		this(weapon, entity, damage, shooter, weaponName, kind, null, 0);
+	}
+
+	/**
+	 * Full constructor (gate {@code HK}, §1): also carries the hit zone/distance, so a listener (e.g.
+	 * {@code stats.StatsService}) can bucket headshots/damage without recomputing them itself.
+	 */
+	public WeaponEntityDamageEvent(Weapon weapon, Entity entity, double damage, Player shooter, String weaponName,
+	                               DamageKind kind, @Nullable BodyZone zone, double distance) {
 		super(weapon);
 		this.entity     = entity;
 		this.damage     = damage;
 		this.shooter    = shooter;
 		this.weaponName = Objects.requireNonNull(weaponName, "weaponName");
 		this.kind       = Objects.requireNonNull(kind, "kind");
+		this.zone       = zone;
+		this.distance   = distance;
 	}
 
 	public static HandlerList getHandlerList() {
