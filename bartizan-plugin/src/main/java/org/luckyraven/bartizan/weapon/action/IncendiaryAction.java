@@ -29,6 +29,7 @@ import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.api.weapon.IncendiaryWeapon;
+import org.luckyraven.bartizan.wearable.WearableService;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -235,6 +236,13 @@ public class IncendiaryAction {
 						new WeaponEntityDamageEvent(weapon, target, attributed, player, weapon.getName(),
 						                            DamageKind.FIRE, null,
 						                            player.getEyeLocation().distance(event.getImpactPoint())));
+			}
+
+			// On_Hit_Taken (gate HL review, §1): this custom impact handler short-circuits
+			// WeaponRaytracerImpl's default pipeline before it ever fires the hook.
+			WearableService wearableService = WearableService.resolveLazily();
+			if (!damageBlocked && wearableService != null) {
+				wearableService.onHitTaken(target, event.getShooter(), attributed, effectRunner);
 			}
 		}
 

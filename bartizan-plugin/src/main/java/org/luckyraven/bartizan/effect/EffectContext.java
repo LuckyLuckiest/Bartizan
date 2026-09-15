@@ -25,7 +25,15 @@ import java.util.Map;
 @Builder
 public class EffectContext {
 
+	@Nullable
 	private final Weapon weapon;
+	/**
+	 * Fallback for {@code %weapon%} when this context has no {@link #weapon} at all — a wearable's
+	 * {@code Effects:} (equip/unequip/hit-taken) has no weapon to name, so callers building one of those contexts
+	 * pass the wearable's own display name here instead (weapons-roadmap.md gate {@code HL}, §5).
+	 */
+	@Nullable
+	private final String ownerName;
 	@Nullable
 	private final LivingEntity source;
 	@Nullable
@@ -71,7 +79,7 @@ public class EffectContext {
 		Map<String, String> map = new LinkedHashMap<>();
 		map.put("%player%", source != null ? source.getName() : "");
 		map.put("%victim%", victim != null ? victim.getName() : "");
-		map.put("%weapon%", weapon != null ? weapon.getDisplayName() : "");
+		map.put("%weapon%", weapon != null ? weapon.getDisplayName() : (ownerName != null ? ownerName : ""));
 		map.put("%damage%", String.format(Locale.ROOT, "%.1f", damage));
 		map.put("%distance%", String.format(Locale.ROOT, "%.1f", distance));
 		map.put("%level%", String.valueOf(level));

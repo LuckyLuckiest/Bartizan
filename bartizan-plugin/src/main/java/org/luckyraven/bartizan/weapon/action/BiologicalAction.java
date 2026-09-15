@@ -19,6 +19,7 @@ import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 import org.luckyraven.bartizan.weapon.WeaponService;
+import org.luckyraven.bartizan.wearable.WearableService;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -174,6 +175,14 @@ public class BiologicalAction {
 																	                             weapon.getName(), DamageKind.BIOLOGICAL, null,
 																	                             player.getEyeLocation()
 																	                                   .distance(event.getImpactPoint())));
+
+															 // On_Hit_Taken (gate HL review, §1): this custom impact
+															 // handler short-circuits WeaponRaytracerImpl's default
+															 // pipeline before it ever fires the hook.
+															 WearableService wearableService = WearableService.resolveLazily();
+															 if (wearableService != null) {
+																 wearableService.onHitTaken(target, player, damage, effectRunner);
+															 }
 														 }
 													 }
 												 })

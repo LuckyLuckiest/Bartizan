@@ -565,6 +565,12 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 						                            DamageKind.DIRECT, zone, distance));
 			}
 
+			// On_Hit_Taken (gate HL review, §1): moved out of the GunWeapon-only block below so every weapon that
+			// reaches this default (non-short-circuited) pipeline fires it — not guns only. The custom-impactHandler
+			// weapons (melee/biological/beam/incendiary) never reach here at all; they fire the same call directly
+			// from their own impact handlers via WearableService#resolveLazily.
+			wearableService.onHitTaken(living, shooter, event.getDamage(), effectRunner);
+
 			if (weapon instanceof GunWeapon gun) {
 				DamageData dd         = gun.getDamageData();
 				int        fireTicks  = wearableService.reduceFireTicks(dd.getFireTicks(), living);

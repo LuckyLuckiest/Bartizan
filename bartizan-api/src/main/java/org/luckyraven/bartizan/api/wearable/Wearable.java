@@ -1,11 +1,16 @@
 package org.luckyraven.bartizan.api.wearable;
 
+import com.google.common.collect.Multimap;
 import lombok.Builder;
 import lombok.Getter;
 import org.bukkit.Color;
 import org.bukkit.Material;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
@@ -13,6 +18,9 @@ import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.keystone.util.Placeholder;
 import org.luckyraven.keystone.util.ChatUtil;
+import org.luckyraven.bartizan.api.item.AttributeModifiers;
+import org.luckyraven.bartizan.api.weapon.dto.EffectsData;
+import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -61,7 +69,13 @@ public class Wearable {
 			Map.entry("reactive", new double[]{3, 0.02}),
 			Map.entry("lightweight", new double[]{2, 0.0}),
 			Map.entry("fuel_efficient", new double[]{2, 0.10}),
-			Map.entry("sealed", new double[]{3, 0})
+			Map.entry("sealed", new double[]{3, 0}),
+			// gate HL, §3: insulated (beam/energy damage reduction, WearableService#applyInsulatedReduction),
+			// night_vision (worn effect only — no numeric bonus, mirrors sealed/lightweight's 0 perLevel),
+			// swift (a MOVEMENT_SPEED ADD_SCALAR modifier stamped at build time, see #buildItem).
+			Map.entry("insulated", new double[]{3, 0.08}),
+			Map.entry("night_vision", new double[]{1, 0}),
+			Map.entry("swift", new double[]{3, 0.05})
 	);
 
 	private final Material             material;
@@ -74,6 +88,32 @@ public class Wearable {
 	@Nullable
 	private final Color                leatherColor;
 	private final boolean              temporary;
+
+	/**
+	 * {@code Attributes:} — Bukkit attribute modifiers stamped on the piece's own armour slot group (gate
+	 * {@code HL}, §2), stamped via the same {@link AttributeModifiers#apply} helper {@code Weapon} uses.
+	 */
+	@Builder.Default
+	private final List<HandlingData.AttributeEntry> attributes = List.of();
+
+	/** {@code Set:} — the lower-case {@code Sets.<name>} this piece counts towards, or {@code null} for none. */
+	@Nullable
+	private final String set;
+
+	/**
+	 * {@code Effects_While_Worn:} — raw {@code EFFECT-duration-amplifier} tokens, re-applied periodically by
+	 * {@code WearableEffectsService} while worn (duration replaced by the service's own cadence; a raw amplifier
+	 * of {@code -1} skips that token — gate {@code HL}, §5).
+	 */
+	@Builder.Default
+	private final List<String> effectsWhileWorn = List.of();
+
+	/**
+	 * {@code Effects:} — {@code On_Equip}/{@code On_Unequip}/{@code On_Hit_Taken} (gate {@code HL}, §5), parsed by
+	 * the same {@code EffectsSectionParser} a weapon's {@code Effects:} block goes through.
+	 */
+	@Builder.Default
+	private final EffectsData effects = EffectsData.empty();
 
 	/**
 	 * Arbitrary extra NBT-stampable data (jetpack fuel/thrust/glide scalars, nested sound config, …) parsed
@@ -209,6 +249,33 @@ public class Wearable {
 	}
 
 	/**
+	 * The armour slot group {@code material} occupies — {@code Attributes:} are stamped scoped to this group
+	 * (gate {@code HL}, §2) rather than {@code Weapon}'s fixed {@code MAINHAND}. Every material that reaches here
+	 * has already passed {@link #isArmorMaterial(Material)} (the loader skips the entry otherwise), so the
+	 * {@code HEAD} fallback below is unreachable in practice, not a silent misclassification.
+	 */
+	public static EquipmentSlotGroup armorSlotGroup(Material material) {
+		String name = material.name();
+		if (name.endsWith("_CHESTPLATE") || name.equals("ELYTRA")) return EquipmentSlotGroup.CHEST;
+		if (name.endsWith("_LEGGINGS")) return EquipmentSlotGroup.LEGS;
+		if (name.endsWith("_BOOTS")) return EquipmentSlotGroup.FEET;
+		return EquipmentSlotGroup.HEAD;
+	}
+
+	/**
+	 * The concrete {@link EquipmentSlot} counterpart of {@link #armorSlotGroup(Material)} — same branching, needed
+	 * by {@link #restampVanillaAttributeDefaults} because {@link Material#getDefaultAttributeModifiers(EquipmentSlot)}
+	 * (gate {@code HL} review, §3) takes a single slot, not a slot group.
+	 */
+	private static EquipmentSlot armorEquipmentSlot(Material material) {
+		String name = material.name();
+		if (name.endsWith("_CHESTPLATE") || name.equals("ELYTRA")) return EquipmentSlot.CHEST;
+		if (name.endsWith("_LEGGINGS")) return EquipmentSlot.LEGS;
+		if (name.endsWith("_BOOTS")) return EquipmentSlot.FEET;
+		return EquipmentSlot.HEAD;
+	}
+
+	/**
 	 * Per-piece base damage reduction by vanilla material tier. These values represent a modest contribution - vanilla
 	 * enchantments and custom traits build on top of them.
 	 */
@@ -319,7 +386,35 @@ public class Wearable {
 			}
 		}
 
-		return builder.build();
+		ItemStack item = builder.build();
+		if (!attributes.isEmpty()) {
+			// Bukkit's addAttributeModifier (below, via AttributeModifiers.apply) makes the item's modifier set
+			// explicit — once ANY custom modifier is present, the material's own implicit vanilla armour points
+			// (Armor, Armor_Toughness, ...) stop applying at all. Re-stamp them first, under their own default
+			// identities, so a configured Attributes: entry is always ADDED on top of the vanilla points instead
+			// of silently replacing them (gate HL review, §3).
+			restampVanillaAttributeDefaults(item, material);
+		}
+		AttributeModifiers.apply(item, attributes, armorSlotGroup(material), "attr_" + wearableKey);
+		return item;
+	}
+
+	/**
+	 * Re-stamps {@code material}'s own default {@link AttributeModifier}s (e.g. an {@code IRON_CHESTPLATE}'s
+	 * vanilla {@code Armor}/{@code Armor_Toughness} bonus) onto {@code item}, each under Bukkit's own default
+	 * modifier identity — never {@link AttributeModifiers}'s stable {@code "attr_" + wearableKey} key, so a later
+	 * {@link AttributeModifiers#apply} call never touches, dedupes, or removes them.
+	 */
+	private static void restampVanillaAttributeDefaults(ItemStack item, Material material) {
+		ItemMeta meta = item.getItemMeta();
+		if (meta == null) return;
+
+		Multimap<Attribute, AttributeModifier> defaults =
+				material.getDefaultAttributeModifiers(armorEquipmentSlot(material));
+		for (Map.Entry<Attribute, AttributeModifier> entry : defaults.entries()) {
+			meta.addAttributeModifier(entry.getKey(), entry.getValue());
+		}
+		item.setItemMeta(meta);
 	}
 
 	/**
@@ -402,6 +497,19 @@ public class Wearable {
 		if (traits == null || traits.isEmpty()) return 0;
 		Integer level = traits.get(key);
 		if (level == null || level <= 0) return 0;
+		return traitBonusForLevel(key, level);
+	}
+
+	/**
+	 * The arithmetic half of {@link #traitBonus(String)} — {@code level * perLevel}, capped at the trait's own
+	 * max level — exposed so {@code WearableService} can apply it to a body-wide resolved level (this piece's own
+	 * level plus every other worn piece's, plus an active set bonus) instead of only this one piece's level
+	 * (weapons-roadmap.md gate {@code HL}, §4).
+	 *
+	 * @return {@code 0} for an unknown trait key or a non-positive level.
+	 */
+	public static double traitBonusForLevel(String key, int level) {
+		if (level <= 0) return 0;
 
 		double[] definition = TRAIT_TABLE.get(key);
 		if (definition == null) return 0;

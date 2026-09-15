@@ -52,7 +52,7 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                                                 WeaponReloadEvent/Start/Complete, WeaponChangeSelectiveFireEvent,
                                                                 WeaponChargeLevelEvent, WeaponBeamFireEvent,
                                                                 WeaponStatusApplyEvent, WeaponStatusExpireEvent
-                                       .item                   WeaponItemApi
+                                       .item                   WeaponItemApi, AttributeModifiers
                                        .npc                    NpcWeaponFactory, NpcWeaponController
                                        .raytrace                WeaponRaytracer, RaytraceContext, RaytraceRequest, WeaponVisualSpawner
                                        .weapon                 Weapon + 6 subclasses (incl. BeamWeapon), WeaponType, ThrowableType,
@@ -61,15 +61,18 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .weapon.dto              27 config records (AmmunitionData, ChargeData, BeamData,
                                                                 StatusData, DamageData, DropoffStep, ExplosionData (gate
                                                                 HI-a, incl. nested Cluster/Airstrike/Detonation),
-                                                                VisualData, BouncyData (gate HI-b), EffectHook (26 hooks,
-                                                                incl. On_Block_Hit and the zone hooks), EffectSpec,
-                                                                EffectsData, HudData, HandlingData, MuzzleOffsetData, SkinsData, ...)
+                                                                VisualData, BouncyData (gate HI-b), EffectHook (28 hooks,
+                                                                incl. On_Block_Hit, the zone hooks and gate HL's
+                                                                On_Unequip/On_Hit_Taken), EffectSpec, EffectsData, HudData,
+                                                                HandlingData (incl. AttributeEntry), MuzzleOffsetData,
+                                                                SkinsData, ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager, DamageMath, ExplosionMath + action/*
                                        .weapon.recoil            RecoilManager
                                        .weapon.reload            Reload, ReloadType, InstantReload, NumberedReload
                                        .weapon.spread            SpreadManager
-                                       .wearable               Wearable, WearableCatalog
+                                       .wearable               Wearable (Attributes/Set/Effects_While_Worn/Effects, gate HL),
+                                                                WearableCatalog
 
 bartizan-plugin org.luckyraven.bartizan                       Bartizan, BartizanApiImpl
                                        .ammo                   AmmunitionManager
@@ -96,7 +99,8 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .weapon(.action)        WeaponService, WeaponManager, DamageRules, CircumstanceRules,
                                                                 GunAction/FullAutoTask/MeleeAction/...,
                                                                 ChargeController (shared charge-then-release timer), BeamAction
-                                       .wearable               WearableAddon, WearableService
+                                       .wearable               WearableAddon, WearableService (SetTier, resolveTraitLevels,
+                                                                applyInsulatedReduction, onHitTaken), WearableEffectsService
 ```
 
 `WeaponShooting`, `WeaponMuzzle` and `SteppedProjectileTask` live in `bartizan-plugin`'s `raytrace` package, not

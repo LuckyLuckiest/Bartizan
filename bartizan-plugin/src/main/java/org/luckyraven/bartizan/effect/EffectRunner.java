@@ -5,6 +5,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.EffectSpec;
+import org.luckyraven.bartizan.api.weapon.dto.EffectsData;
 import org.luckyraven.bartizan.effect.impl.*;
 import org.luckyraven.bartizan.file.BartizanSettings;
 
@@ -70,22 +71,37 @@ public class EffectRunner {
 	public void run(Weapon weapon, EffectHook hook, EffectContext ctx) {
 		List<EffectSpec> specs = weapon.getEffects().forHook(hook);
 		if (specs.isEmpty()) specs = BartizanSettings.getDefaultEffects().forHook(hook);
+		runSpecs(specs, hook, weapon.getName(), ctx);
+	}
+
+	/**
+	 * {@code run(Weapon, ...)}'s twin for a non-weapon {@link EffectsData} owner — a wearable's own
+	 * {@code Effects:} block (weapons-roadmap.md gate {@code HL}, §5: {@code ON_EQUIP}/{@code ON_UNEQUIP}/
+	 * {@code ON_HIT_TAKEN}). Still falls back to {@code Default_Effects} when {@code effects} declares nothing for
+	 * {@code hook} — {@code ownerName} is used only for the log line identifying which owner's effect threw.
+	 */
+	public void run(EffectsData effects, String ownerName, EffectHook hook, EffectContext ctx) {
+		List<EffectSpec> specs = effects.forHook(hook);
+		if (specs.isEmpty()) specs = BartizanSettings.getDefaultEffects().forHook(hook);
+		runSpecs(specs, hook, ownerName, ctx);
+	}
+
+	private void runSpecs(List<EffectSpec> specs, EffectHook hook, String ownerName, EffectContext ctx) {
 		if (specs.isEmpty()) return;
 
 		for (EffectSpec spec : specs) {
 			Effect effect = registry.get(spec.type().toLowerCase(Locale.ROOT));
 
 			if (effect == null) {
-				log.warn("Unknown effect type '{}' for hook {} on weapon '{}'", spec.type(), hook.key(),
-				         weapon.getName());
+				log.warn("Unknown effect type '{}' for hook {} on '{}'", spec.type(), hook.key(), ownerName);
 				continue;
 			}
 
 			try {
 				effect.run(spec, ctx);
 			} catch (Exception exception) {
-				log.warn("Effect '{}' for hook {} on weapon '{}' threw: {}", spec.type(), hook.key(),
-				         weapon.getName(), exception.toString());
+				log.warn("Effect '{}' for hook {} on '{}' threw: {}", spec.type(), hook.key(), ownerName,
+				         exception.toString());
 			}
 		}
 	}

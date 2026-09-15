@@ -7,8 +7,6 @@ import lombok.Setter;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlotGroup;
@@ -25,6 +23,7 @@ import org.luckyraven.keystone.nms.NmsVersion;
 import org.luckyraven.keystone.util.Placeholder;
 import org.luckyraven.keystone.exception.PluginException;
 import org.luckyraven.bartizan.api.ammo.Ammunition;
+import org.luckyraven.bartizan.api.item.AttributeModifiers;
 import org.luckyraven.bartizan.api.weapon.dto.*;
 import org.luckyraven.bartizan.api.weapon.durability.DurabilityCalculator;
 import org.luckyraven.bartizan.api.weapon.recoil.RecoilManager;
@@ -770,39 +769,15 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	}
 
 	/**
-	 * {@code Information.Attributes} — Bukkit attribute modifiers applied to the main-hand item. Each entry is
-	 * keyed by a {@link NamespacedKey} derived from the weapon name and the attribute itself, so calling this again
-	 * (a rebuild via {@link #updateWeaponData}) replaces the previous modifier instead of stacking a duplicate.
+	 * {@code Information.Attributes} — Bukkit attribute modifiers applied to the main-hand item, via the shared
+	 * {@link AttributeModifiers#apply} (weapons-roadmap.md gate {@code HL}, §2 — extracted so {@code Wearable}
+	 * stamps its own {@code Attributes:} block through the exact same code path). Each entry is keyed by a
+	 * {@link NamespacedKey} derived from the weapon name and the attribute itself, so calling this again (a rebuild
+	 * via {@link #updateWeaponData}) replaces the previous modifier instead of stacking a duplicate.
 	 */
 	private void applyAttributeModifiers(@Nullable ItemStack item) {
 		if (item == null || handlingData == null) return;
-
-		List<HandlingData.AttributeEntry> entries = handlingData.getAttributes();
-		if (entries.isEmpty()) return;
-
-		ItemMeta meta = item.getItemMeta();
-		if (meta == null) return;
-
-		for (HandlingData.AttributeEntry entry : entries) {
-			Attribute attribute = entry.attribute();
-			String    sanitized = ("attr_" + name + "_" + attribute.getKey().getKey())
-			                     .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]", "_");
-			NamespacedKey key = NamespacedKey.fromString("bartizan:" + sanitized);
-			if (key == null) continue;
-
-			Collection<AttributeModifier> existingModifiers = meta.getAttributeModifiers(attribute);
-			if (existingModifiers != null) {
-				for (AttributeModifier existing : existingModifiers) {
-					if (existing.getKey().equals(key)) meta.removeAttributeModifier(attribute, existing);
-				}
-			}
-
-			meta.addAttributeModifier(attribute,
-			                          new AttributeModifier(key, entry.amount(), entry.operation(),
-			                                                EquipmentSlotGroup.MAINHAND));
-		}
-
-		item.setItemMeta(meta);
+		AttributeModifiers.apply(item, handlingData.getAttributes(), EquipmentSlotGroup.MAINHAND, "attr_" + name);
 	}
 
 	private void push(Player player, double powerUp, double push) {

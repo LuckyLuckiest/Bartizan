@@ -28,6 +28,7 @@ import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.wearable.WearableAddon;
+import org.luckyraven.bartizan.wearable.WearableEffectsService;
 import org.luckyraven.bartizan.wearable.WearableService;
 import org.luckyraven.keystone.bean.Bean;
 import org.luckyraven.keystone.bean.Configuration;
@@ -127,6 +128,17 @@ public final class WiringConfig {
 	@Bean
 	public PluginFireRegistry pluginFireRegistry() {
 		return new PluginFireRegistry();
+	}
+
+	/**
+	 * Worn-wearable {@code Effects_While_Worn} + {@code On_Equip}/{@code On_Unequip} ticker (weapons-roadmap.md
+	 * gate {@code HL}, §5).
+	 */
+	@Bean
+	public WearableEffectsService wearableEffectsService(WearableService wearableService, EffectRunner effectRunner) {
+		WearableEffectsService service = new WearableEffectsService(bartizan, wearableService, effectRunner);
+		service.start();
+		return service;
 	}
 
 	/**

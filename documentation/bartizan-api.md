@@ -126,7 +126,8 @@ the charge-then-release config `BiologicalData#getCharge()` and `BeamWeapon#getC
 `traits()`/`traitLevel(String)` — including the gate-`HB` `sealed` trait, which reduces the incoming level of a
 biological status rather than a damage/duration percentage; jetpack-style extra data via `extraTags()` — NBT keys
 `fuel`/`fuel_current`/`fuel_max` are unchanged from the old `Jetpack:` block, so a consumer's fuel-reading code
-needs no edit), `BartizanItemPredicates.WEARABLE`.
+needs no edit; see "Wearables" below for the gate-`HL` additions — `Attributes`/`Set`/`Effects_While_Worn`/
+`Effects`, three new trait keys), `BartizanItemPredicates.WEARABLE`.
 
 `Weapon#getHandlingData()` (nullable, gate `HE`) carries the interaction-handling rules — `Equip_Delay`,
 `Deny_Use_In_Crafting`, `Cancel.*`, `Attributes`, `Trigger`, `Circumstance`, `Destroy_When_Empty`,
@@ -253,6 +254,45 @@ linearly to `0` at `radius`, `FLAT` deals full `damage` anywhere inside `radius`
 Throwables (grenades) detonate through `ThrowableAction`'s own item-physics flight loop, never through
 `WeaponRaytracer` — unlike rockets (`SteppedProjectileTask`), a throwable never fires `WeaponRaytraceImpactEvent`;
 listen for `WeaponEntityDamageEvent`/`ON_EXPLODE` instead.
+
+### Wearables (`wearable.Wearable`, `item.AttributeModifiers`, gate `HL`)
+
+`Wearable` gained four fields, all parsed by the now-`NodeReader`/`ConfigReport`-backed `WearableAddon` loader
+(`bartizan-plugin`) instead of the old bare-`log.warn` one — a bad entry is reported like a bad weapon:
+
+- `getAttributes()` (`List<weapon.dto.HandlingData.AttributeEntry>`, never `null`) — the wearable's `Attributes:`
+  map (`Armor: 4.0`, `Armor_Toughness`, `Knockback_Resistance`, `Max_Health`, …), each entry an `ADD_NUMBER`
+  modifier. Stamped by `buildItem()` via the new `item.AttributeModifiers.apply(ItemStack, List<AttributeEntry>,
+  EquipmentSlotGroup, String keyPrefix)` — the same helper `Weapon#applyAttributeModifiers` now delegates to, so a
+  weapon's `Information.Attributes` and a wearable's `Attributes:` stamp modifiers identically (stable
+  per-attribute `NamespacedKey`, survives a rebuild without duplicating). `Wearable.armorSlotGroup(Material)`
+  derives the slot group from the piece's own material (`*_HELMET`→`HEAD`, `*_CHESTPLATE`/`ELYTRA`→`CHEST`,
+  `*_LEGGINGS`→`LEGS`, `*_BOOTS`→`FEET`) rather than the weapon path's fixed `MAINHAND`.
+- `getSet()` (`@Nullable String`, lower-case) — the `Sets.<name>` this piece counts a worn piece towards.
+- `getEffectsWhileWorn()` (`List<String>`, never `null`) — raw `EFFECT-duration-amplifier` tokens, re-applied
+  periodically while worn by `bartizan-plugin`'s new `wearable.WearableEffectsService` (duration always replaced
+  by a short refresh window; a raw amplifier of `-1` skips that one token).
+- `getEffects()` (`weapon.dto.EffectsData`, never `null`) — a wearable's own `Effects:` block, parsed by the same
+  `EffectsSectionParser` a weapon's `Effects:` goes through, scoped to three hooks: `ON_EQUIP`, `ON_UNEQUIP`
+  (new), `ON_HIT_TAKEN` (new).
+
+Three new trait keys join the existing seven in `Wearable`'s `[maxLevel, perLevel]` table: `insulated` (`3, 0.08`
+— beam/energy damage reduction), `night_vision` (`1, 0` — worn effect only, no numeric bonus), `swift` (`3, 0.05`
+— a `MOVEMENT_SPEED` `ADD_SCALAR` modifier the loader appends to `getAttributes()` at load time, not read from
+YAML directly). `Wearable.traitBonusForLevel(String key, int level)` (new, `public static`) is the arithmetic half
+of the existing per-piece trait math, exposed so `WearableService` can apply it to a body-wide resolved level
+(every worn piece's own level of a trait, plus an active set bonus, capped once at `traitMaxLevel`) instead of
+only one piece's own level — `WearableService.resolveTraitLevels(LivingEntity)` is the one place that resolution
+happens now, and `applyWearableReduction`/`traitLevel`/`reduceCritBonus`/`reduceFireTicks`/the new
+`applyInsulatedReduction` all read through it. `WearableService.SetTier`/`registerSet`/`activeSetTiers` (the
+`Sets:` runtime) and `WearableEffectsService` are plugin-only — not part of the api surface, since nothing in
+`WearableCatalog`'s own signature requires them.
+
+`weapon.dto.EffectHook` gained `ON_UNEQUIP` and `ON_HIT_TAKEN` (28 hooks total). `effect.EffectContext.getWeapon()`
+(`bartizan-plugin`) is now `@Nullable` — a wearable's equip/unequip/hit-taken context has no weapon — and
+`%weapon%` falls back to a new `ownerName` field (the wearable's own display name) when `weapon` is absent.
+`effect.EffectRunner` gained a `run(EffectsData, String ownerName, EffectHook, EffectContext)` overload alongside
+the existing `run(Weapon, EffectHook, EffectContext)`, for exactly this non-weapon-owner case.
 
 ### Events (`org.luckyraven.bartizan.api.event`)
 

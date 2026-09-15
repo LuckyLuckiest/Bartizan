@@ -12,13 +12,16 @@ import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.hud.HudService;
 import org.luckyraven.bartizan.weapon.WeaponManager;
+import org.luckyraven.bartizan.wearable.WearableEffectsService;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
 import org.luckyraven.keystone.bean.listener.ListenerPriority;
 
 /**
  * The weapon half of the core's quit cleanup, moved out of {@code RemoveAccountListener} when the feature flipped
- * to a runtime module: unscopes and stops reloading whatever weapon the player was holding when they quit, and
- * (gate {@code HD}) removes any HUD boss bar {@code HudService} still has open for them.
+ * to a runtime module: unscopes and stops reloading whatever weapon the player was holding when they quit, removes
+ * any HUD boss bar {@code HudService} still has open for them (gate {@code HD}), and drops
+ * {@code WearableEffectsService}'s worn-key snapshot for them (gate {@code HL}) so a rejoin diffs against nothing
+ * instead of stale gear from the last session.
  *
  * <p>Also unscopes on {@link PlayerDeathEvent} (gate {@code HH}): vanilla potion effects vanish on death, but
  * {@code ScopeData.scoped} does not track that on its own - without this, a player who dies while scoped keeps
@@ -27,14 +30,17 @@ import org.luckyraven.keystone.bean.listener.ListenerPriority;
 @ListenerHandler(priority = ListenerPriority.LOW)
 public class WeaponQuitCleanupListener implements Listener {
 
-	private final WeaponManager weaponManager;
-	private final EffectRunner  effectRunner;
-	private final HudService    hudService;
+	private final WeaponManager          weaponManager;
+	private final EffectRunner           effectRunner;
+	private final HudService             hudService;
+	private final WearableEffectsService wearableEffectsService;
 
-	public WeaponQuitCleanupListener(WeaponManager weaponManager, EffectRunner effectRunner, HudService hudService) {
-		this.weaponManager = weaponManager;
-		this.effectRunner  = effectRunner;
-		this.hudService    = hudService;
+	public WeaponQuitCleanupListener(WeaponManager weaponManager, EffectRunner effectRunner, HudService hudService,
+	                                 WearableEffectsService wearableEffectsService) {
+		this.weaponManager          = weaponManager;
+		this.effectRunner           = effectRunner;
+		this.hudService             = hudService;
+		this.wearableEffectsService = wearableEffectsService;
 	}
 
 	@EventHandler(priority = EventPriority.HIGHEST)
@@ -42,6 +48,7 @@ public class WeaponQuitCleanupListener implements Listener {
 		Player player = event.getPlayer();
 
 		hudService.remove(player.getUniqueId());
+		wearableEffectsService.remove(player.getUniqueId());
 
 		// main hand, falling back to the off hand - a weapon stowed off-hand while quitting must still be
 		// un-scoped/reload-stopped below.

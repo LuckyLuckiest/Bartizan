@@ -25,17 +25,73 @@
 #   Base_Damage_Reduction - flat damage reduction per piece (0.0–1.0, e.g. 0.10 = 10%)
 #   Leather_Color       - hex color string ("#RRGGBB") for leather armor; leave blank otherwise
 #   Lore                - list of lore lines
-#   Traits:             - optional trait section; values are capped to each trait's max level
+#   Traits:             - optional trait section. Two different resolution rules apply depending on the trait:
+#                         REINFORCED / BULLETPROOF / REACTIVE (the raw damage-reduction math) are resolved PER
+#                         WORN PIECE - each piece's own level discounts (or, for REACTIVE, rolls) independently;
+#                         an active worn Set's own bonus level (see Sets: below) folds in as one further,
+#                         SEPARATE discount for these three - as if it were one extra piece - it is never merged
+#                         into another worn piece's own level.
+#                         Every other trait below (TOUGHENED, FIRE_RESISTANT, SEALED, INSULATED) is instead
+#                         summed BODY-WIDE: a piece's own level, a worn Set's bonus level, and every other worn
+#                         piece's level of the SAME trait all add together (capped at the max level below)
+#                         before the reader sees it.
 #     REINFORCED        - flat damage reduction (5% per level, max 4)
 #     BULLETPROOF       - extra projectile reduction (4% per level, max 3)
-#     PADDED            - extra explosion reduction (8% per level, max 2)
+#     PADDED            - extra explosion reduction (8% per level, max 2) - parsed, currently unused (no caller)
 #     TOUGHENED         - reduces critical hit bonus damage (10% per level, max 3)
 #     FIRE_RESISTANT    - reduces fire ticks applied (25% per level, max 2)
 #     REACTIVE          - chance to nullify an incoming hit entirely (2% per level, max 3)
 #     LIGHTWEIGHT       - cosmetic only, no combat effect (max 2)
+#     FUEL_EFFICIENT    - jetpack fuel consumption reduction (10% per level, max 2); read by the jetpack gadget,
+#                         not by Bartizan itself
+#     SEALED            - reduces the incoming level of a biological status by this many levels (max 3)
+#     INSULATED         - reduces beam/energy weapon damage (8% per level, max 3)
+#     NIGHT_VISION      - worn effect only, no numeric bonus (max 1) - grants vanilla Night Vision while worn;
+#                         list it under Effects_While_Worn too (e.g. "NIGHT_VISION-0-1") to actually apply it
+#     SWIFT             - a MOVEMENT_SPEED attribute bonus stamped on the item at build time (5% per level, max 3),
+#                         not a runtime-calculated reduction like the others
+#   Attributes:         - optional; Bukkit attribute modifiers (ADD_NUMBER) stamped on the piece's own armour
+#                         slot group (helmet -> head, chestplate/elytra -> chest, leggings -> legs, boots -> feet):
+#                            Armor: 4.0
+#                            Armor_Toughness: 1.0
+#                            Knockback_Resistance: 0.1
+#                            Max_Health: 2.0
+#                         these are ADDED on top of the material's own vanilla armour points (an IRON_CHESTPLATE
+#                         keeps its vanilla Armor/Armor_Toughness even with an Attributes: block configured here)
+#                         - they are not a replacement for them. Wearables only reduce damage percentages beyond
+#                         that, so a wearable on a non-armour-looking material still gives no vanilla armour
+#                         points of its own unless one is configured here.
+#   Set                 - optional; the lower-case Sets.<name> (see below) this piece counts a worn piece towards
+#   Effects_While_Worn  - optional list of "EFFECT-duration-amplifier" tokens, re-applied roughly every 40 ticks
+#                         while worn for up to 220 ticks (11s) each re-apply - long enough that a vanilla effect
+#                         like Night Vision doesn't visibly blink between re-applies; the configured duration is
+#                         always ignored (replaced by that window), and an amplifier of exactly -1 skips that one
+#                         token entirely, e.g. "NIGHT_VISION-0--1" (double hyphen: the "-1" amplifier after the
+#                         duration's own separator) - to have a Set tier cancel a piece's own worn effect, not one
+#                         of the shipped examples below. The moment a piece (or an active Set tier) granting an
+#                         effect is no longer worn, that effect is stripped immediately rather than left to expire.
+#   Effects:            - optional; the same block-map shape a weapon's Effects: section uses (see weapon YAML
+#                         headers), scoped to three hooks: On_Equip, On_Unequip, On_Hit_Taken. On_Hit_Taken fires
+#                         for every Bartizan hit that lands on the wearer, regardless of which weapon family
+#                         (gun, melee, thrown, incendiary, biological, beam) dealt it.
+#
+# Sets: (top-level, sibling to the wearable entries above, not nested inside one)
+#   Sets:
+#      <name>:
+#         Pieces_<N>:            - the bonus once at least N pieces naming Set: <name> are worn
+#            Traits:              - REINFORCED/BULLETPROOF/REACTIVE here become their own separate per-piece-style
+#                                   discount (see Traits: above); every other trait still merges into the
+#                                   body-wide sum, added on top of every worn piece's own level (same cap applies)
+#            Effects_While_Worn:  - added on top of every worn piece's own list, same token grammar as above
+#
+# Note: the HH scope's own Night Vision removal on scope-out can briefly drop a worn Night Vision grant from
+# above too (it removes ALL Night Vision, not just the scope's own) until the next ~40-tick re-apply.
 #
 # Note: vanilla enchantments (PROTECTION, PROJECTILE_PROTECTION, FIRE_PROTECTION,
 # BLAST_PROTECTION) are also respected automatically - they do not need to be listed here.
+#
+# Armour durability: Damage.Armor_Damage (guns only, see weapon YAML) damages every worn piece exactly like
+# vanilla armour durability loss - no separate wearable-side configuration needed.
 
 police_vest:
    Material: IRON_CHESTPLATE
@@ -209,3 +265,82 @@ jetpack:
                Sound: ITEM_ELYTRA_FLYING
                Volume: 0.4
                Pitch: 1.0
+
+hazmat_chest:
+   Material: LEATHER_CHESTPLATE
+   Name: "&2Hazmat Suit"
+   Base_Damage_Reduction: 0.05
+   Leather_Color: "#4C7A3D"
+   Lore:
+      - "&8Rated for biological and radiological hazards"
+   Attributes:
+      Armor: 4.0
+      Armor_Toughness: 1.0
+      Knockback_Resistance: 0.1
+   Traits:
+      SEALED: 2
+      INSULATED: 1
+   Effects_While_Worn:
+      - "SLOWNESS-60-1"
+   Set: hazmat
+   Effects:
+      On_Equip:
+         - Type: Sound
+           Sound: ITEM_ARMOR_EQUIP_LEATHER
+           Target: source
+      On_Hit_Taken:
+         - Type: Particle
+           Particle: SPELL_MOB
+           Count: 4
+           At: victim
+           Target: source
+
+hazmat_helmet:
+   Material: LEATHER_HELMET
+   Name: "&2Hazmat Hood"
+   Base_Damage_Reduction: 0.03
+   Leather_Color: "#4C7A3D"
+   Lore:
+      - "&8Full-face respirator hood"
+   Traits:
+      SEALED: 1
+   Set: hazmat
+
+hazmat_leggings:
+   Material: LEATHER_LEGGINGS
+   Name: "&2Hazmat Trousers"
+   Base_Damage_Reduction: 0.03
+   Leather_Color: "#4C7A3D"
+   Lore:
+      - "&8Sealed at the boot and waist"
+   Traits:
+      SEALED: 1
+   Set: hazmat
+
+hazmat_boots:
+   Material: LEATHER_BOOTS
+   Name: "&2Hazmat Boots"
+   Base_Damage_Reduction: 0.02
+   Leather_Color: "#4C7A3D"
+   Lore:
+      - "&8Chemical-resistant overboots"
+   Traits:
+      SEALED: 1
+   Set: hazmat
+
+# Sets: is a top-level sibling of the wearable entries above, not nested inside one - see the header comment.
+Sets:
+   hazmat:
+      Pieces_2:
+         Traits:
+            SEALED: 1
+      Pieces_4:
+         Traits:
+            SEALED: 2
+            FIRE_RESISTANT: 1
+         Effects_While_Worn:
+            # A large placeholder duration, not a negative "permanent" sentinel - the worn-effects ticker ignores
+            # and replaces the configured duration anyway (see the header comment above). To instead SKIP a
+            # token entirely (e.g. to have this tier cancel a piece's own worn effect), give it a raw amplifier
+            # of exactly -1, e.g. "REGENERATION-9999--1" (not used here - REGENERATION is actually granted).
+            - "REGENERATION-9999-1"

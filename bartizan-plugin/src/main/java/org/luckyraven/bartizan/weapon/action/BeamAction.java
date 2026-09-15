@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
+import org.luckyraven.bartizan.api.BartizanApi;
 import org.luckyraven.bartizan.api.event.WeaponBeamFireEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
@@ -32,6 +33,7 @@ import org.luckyraven.bartizan.raytrace.HitZone;
 import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.weapon.WeaponService;
+import org.luckyraven.bartizan.wearable.WearableService;
 
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -61,6 +63,25 @@ public class BeamAction {
 		this.weaponService      = weaponService;
 		this.effectRunner       = effectRunner;
 		this.blockDamageManager = blockDamageManager;
+	}
+
+	/**
+	 * {@code insulated} beam/energy damage reduction (weapons-roadmap.md gate {@code HL}, §3) — {@code BeamAction}
+	 * never got a {@code WearableService} at construction (its constructor is called from {@code WeaponInteract},
+	 * a sibling-owned file out of scope for this gate), so this resolves it lazily off {@code BartizanApi} on
+	 * Bartizan's own {@code ServicesManager} registration instead — the same "lazy, at the point of use" lookup
+	 * the api/plugin split already mandates for cross-plugin discovery, borrowed here for one same-plugin seam
+	 * that constructor injection can't reach without touching that sibling file.
+	 */
+	private static double insulatedReduction(double damage, LivingEntity target) {
+		BartizanApi api = Bukkit.getServicesManager().load(BartizanApi.class);
+		// api.wearables() is always this same plugin's WearableService instance (BartizanApiImpl hands out the one
+		// it was built with) — the instanceof cast only fails if Bartizan itself hasn't finished enabling yet, never
+		// because of a cross-plugin consumer's own WearableCatalog implementation.
+		if (api != null && api.wearables() instanceof WearableService wearableService) {
+			return wearableService.applyInsulatedReduction(damage, target);
+		}
+		return damage;
 	}
 
 	/**
@@ -171,6 +192,7 @@ public class BeamAction {
 														 boolean headshot = hitZone == BodyZone.HEAD;
 														 double dmg = event.getDamage()
 														              + (headshot ? beamData.getDamage().head() : 0.0);
+														 dmg = insulatedReduction(dmg, living);
 
 														 living.setNoDamageTicks(0);
 														 living.setInvulnerable(false);
@@ -181,6 +203,14 @@ public class BeamAction {
 														 Bukkit.getPluginManager().callEvent(
 															 new WeaponEntityDamageEvent(weapon, living, dmg, player, weapon.getName(),
 																 DamageKind.DIRECT, hitZone, origin.distance(event.getImpactPoint())));
+
+														 // On_Hit_Taken (gate HL review, §1): this custom impact
+														 // handler short-circuits WeaponRaytracerImpl's default
+														 // pipeline before it ever fires the hook.
+														 WearableService beamWearableService = WearableService.resolveLazily();
+														 if (beamWearableService != null) {
+															 beamWearableService.onHitTaken(living, player, dmg, effectRunner);
+														 }
 
 														 double knockback = beamData.getDamage().knockback();
 														 if (knockback != 0.0) {

@@ -18,6 +18,7 @@ import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.wearable.WearableService;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -196,6 +197,14 @@ public class MeleeAction {
 			Bukkit.getPluginManager().callEvent(
 					new WeaponEntityDamageEvent(weapon, target, baseDmg, player, weapon.getName(), DamageKind.MELEE,
 					                            null, player.getEyeLocation().distance(event.getImpactPoint())));
+		}
+
+		// On_Hit_Taken (gate HL review, §1): this custom impact handler short-circuits WeaponRaytracerImpl's
+		// default pipeline before it ever fires the hook, so melee has to fire it itself. MeleeAction was never
+		// constructed with a WearableService (see WearableService#resolveLazily's own javadoc).
+		WearableService wearableService = WearableService.resolveLazily();
+		if (!damageBlocked && wearableService != null) {
+			wearableService.onHitTaken(target, player, baseDmg, effectRunner);
 		}
 
 		if (target.isDead() || knockback <= 0) return;
