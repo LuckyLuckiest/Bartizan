@@ -1,9 +1,12 @@
 package org.luckyraven.bartizan.wearable;
 
+import com.cryptomorin.xseries.XSound;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.Damageable;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.wearable.Wearable;
 import org.luckyraven.bartizan.api.wearable.WearableCatalog;
@@ -221,6 +224,42 @@ public class WearableService implements WearableCatalog {
 		reduction = Math.min(reduction, 0.90);
 
 		return (int) Math.max(fireTicks * (1.0 - reduction), 0);
+	}
+
+	/**
+	 * Damages every worn armour piece's durability by {@code amount} — {@code Damage.Armor_Damage}, guns only
+	 * (weapons-roadmap.md gate {@code HF}, §3). Skips unbreakable pieces and any piece with no durability bar.
+	 * A piece whose damage reaches or exceeds its max durability is removed and the vanilla item-break sound plays.
+	 *
+	 * @param target the entity wearing the armor
+	 * @param amount durability damage to apply per worn piece; a no-op when {@code <= 0}
+	 */
+	public void damageArmor(LivingEntity target, int amount) {
+		if (amount <= 0) return;
+
+		EntityEquipment equipment = target.getEquipment();
+		if (equipment == null) return;
+
+		for (EquipmentSlot slot : ARMOR_SLOTS) {
+			ItemStack item = equipment.getItem(slot);
+			if (item.getType().isAir()) continue;
+
+			ItemMeta meta = item.getItemMeta();
+			if (!(meta instanceof Damageable damageable) || meta.isUnbreakable()) continue;
+
+			int maxDurability = item.getType().getMaxDurability();
+			if (maxDurability <= 0) continue;
+
+			int newDamage = damageable.getDamage() + amount;
+			if (newDamage >= maxDurability) {
+				equipment.setItem(slot, null);
+				XSound.ENTITY_ITEM_BREAK.record().soundPlayer().atLocation(target.getLocation()).play();
+			} else {
+				damageable.setDamage(newDamage);
+				item.setItemMeta(meta);
+				equipment.setItem(slot, item);
+			}
+		}
 	}
 
 }

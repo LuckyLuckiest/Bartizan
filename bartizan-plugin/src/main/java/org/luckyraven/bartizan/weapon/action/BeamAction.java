@@ -24,6 +24,7 @@ import org.luckyraven.bartizan.api.weapon.modifiers.action.BlockBreakModifier;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.raytrace.BeamRenderer;
+import org.luckyraven.bartizan.raytrace.HitZone;
 import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.weapon.WeaponService;
@@ -150,8 +151,9 @@ public class BeamAction {
 															 return;
 														 }
 
-														 boolean headshot = weaponService.isHeadPosition(
-																 event.getImpactPoint(), living.getLocation());
+														 boolean headshot = HitZone.of(
+																 event.getImpactPoint().toVector(), living, direction)
+																 .zone() == HitZone.Zone.HEAD;
 														 double dmg = event.getDamage()
 														              + (headshot ? beamData.getDamage().head() : 0.0);
 

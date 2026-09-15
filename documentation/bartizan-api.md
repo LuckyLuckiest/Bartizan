@@ -155,6 +155,25 @@ Since gate `HA`, the legacy `Shoot.Sound.*`/`Reload.Sound.*` slots are lowered i
 loader and played by `EffectRunner`/the plugin's listeners rather than by `bartizan-api`'s `Reload` itself — a
 weapon's own `Effects:` list for a hook still replaces the lowered entry entirely, never merges with it.
 
+### Damage parity (`weapon.dto.{DamageData, DropoffStep, ThrowableData}`, `weapon.modifiers.DamageMath`, `EffectHook`, gate `HF`)
+
+`EffectHook` gained four zone hooks: `ON_ARMS`, `ON_LEGS`, `ON_FEET`, `ON_BACK` (`ON_HEADSHOT` is unchanged and
+still covers the head zone; a body-zone hit fires no extra hook). `DamageData` gained `getDropoff()`
+(`List<DropoffStep>`, never `null`), `getBodyDamage()`/`getArmsDamage()`/`getLegsDamage()`/`getFeetDamage()`/
+`getBackDamage()` (hit-zone deltas alongside the existing `getHeadDamage()`), `getArmorDamage()` (armour
+durability damage per hit, guns only), `isOwnerImmunity()`/`isIgnoreTeams()`, and `getKnockback()` (`@Nullable
+Double` — `null` leaves vanilla knockback untouched; any present value, `0` included, replaces it with
+`shotDir * knockback` on a direct hit). `ThrowableData` gained the same `isOwnerImmunity()`/`isIgnoreTeams()`
+pair plus a primitive `getKnockback()` (an additive falloff vector, not a vanilla-knockback override — grenades
+have no "disable vanilla knockback" concept). `DropoffStep(double distance, double delta)` is a new record; its
+`parse(String)` reads one `"<distance> <delta>"` `Damage.Dropoff` entry, returning `null` on malformed input.
+`DamageMath` (new, `weapon.modifiers`) holds the pure math: `dropoff(List<DropoffStep>, double distance)`,
+`percentMultiplier(double percentSum)` (the `settings.yml Damage_Modifiers` formula, floored at `0`), and
+`explosionKnockbackFactor(double knockback, double distance, double radius)` (shared by rocket and grenade
+explosions). The hit-zone classification itself (`HEAD`/`BODY`/`ARMS`/`LEGS`/`FEET` + a `back` flag) and the
+`Owner_Immunity`/`Ignore_Teams` skip rule live in `bartizan-plugin` (`raytrace.HitZone`, `weapon.DamageRules`) —
+neither is referenced by an api type's public signature, so neither moved to `bartizan-api`.
+
 ### Events (`org.luckyraven.bartizan.api.event`)
 
 `WeaponEvent`, `WeaponShootEvent`, `WeaponRaytraceImpactEvent` (cancelling suppresses damage only — penetration and

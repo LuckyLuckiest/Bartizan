@@ -21,6 +21,9 @@ Throw:
    Max_Bounces: 5
    Sticky: false
    Entity_Type: SNOWBALL
+   # Owner_Immunity: false (default) - grenades self-damage the thrower, as they always have. Uncomment to
+   # make this grenade safe for its own thrower:
+   # Owner_Immunity: true
    Recoil:
       Amount: 0.0
       Push: 0.1

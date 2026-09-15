@@ -32,6 +32,9 @@ Shoot:
          Critical_Hit:
             Chance: 0
             Amount: 0
+         # Owner_Immunity: keeps the shooter safe from their own rocket blast. Explicit here since the
+         # default is false (grenades self-damage by default; this rocket opts out of that).
+         Owner_Immunity: true
       Consumed_Amount: 1
       Per_Shot: 1
       Cooldown: 10

@@ -57,11 +57,11 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .weapon                 Weapon + 6 subclasses (incl. BeamWeapon), WeaponType, ThrowableType,
                                                                 SelectiveFire, WeaponTag, ProjectileType, ProjectileState, WeaponCatalog
                                        .weapon.dto              23 config records (AmmunitionData, ChargeData, BeamData,
-                                                                StatusData, DamageData, EffectHook (22 hooks, incl.
-                                                                On_Block_Hit), EffectSpec, EffectsData, HudData,
-                                                                MuzzleOffsetData, ...)
+                                                                StatusData, DamageData, DropoffStep, EffectHook (26 hooks,
+                                                                incl. On_Block_Hit and the zone hooks), EffectSpec,
+                                                                EffectsData, HudData, MuzzleOffsetData, ...)
                                        .weapon.durability        DurabilityCalculator
-                                       .weapon.modifiers          BlockDamageManager + action/*
+                                       .weapon.modifiers          BlockDamageManager, DamageMath + action/*
                                        .weapon.recoil            RecoilManager
                                        .weapon.reload            Reload, ReloadType, InstantReload, NumberedReload
                                        .weapon.spread            SpreadManager
@@ -83,10 +83,10 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .metrics                WeaponMetrics
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
-                                                                BeamRenderer
+                                                                BeamRenderer, HitZone
                                        .status                 StatusEffectService, ActiveStatus, StatusListener
                                        .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser
-                                       .weapon(.action)        WeaponService, WeaponManager, GunAction/FullAutoTask/MeleeAction/...,
+                                       .weapon(.action)        WeaponService, DamageRules, WeaponManager, GunAction/FullAutoTask/MeleeAction/...,
                                                                 ChargeController (shared charge-then-release timer), BeamAction
                                        .wearable               WearableAddon, WearableService
 ```

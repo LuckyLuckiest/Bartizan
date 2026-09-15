@@ -13,10 +13,16 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
+import org.jetbrains.annotations.Nullable;
+import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.DamageData;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.SoundData;
+import org.luckyraven.bartizan.api.weapon.modifiers.DamageMath;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.weapon.DamageRules;
 import org.luckyraven.keystone.sound.SoundEffect;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 
@@ -192,20 +198,55 @@ public class SteppedProjectileTask {
 		return explosionDamage * (1 - (distance / explosionRadius));
 	}
 
+	/**
+	 * Adds a {@code Damage.Knockback} falloff vector (gate HF, §6) pointing away from the blast centre. A no-op
+	 * when {@code knockback} is {@code null} (unconfigured) or the falloff factor is {@code 0}.
+	 */
+	private void applyExplosionKnockback(LivingEntity target, Location center, double dist, @Nullable Double knockback) {
+		if (knockback == null) return;
+
+		double factor = DamageMath.explosionKnockbackFactor(knockback, dist, explosionRadius);
+		if (factor <= 0) return;
+
+		Vector direction = dist > 1e-6
+		                    ? target.getLocation().toVector().subtract(center.toVector()).normalize()
+		                    : new Vector(0, 1, 0);
+		target.setVelocity(target.getVelocity().add(direction.multiply(factor)));
+	}
+
 	private void fireExplosion(Location loc) {
 		World world = loc.getWorld();
 		if (world == null) {
 			return;
 		}
 
+		Weapon weapon = ctx.getRequest().getWeapon();
+		// SteppedProjectileTask only ever drives guns (bullets/rockets) — DamageData lives on GunWeapon.
+		DamageData damageData = weapon instanceof GunWeapon gun ? gun.getDamageData() : null;
+		Double     knockback  = damageData != null ? damageData.getKnockback() : null;
+
 		LivingEntity shooter = ctx.getRequest().getShooter();
 		for (Entity entity : world.getNearbyEntities(loc, explosionRadius, explosionRadius, explosionRadius)) {
 			if (!(entity instanceof LivingEntity target)) continue;
-			if (target.equals(shooter)) continue;
 
-			double damage = falloffDamage(explosionDamage, explosionRadius, target.getLocation().distance(loc));
+			// Damage.Owner_Immunity / Ignore_Teams (gate HF, §4) replace the old hardcoded shooter skip.
+			boolean protectedTarget = damageData != null
+			                          ? DamageRules.isProtected(damageData, shooter, target)
+			                          : target.equals(shooter);
+			if (protectedTarget) continue;
+
+			double dist   = target.getLocation().distance(loc);
+			double damage = falloffDamage(explosionDamage, explosionRadius, dist);
 			if (damage > 0) {
-				target.damage(damage, shooter);
+				// Without this flag, WeaponInteract.onEntityDamage cancels the damage whenever the shooter
+				// still holds a weapon — mirrors WeaponRaytracerImpl.handleEntityImpact's guard exactly.
+				WeaponRaytracer.setRaytraceDamageInProgress(true);
+				try {
+					target.damage(damage, shooter);
+				} finally {
+					WeaponRaytracer.setRaytraceDamageInProgress(false);
+				}
+				applyExplosionKnockback(target, loc, dist, knockback);
 			}
 		}
 

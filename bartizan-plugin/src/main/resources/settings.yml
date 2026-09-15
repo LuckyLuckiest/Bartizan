@@ -82,3 +82,17 @@ Default_Effects:
         Volume: 2.0
         Pitch: 1.0
         At: impact
+
+# Damage_Modifiers: global percent-of-damage modifiers applied on the default gun-hit path, after a shot's
+# Dropoff/hit-zone deltas (weapons-roadmap.md gate HF, §5). All percents sum together, then
+# damage *= 1 + sum/100 (floored at 0 - the sum can never push damage below zero). All default 0 (no-op) when
+# a key is missing; removing this whole section restores the same all-0 defaults (BartizanSettings logs one
+# warning when it does). Values may be decimal (e.g. Per_Armor_Point: -1.5).
+#
+# There is deliberately no Walking modifier - Spigot has no cheap "is this entity walking" signal.
+Damage_Modifiers:
+   Per_Armor_Point: 0      # percent added to gun damage per victim armour point (e.g. -1 = -1% per point)
+   Sneaking: 0              # percent added when the victim is sneaking
+   Sprinting: 0             # percent added when the victim is sprinting
+   In_Midair: 0             # percent added when the victim is not touching the ground
+   Shielding: 0             # percent added when the victim is blocking with a shield

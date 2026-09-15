@@ -96,10 +96,9 @@ public final class WiringConfig {
 	 * concrete class).
 	 */
 	@Bean
-	public WeaponRaytracerImpl weaponRaytracer(WeaponManager weaponManager, WearableAddon wearableAddon,
-	                                           BlockDamageManager blockDamageManager,
+	public WeaponRaytracerImpl weaponRaytracer(WearableAddon wearableAddon, BlockDamageManager blockDamageManager,
 	                                           WeaponVisualSpawner weaponVisualSpawner, EffectRunner effectRunner) {
-		WeaponRaytracerImpl raytracer = new WeaponRaytracerImpl(weaponManager, wearableAddon, blockDamageManager,
+		WeaponRaytracerImpl raytracer = new WeaponRaytracerImpl(wearableAddon, blockDamageManager,
 		                                                        weaponVisualSpawner, effectRunner);
 		Bukkit.getServicesManager().register(WeaponRaytracer.class, raytracer, bartizan, ServicePriority.Normal);
 		return raytracer;

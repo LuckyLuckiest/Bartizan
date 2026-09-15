@@ -17,6 +17,7 @@ import org.luckyraven.bartizan.api.weapon.dto.ThrowableData;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
 import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
+import org.luckyraven.bartizan.api.weapon.modifiers.DamageMath;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
@@ -24,6 +25,7 @@ import org.luckyraven.bartizan.api.weapon.ProjectileState;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.ThrowableType;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
+import org.luckyraven.bartizan.weapon.DamageRules;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,6 +51,15 @@ public class ThrowableAction {
 	 * instance field.
 	 */
 	public static final Set<UUID> pendingDamage = ConcurrentHashMap.newKeySet();
+
+	/**
+	 * Entity UUIDs immune to the cosmetic {@code World#createExplosion} blast fired below (gate HF, §7):
+	 * that call applies vanilla entity damage on its own, before the {@code Damage.Owner_Immunity}/
+	 * {@code Ignore_Teams} protected-entity loop further down ever runs. Populated just before the call and
+	 * consulted by {@code WeaponInteract}'s explosion-cause guard; cleared on the next tick as a safety net
+	 * in case a protected entity's damage event never actually fires (e.g. already dead).
+	 */
+	public static final Set<UUID> vanillaBlastImmune = ConcurrentHashMap.newKeySet();
 
 	private final JavaPlugin         plugin;
 	private final ThrowableWeapon    weapon;
@@ -215,6 +226,19 @@ public class ThrowableAction {
 			}
 		}
 
+		// ponytail: global short-lived set, not per-detonation scoping - fine at this scale (one grenade
+		// blast per tick in practice); revisit if concurrent grenades ever need independent immunity windows.
+		if (data.getExplosionRadius() > 0) {
+			for (Entity nearby : world.getNearbyEntities(center, data.getExplosionRadius(), data.getExplosionRadius(),
+			                                             data.getExplosionRadius())) {
+				if (nearby instanceof LivingEntity target && DamageRules.isProtected(data, player, target)) {
+					vanillaBlastImmune.add(target.getUniqueId());
+				}
+			}
+			if (DamageRules.isProtected(data, player, player)) vanillaBlastImmune.add(player.getUniqueId());
+			Bukkit.getScheduler().runTask(plugin, vanillaBlastImmune::clear);
+		}
+
 		world.createExplosion(center.getX(), center.getY(), center.getZ(), (float) data.getExplosionRadius(),
 		                      false, false, player);
 
@@ -228,6 +252,10 @@ public class ThrowableAction {
 		                                             data.getExplosionRadius())) {
 			if (!(nearby instanceof LivingEntity target)) continue;
 			if (nearby.getLocation().distanceSquared(center) > radiusSq) continue;
+
+			// Damage.Ignore_Teams (gate HF, §4) — a protected teammate is skipped entirely (Owner_Immunity is
+			// moot here since getNearbyEntities() never returns the thrower themselves).
+			if (DamageRules.isProtected(data, player, target)) continue;
 
 			// Fire the unified impact event so future event consumers (and the cops-n-crooks
 			// raytrace handlers added in the gangland-weapon raytrace refactor) react to grenade
@@ -247,13 +275,26 @@ public class ThrowableAction {
 						new WeaponEntityDamageEvent(weapon, target, impactEvent.getDamage(), player, weapon.getName(),
 						                            DamageKind.EXPLOSION));
 				target.damage(impactEvent.getDamage(), player);
+
+				// Damage.Knockback (gate HF, §6) — additional falloff push on top of whatever vanilla knockback
+				// target.damage(amount, player) already applied.
+				double dist   = target.getLocation().distance(center);
+				double factor = DamageMath.explosionKnockbackFactor(data.getKnockback(), dist, data.getExplosionRadius());
+				if (factor > 0) {
+					Vector direction = dist > 1e-6
+					                    ? target.getLocation().toVector().subtract(center.toVector()).normalize()
+					                    : new Vector(0, 1, 0);
+					target.setVelocity(target.getVelocity().add(direction.multiply(factor)));
+				}
 			}
 			if (data.getFireTicks() > 0) target.setFireTicks(data.getFireTicks());
 		}
 
 		// getNearbyEntities() never returns the player themselves, so self-damage and knockback must be applied explicitly.
 		if (player.getLocation().distanceSquared(center) <= radiusSq) {
-			if (totalDmg > 0) player.damage(totalDmg);
+			// Damage.Owner_Immunity (gate HF, §4) — defaults false, so grenades keep self-damaging unless a
+			// weapon opts in. The thrower's own blast-knockback below is unaffected — it existed before this gate.
+			if (totalDmg > 0 && !DamageRules.isProtected(data, player, player)) player.damage(totalDmg);
 			if (data.getFireTicks() > 0) player.setFireTicks(data.getFireTicks());
 			Vector blastDir = player.getLocation().toVector().subtract(center.toVector());
 			double dist     = blastDir.length();

@@ -35,6 +35,18 @@ public class BartizanSettings implements FileInitializer {
 	private static @Getter int blockRegenerationStepTicks;
 
 	/**
+	 * {@code Damage_Modifiers:} — global percent-of-damage modifiers applied on the default gun-hit path
+	 * (weapons-roadmap.md gate {@code HF}, §5). All default {@code 0} (no-op) when the section is present but a key
+	 * is missing, and all default {@code 0} with a logged warning when the whole section is absent. {@code double}
+	 * (not {@code int}) so a fractional percent like {@code Per_Armor_Point: -1.5} is honoured.
+	 */
+	private static @Getter double damageModifierPerArmorPoint;
+	private static @Getter double damageModifierSneaking;
+	private static @Getter double damageModifierSprinting;
+	private static @Getter double damageModifierInMidair;
+	private static @Getter double damageModifierShielding;
+
+	/**
 	 * Fallback effect lists used when a weapon declares no {@code Effects:} list for a given hook (weapons-roadmap.md
 	 * gate {@code HA}, §1 "Global defaults"). Never {@code null} — empty when {@code Default_Effects:} is absent.
 	 */
@@ -69,6 +81,11 @@ public class BartizanSettings implements FileInitializer {
 	private static int intVal(NodeReader parent, String key, int def) {
 		if (parent == null) return def;
 		return parent.get(key).asInt().orDefault(def);
+	}
+
+	private static double doubleVal(NodeReader parent, String key, double def) {
+		if (parent == null) return def;
+		return parent.get(key).asDouble().orDefault(def);
 	}
 
 	private static boolean bool(NodeReader parent, String key, boolean def) {
@@ -108,6 +125,23 @@ public class BartizanSettings implements FileInitializer {
 			log.warn("settings.yml has no Default_Effects section; using the built-in defaults — add the "
 			         + "section to customise them");
 			defaultEffects = EffectsSectionParser.builtInDefaults();
+		}
+
+		if (root != null && root.has("Damage_Modifiers")) {
+			NodeReader damageModifiers   = section(root, "Damage_Modifiers", report);
+			damageModifierPerArmorPoint = doubleVal(damageModifiers, "Per_Armor_Point", 0);
+			damageModifierSneaking      = doubleVal(damageModifiers, "Sneaking", 0);
+			damageModifierSprinting     = doubleVal(damageModifiers, "Sprinting", 0);
+			damageModifierInMidair      = doubleVal(damageModifiers, "In_Midair", 0);
+			damageModifierShielding     = doubleVal(damageModifiers, "Shielding", 0);
+		} else {
+			log.warn("settings.yml has no Damage_Modifiers section; using the built-in defaults (all 0) — add "
+			         + "the section to customise them");
+			damageModifierPerArmorPoint = 0;
+			damageModifierSneaking      = 0;
+			damageModifierSprinting     = 0;
+			damageModifierInMidair      = 0;
+			damageModifierShielding     = 0;
 		}
 
 		if (!report.isEmpty()) report.log(log);

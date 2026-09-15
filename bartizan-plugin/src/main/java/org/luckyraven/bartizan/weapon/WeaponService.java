@@ -2,7 +2,6 @@ package org.luckyraven.bartizan.weapon;
 
 import lombok.Getter;
 import org.bukkit.GameMode;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
@@ -313,10 +312,6 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 
 	public void clear() {
 		weapons.clear();
-	}
-
-	public boolean isHeadPosition(Location l1, Location l2) {
-		return Math.abs(l1.getY() - l2.getY()) > 1.4;
 	}
 
 	private ItemStack itemAccordingToSlot(Player player, EquipmentSlot equipmentSlot) {

@@ -1,7 +1,10 @@
 package org.luckyraven.bartizan.raytrace;
 
+import com.cryptomorin.xseries.XAttribute;
 import com.cryptomorin.xseries.particles.XParticle;
 import org.bukkit.*;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.*;
@@ -13,7 +16,8 @@ import org.luckyraven.keystone.util.ParticleUtil;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
-import org.luckyraven.bartizan.weapon.WeaponService;
+import org.luckyraven.bartizan.file.BartizanSettings;
+import org.luckyraven.bartizan.weapon.DamageRules;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
 import org.luckyraven.bartizan.api.weapon.dto.SoundData;
@@ -22,6 +26,7 @@ import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
 import org.luckyraven.bartizan.api.event.WeaponRaytraceImpactEvent;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
+import org.luckyraven.bartizan.api.weapon.modifiers.DamageMath;
 import org.luckyraven.bartizan.api.weapon.modifiers.ModifierHandler;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.BlockBreakModifier;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.RicochetModifier;
@@ -76,17 +81,14 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 	 */
 	private static final double MAX_DROP_RANGE = 200.0;
 
-	private final WeaponService        weaponService;
 	private final WearableService      wearableService;
 	private final BlockDamageManager   blockDamageManager;
 	private final WeaponVisualSpawner  visualSpawner;
 	private final EffectRunner         effectRunner;
 	private final Random               random;
 
-	public WeaponRaytracerImpl(WeaponService weaponService, WearableService wearableService,
-	                           BlockDamageManager blockDamageManager, WeaponVisualSpawner visualSpawner,
-	                           EffectRunner effectRunner) {
-		this.weaponService      = weaponService;
+	public WeaponRaytracerImpl(WearableService wearableService, BlockDamageManager blockDamageManager,
+	                           WeaponVisualSpawner visualSpawner, EffectRunner effectRunner) {
 		this.wearableService    = wearableService;
 		this.blockDamageManager = blockDamageManager;
 		this.visualSpawner      = visualSpawner;
@@ -310,6 +312,10 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 				request.getHitboxExpansion(),
 				e -> e != shooter
 				     && !(e instanceof ItemFrame || e instanceof ArmorStand)
+				     // Damage.Owner_Immunity / Ignore_Teams (gate HF, §4): a protected entity is skipped and the
+				     // ray continues past it rather than stopping on it. Guns only — DamageData lives on GunWeapon.
+				     && !(request.getWeapon() instanceof GunWeapon gun && e instanceof LivingEntity candidate
+				          && DamageRules.isProtected(gun.getDamageData(), shooter, candidate))
 				     && request.getEntityFilter().test(e));
 
 		// Discard hits on entities that are behind or exactly beside the ray origin — these are
@@ -406,10 +412,14 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 		Weapon       weapon  = ctx.getRequest().getWeapon();
 		LivingEntity shooter = ctx.getRequest().getShooter();
 
+		// Computed once up front (gate HF, §1) and reused both for Dropoff and the EffectContext below.
+		double distance = ctx.getRequest().getOrigin().distance(impactPt);
+
 		// --- Compute damage (gun-specific extras only when applicable) ---
-		boolean criticalHit = false;
-		boolean headshot    = false;
-		double  damage      = ctx.getState().getCurrentDamage();
+		boolean      criticalHit = false;
+		HitZone.Zone zone        = null;
+		boolean      backHit     = false;
+		double       damage      = ctx.getState().getCurrentDamage();
 
 		if (hit instanceof LivingEntity living) {
 			if (weapon instanceof GunWeapon gun) {
@@ -418,21 +428,37 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 				if (criticalHit) {
 					damage += wearableService.reduceCritBonus(dd.getCriticalHitDamage(), living);
 				}
+				damage += DamageMath.dropoff(dd.getDropoff(), distance);
 			}
 			damage = ModifierHandler.calculateArmorPiercingDamage(damage, living, weapon);
 			damage = wearableService.applyWearableReduction(damage, living, weapon instanceof GunWeapon);
 			damage = ModifierHandler.applyFlatDamage(damage, weapon);
 
-			if (weapon instanceof GunWeapon gun
-			    && weaponService.isHeadPosition(impactPt, living.getLocation())) {
-				damage += gun.getDamageData().getHeadDamage();
-				headshot = true;
+			// Hit zones (gate HF, §2) replace the old isHeadPosition check — guns only, MeleeAction/BeamAction
+			// keep their own head-only semantics via HitZone directly.
+			if (weapon instanceof GunWeapon gun) {
+				DamageData dd      = gun.getDamageData();
+				HitZone    hitZone = HitZone.of(impactPt.toVector(), living, ctx.getCurrentDir());
+				zone    = hitZone.zone();
+				backHit = hitZone.back();
+
+				damage += zoneDelta(dd, zone);
+				if (backHit) {
+					damage += dd.getBackDamage();
+				}
+
+				// Global Damage_Modifiers (gate HF, §5).
+				damage *= DamageMath.percentMultiplier(damageModifierPercent(living));
 			}
 		} else {
 			// Non-living: skip armor / wearable / headshot. Flat damage still applies so vehicle hits
 			// see the configured bonus.
 			damage = ModifierHandler.applyFlatDamage(damage, weapon);
 		}
+
+		// Additive negative deltas (dropoff, zone, wearable reduction) can sum below zero; a negative damage
+		// value reaches living.damage() as damageBlocked (health doesn't drop), silently no-opping the hit.
+		damage = Math.max(0.0, damage);
 
 		// --- Fire the event ---
 		WeaponRaytraceImpactEvent event = new WeaponRaytraceImpactEvent(
@@ -467,6 +493,11 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 
 			double healthBefore = living.getHealth();
 
+			// Damage.Knockback (gate HF, §6): saved before living.damage() so a configured value of 0 can
+			// override vanilla knockback back to zero; absent (null) leaves vanilla knockback untouched.
+			Double knockback     = weapon instanceof GunWeapon gun ? gun.getDamageData().getKnockback() : null;
+			Vector savedVelocity = knockback != null ? living.getVelocity().clone() : null;
+
 			WeaponRaytracer.setRaytraceDamageInProgress(true);
 			try {
 				living.damage(event.getDamage(), shooter);
@@ -482,6 +513,14 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 				return;
 			}
 
+			if (knockback != null) {
+				// Horizontal-only push: the full 3D ray direction would drive a downward shot's knockback
+				// into the ground instead of away from the shooter.
+				Vector push = ctx.getCurrentDir().clone();
+				push.setY(Math.max(push.getY(), 0.0));
+				living.setVelocity(savedVelocity.add(push.multiply(knockback)));
+			}
+
 			// Fire the canonical WeaponEntityDamageEvent for the default (non-short-circuited) pipeline too, so one
 			// listener (WeaponDeathListener) sees weapon damage regardless of which action fired the ray. Only a
 			// player-attributed shot can be described as a WeaponEntityDamageEvent shooter.
@@ -492,8 +531,12 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 			}
 
 			if (weapon instanceof GunWeapon gun) {
-				int fireTicks = wearableService.reduceFireTicks(gun.getDamageData().getFireTicks(), living);
+				DamageData dd         = gun.getDamageData();
+				int        fireTicks  = wearableService.reduceFireTicks(dd.getFireTicks(), living);
 				living.setFireTicks(fireTicks);
+
+				// Damage.Armor_Damage (gate HF, §3) — guns only.
+				wearableService.damageArmor(living, dd.getArmorDamage());
 			}
 
 			EffectContext effectCtx = EffectContext.builder()
@@ -502,7 +545,8 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 			                                       .victim(living)
 			                                       .impact(impactPt)
 			                                       .damage(event.getDamage())
-			                                       .distance(ctx.getRequest().getOrigin().distance(impactPt))
+			                                       .distance(distance)
+			                                       .zone(zone != null ? zone.name() : null)
 			                                       .build();
 			ctx.setHitEntity(true);
 			effectRunner.run(weapon, EffectHook.ON_HIT, effectCtx);
@@ -511,10 +555,60 @@ public class WeaponRaytracerImpl implements WeaponRaytracer {
 				effectRunner.run(weapon, EffectHook.ON_CRITICAL, effectCtx);
 			}
 
-			if (headshot) {
-				effectRunner.run(weapon, EffectHook.ON_HEADSHOT, effectCtx);
+			if (zone != null) {
+				EffectHook zoneHook = switch (zone) {
+					case HEAD -> EffectHook.ON_HEADSHOT;
+					case ARMS -> EffectHook.ON_ARMS;
+					case LEGS -> EffectHook.ON_LEGS;
+					case FEET -> EffectHook.ON_FEET;
+					case BODY -> null;
+				};
+				if (zoneHook != null) {
+					effectRunner.run(weapon, zoneHook, effectCtx);
+				}
+				if (backHit) {
+					effectRunner.run(weapon, EffectHook.ON_BACK, effectCtx);
+				}
 			}
 		}
+	}
+
+	private static double zoneDelta(DamageData dd, HitZone.Zone zone) {
+		return switch (zone) {
+			case HEAD -> dd.getHeadDamage();
+			case BODY -> dd.getBodyDamage();
+			case ARMS -> dd.getArmsDamage();
+			case LEGS -> dd.getLegsDamage();
+			case FEET -> dd.getFeetDamage();
+		};
+	}
+
+	/**
+	 * Sums the active {@code settings.yml Damage_Modifiers} percents for {@code living} (gate HF, §5). {@code
+	 * Walking} has no cheap signal on Spigot and is deliberately unimplemented.
+	 */
+	// ponytail: Walking is skipped — no cheap "is this entity walking" signal on Spigot; add if a future gate needs it.
+	private static double damageModifierPercent(LivingEntity living) {
+		double percent = armorPoints(living) * BartizanSettings.getDamageModifierPerArmorPoint();
+
+		if (living instanceof Player player) {
+			if (player.isSneaking()) percent += BartizanSettings.getDamageModifierSneaking();
+			if (player.isSprinting()) percent += BartizanSettings.getDamageModifierSprinting();
+			if (player.isBlocking()) percent += BartizanSettings.getDamageModifierShielding();
+		}
+		if (!living.isOnGround()) {
+			percent += BartizanSettings.getDamageModifierInMidair();
+		}
+
+		return percent;
+	}
+
+	private static double armorPoints(LivingEntity living) {
+		Attribute armorAttribute = XAttribute.ARMOR.get();
+		if (armorAttribute == null) return 0;
+
+		AttributeInstance instance = living.getAttribute(armorAttribute);
+		return instance != null ? instance.getValue() : 0;
 	}
 
 	/**

@@ -46,6 +46,11 @@ public class ThrowableWeaponParser {
 		boolean sticky          = shoot.get("Sticky").asBool().orDefault(false);
 		String  entityType      = shoot.get("Entity_Type").asString().orDefault("SNOWBALL");
 
+		// Owner_Immunity defaults false so grenades keep self-damaging unless a weapon opts in (gate HF, §4).
+		boolean ownerImmunity = shoot.get("Owner_Immunity").asBool().orDefault(false);
+		boolean ignoreTeams   = shoot.get("Ignore_Teams").asBool().orDefault(false);
+		double  knockback     = shoot.get("Knockback").asDouble().orDefault(0.0);
+
 		if (bounces && sticky) {
 			throw new InvalidConfigurationException("Throwable cannot have both Bounces and Sticky enabled");
 		}
@@ -70,7 +75,8 @@ public class ThrowableWeaponParser {
 
 		ThrowableData throwableData = new ThrowableData(fuseTime, explosionRadius, explosionDamage, fireTicks,
 		                                                bounces, maxBounces, sticky, entityType,
-		                                                type, effects, cloudDuration, cloudRadius, displayItem);
+		                                                type, effects, cloudDuration, cloudRadius, displayItem,
+		                                                ownerImmunity, ignoreTeams, knockback);
 		ParsedAmmo     parsed         = ammoParser.parse(root, report);
 		ReloadData     reloadData     = parsed != null ? parsed.reload() : null;
 		AmmunitionData ammunitionData = parsed != null ? parsed.ammo() : null;

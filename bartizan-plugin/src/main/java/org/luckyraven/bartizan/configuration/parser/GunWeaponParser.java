@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.configuration.parser;
 
+import lombok.CustomLog;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.MappingNode;
@@ -8,15 +9,20 @@ import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
 import org.luckyraven.bartizan.configuration.parser.AmmunitionSectionParser.ParsedAmmo;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
+import org.luckyraven.bartizan.api.weapon.dto.DropoffStep;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.api.weapon.ProjectileType;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Parses the {@code Shoot:} section of a GUN weapon YAML and constructs a {@link GunWeapon}. Ammunition is required for
  * guns — throws if the {@code Ammunition} section is absent or invalid.
  */
+@CustomLog
 public class GunWeaponParser {
 
 	private final AmmunitionSectionParser ammoParser;
@@ -81,6 +87,33 @@ public class GunWeaponParser {
 			criticalHitDamage = crit.get("Amount").asInt().min(0).orDefault(0);
 		}
 
+		// Dropoff: list of "<distance> <delta>" entries — malformed entries are skipped with a warning rather
+		// than failing the whole weapon load.
+		List<DropoffStep> dropoff = new ArrayList<>();
+		for (String entry : damage.get("Dropoff").asList().ofStrings().orEmpty()) {
+			DropoffStep step = DropoffStep.parse(entry);
+			if (step != null) {
+				dropoff.add(step);
+			} else {
+				log.warn("Gun weapon '{}' has an invalid Damage.Dropoff entry '{}' — skipping it", base.fileName(),
+				         entry);
+			}
+		}
+
+		// Hit-zone deltas (gate HF §2) — Head already existed above; Body/Arms/Legs/Feet/Back are new.
+		double bodyDamage = damage.get("Body").asDouble().orDefault(0.0);
+		double armsDamage = damage.get("Arms").asDouble().orDefault(0.0);
+		double legsDamage = damage.get("Legs").asDouble().orDefault(0.0);
+		double feetDamage = damage.get("Feet").asDouble().orDefault(0.0);
+		double backDamage = damage.get("Back").asDouble().orDefault(0.0);
+
+		int     armorDamage   = damage.get("Armor_Damage").asInt().min(0).orDefault(0);
+		boolean ownerImmunity = damage.get("Owner_Immunity").asBool().orDefault(false);
+		boolean ignoreTeams   = damage.get("Ignore_Teams").asBool().orDefault(false);
+
+		// Knockback: null (absent) leaves vanilla knockback untouched; any present value (0 included) replaces it.
+		Double knockback = damage.has("Knockback") ? damage.get("Knockback").asDouble().orDefault(0.0) : null;
+
 		int projectileConsumed = projectile.get("Consumed_Amount").asInt().min(0).orDefault(0);
 		int projectilePerShot  = projectile.get("Per_Shot").asInt().min(1).orDefault(1);
 		// Cooldown is authored as a decimal (e.g. 0.8) and Bukkit's getInt silently truncated to 0. Preserve that
@@ -131,6 +164,16 @@ public class GunWeaponParser {
 		gun.getDamageData().setHeadDamage(projectileHeadDamage);
 		gun.getDamageData().setCriticalHitChance(criticalHitChance);
 		gun.getDamageData().setCriticalHitDamage(criticalHitDamage);
+		gun.getDamageData().setDropoff(dropoff);
+		gun.getDamageData().setBodyDamage(bodyDamage);
+		gun.getDamageData().setArmsDamage(armsDamage);
+		gun.getDamageData().setLegsDamage(legsDamage);
+		gun.getDamageData().setFeetDamage(feetDamage);
+		gun.getDamageData().setBackDamage(backDamage);
+		gun.getDamageData().setArmorDamage(armorDamage);
+		gun.getDamageData().setOwnerImmunity(ownerImmunity);
+		gun.getDamageData().setIgnoreTeams(ignoreTeams);
+		gun.getDamageData().setKnockback(knockback);
 
 		return gun;
 	}

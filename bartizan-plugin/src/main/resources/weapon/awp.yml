@@ -31,6 +31,25 @@ Shoot:
          Critical_Hit:
             Chance: 10
             Amount: 30
+         # Dropoff: "<distance> <delta>" entries - the entry with the largest distance <= the actual shot
+         # distance applies its delta (added to Base before armour math); nothing below the first distance.
+         # Uncomment to enable falloff past 20/60/100 blocks:
+         # Dropoff:
+         #    - "20 -5"
+         #    - "60 -15"
+         #    - "100 -25"
+         # Hit-zone deltas (Head above stays the headshot bonus). Legs/Back apply on top of each other.
+         # Positive adds damage, negative subtracts - both default 0 (no zone bonus/penalty).
+         Legs: 0
+         Back: 0
+         # Armor_Damage: durability damage dealt to each worn armour piece per hit (0 = never touch armour).
+         Armor_Damage: 0
+         # Owner_Immunity defaults false and is left unset here - guns don't hit their own shooter anyway.
+         # Ignore_Teams: victims on the shooter's scoreboard team take no damage from this weapon.
+         Ignore_Teams: false
+         # Knockback: shotDir * Knockback replaces vanilla knockback on hit (0 would disable it; omit the key
+         # entirely to keep vanilla knockback untouched). Uncomment to enable:
+         # Knockback: 0.4
       Consumed_Amount: 1
       Per_Shot: 1
       Cooldown: 1.8

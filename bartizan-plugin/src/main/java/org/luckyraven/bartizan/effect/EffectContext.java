@@ -41,6 +41,12 @@ public class EffectContext {
 	private final int ammoMax;
 	@Nullable
 	private final String denyReason;
+	/**
+	 * The hit-zone name (e.g. {@code "HEAD"}, {@code "ARMS"}) for a gun hit, {@code null} when not applicable
+	 * (weapons-roadmap.md gate {@code HF}, §2). Only {@code WeaponRaytracerImpl} sets this.
+	 */
+	@Nullable
+	private final String zone;
 
 	/**
 	 * Pre-fills the fields every firing action's "shot" context shares — {@code weapon}, {@code source},
@@ -72,6 +78,7 @@ public class EffectContext {
 		map.put("%ammo_left%", String.valueOf(ammoLeft));
 		map.put("%ammo_max%", String.valueOf(ammoMax));
 		map.put("%deny_reason%", denyReason != null ? denyReason : "");
+		map.put("%zone%", zone != null ? zone : "");
 		return map;
 	}
 

@@ -51,6 +51,22 @@ public class ThrowableData implements Cloneable {
 	@Nullable
 	private ItemStack     displayItem;
 
+	/**
+	 * {@code Owner_Immunity} / {@code Ignore_Teams} (gate {@code HF}, §4) — same keys and meaning as a gun's
+	 * {@code Damage.Owner_Immunity}/{@code Damage.Ignore_Teams}, read here directly under {@code Throw:} since
+	 * throwables have no nested {@code Damage:} sub-block. {@code Owner_Immunity} defaults {@code false} so grenades
+	 * keep self-damaging unless a weapon opts in.
+	 */
+	private boolean ownerImmunity;
+	private boolean ignoreTeams;
+
+	/**
+	 * {@code Knockback} (gate {@code HF}, §6) — per victim, an additional
+	 * {@code direction-from-centre * knockback * (1 - dist/radius)} vector added after the damage call. {@code 0}
+	 * (default) adds nothing; the thrower's own existing blast knockback is unaffected by this field.
+	 */
+	private double knockback;
+
 	@Override
 	public ThrowableData clone() {
 		try {
