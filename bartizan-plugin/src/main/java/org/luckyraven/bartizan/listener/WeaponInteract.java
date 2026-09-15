@@ -201,14 +201,15 @@ public class WeaponInteract implements Listener {
 			event.setUseInteractedBlock(Event.Result.DENY);
 			event.setUseItemInHand(Event.Result.DENY);
 
-			boolean scopingIn = scopeData != null && !scopeData.isScoped();
-			if (scopingIn) weapon.scope(player, true);
-			else weapon.unScope(player, true);
+			boolean scopingIn = weapon.cycleScope(player);
 
 			// A scopeless weapon (scopeData == null) still reaches this branch (validateScope defaults to true)
 			// but has no ON_SCOPE_IN/ON_SCOPE_OUT of its own to fire.
 			if (scopeData != null) {
-				EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).build();
+				// Zoom_Stacking stage (1-based) so Pitch_Per_Level sounds can differ per scope-in stage; 0 on
+				// scope-out (currentStack is already reset by ScopeData.advanceZoomStack by this point).
+				int level = scopingIn ? scopeData.getCurrentStack() + 1 : 0;
+				EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).level(level).build();
 				effectRunner.run(weapon, scopingIn ? EffectHook.ON_SCOPE_IN : EffectHook.ON_SCOPE_OUT, ctx);
 			}
 			return;

@@ -1,5 +1,8 @@
 package org.luckyraven.bartizan.weapon;
 
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,7 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 /**
@@ -125,6 +130,29 @@ class WeaponServiceTest {
 		assertNotNull(given);
 		assertEquals(1, service.getWeapons().size());
 		assertSame(given, service.getWeapons().get(given.getUuid()));
+	}
+
+	/**
+	 * The main-then-off-hand probe shared by {@code BartizanApiImpl#getHeldWeapon} and
+	 * {@code WeaponQuitCleanupListener}'s death/quit handlers (weapons-roadmap.md gate {@code HH} review fix).
+	 */
+	@Test
+	@DisplayName("getHeldWeapon falls back to the off hand when the main hand is not a weapon")
+	void getHeldWeapon_mainHandEmpty_fallsBackToOffHand() {
+		WeaponService   spyService = spy(service);
+		Player          player     = mock(Player.class);
+		PlayerInventory inventory  = mock(PlayerInventory.class);
+		ItemStack       mainHand   = mock(ItemStack.class);
+		ItemStack       offHand    = mock(ItemStack.class);
+		when(player.getInventory()).thenReturn(inventory);
+		when(inventory.getItemInMainHand()).thenReturn(mainHand);
+		when(inventory.getItemInOffHand()).thenReturn(offHand);
+
+		Weapon offHandWeapon = mock(Weapon.class);
+		doReturn(null).when(spyService).validateAndGetWeapon(player, mainHand);
+		doReturn(offHandWeapon).when(spyService).validateAndGetWeapon(player, offHand);
+
+		assertSame(offHandWeapon, spyService.getHeldWeapon(player));
 	}
 
 }

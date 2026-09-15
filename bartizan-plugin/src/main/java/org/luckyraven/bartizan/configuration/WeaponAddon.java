@@ -456,8 +456,33 @@ public class WeaponAddon {
 
 		NodeReader scope = NodeReader.of(scopeSection, report);
 
-		weapon.setScopeData(new ScopeData());
-		weapon.getScopeData().setLevel(scope.get("Level").asInt().orDefault(0));
+		ScopeData scopeData = new ScopeData();
+		weapon.setScopeData(scopeData);
+
+		// Zoom_Amount is a WeaponMechanics-style alias for Level; when both are given, Level wins with a warning.
+		// Both keys are read unconditionally (NodeReader.has() alone does not mark a key as touched, and a
+		// short-circuited get() would otherwise leave Zoom_Amount looking unread when Level also wins), so
+		// configuring both never raises a spurious config.unknown_key on top of the intended warning below.
+		int     levelValue      = scope.get("Level").asInt().orDefault(0);
+		int     zoomAmountValue = scope.get("Zoom_Amount").asInt().orDefault(0);
+		boolean hasLevel        = scope.has("Level");
+		boolean hasZoomAmount   = scope.has("Zoom_Amount");
+		if (hasLevel && hasZoomAmount) {
+			report.add(Severity.WARNING, scopeSection.location(), scopeSection.path(),
+			           "Scope.Level and Scope.Zoom_Amount both configured - Level takes precedence",
+			           "scope.level_and_zoom_amount");
+		}
+		scopeData.setLevel(hasLevel ? levelValue : zoomAmountValue);
+
+		scopeData.setNightVision(scope.get("Night_Vision").asBool().orDefault(false));
+		scopeData.setShootDelayAfterScope(scope.get("Shoot_Delay_After_Scope").asInt().min(0).orDefault(0));
+
+		MappingNode zoomStackingSection = scope.get("Zoom_Stacking").asMapping().orNull();
+		if (zoomStackingSection != null) {
+			NodeReader zoomStacking = NodeReader.of(zoomStackingSection, report);
+			scopeData.setZoomStacks(zoomStacking.get("Maximum_Stacks").asInt().min(1).orDefault(1));
+			scopeData.setZoomPerStack(zoomStacking.get("Increase_Per_Stack").asInt().min(0).orDefault(1));
+		}
 
 		MappingNode soundSection = scope.get("Sound").asMapping().orNull();
 		if (soundSection == null) return;

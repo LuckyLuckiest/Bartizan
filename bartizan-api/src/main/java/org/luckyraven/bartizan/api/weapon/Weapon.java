@@ -169,7 +169,10 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 
 		scopeData.setScoped(true);
 
-		applyEffect(player, XPotion.SLOWNESS, scopeData.getLevel());
+		applyEffect(player, XPotion.SLOWNESS, scopeData.amplifier());
+		// Night_Vision and Shoot_Delay_After_Scope are player-initiated-only side effects (see #cycleScope) -
+		// Reload#startReloading also calls this method to slow the player during a reload, and must not trigger
+		// either one.
 	}
 
 	public void unScope(Player player, boolean bypass) {
@@ -177,8 +180,44 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		if (!bypass && !scopeData.isScoped()) return;
 
 		scopeData.setScoped(false);
+		scopeData.setCurrentStack(0);
 
 		removeEffect(player, XPotion.SLOWNESS);
+		if (scopeData.isNightVision()) {
+			removeEffect(player, XPotion.NIGHT_VISION);
+		}
+	}
+
+	/**
+	 * LMB scope toggle (weapons-roadmap.md gate {@code HH}): delegates the {@code Zoom_Stacking} transition to
+	 * {@link ScopeData#advanceZoomStack()} then applies it through {@link #scope}/{@link #unScope} (both called
+	 * with {@code bypass=true} since the stack step must re-apply even though {@code scoped} is already true).
+	 *
+	 * @return {@code true} when this call scoped in (or stepped to a further zoom stage) - the caller fires
+	 * 		{@code ON_SCOPE_IN}; {@code false} when it unscoped - {@code ON_SCOPE_OUT}. A scopeless weapon
+	 * 		({@code scopeData == null}) is a no-op that reports {@code false}.
+	 */
+	public boolean cycleScope(Player player) {
+		if (scopeData == null) return false;
+
+		boolean scopingIn = scopeData.advanceZoomStack();
+		if (scopingIn) {
+			scope(player, true);
+
+			if (scopeData.isNightVision()) {
+				applyEffect(player, XPotion.NIGHT_VISION, 0);
+			}
+
+			// Scope.Shoot_Delay_After_Scope: mirrors Reload.Shoot_Delay_After_Reload's lock (Reload#endReloading).
+			// Player-initiated only - Reload's own scope(player, false) call must not arm this.
+			if (scopeData.getShootDelayAfterScope() > 0) {
+				shootLockedUntilMillis =
+						System.currentTimeMillis() + scopeData.getShootDelayAfterScope() * 50L; // 50ms/tick
+			}
+		} else {
+			unScope(player, true);
+		}
+		return scopingIn;
 	}
 
 	public boolean isReloading() {
@@ -520,7 +559,10 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		this.recoilData          = source.recoilData != null ? source.recoilData.clone() : null;
 		this.scopeData           = source.scopeData != null ? source.scopeData.clone() : null;
 
-		if (this.scopeData != null) this.scopeData.setScoped(false);
+		if (this.scopeData != null) {
+			this.scopeData.setScoped(false);
+			this.scopeData.setCurrentStack(0);
+		}
 
 		this.spreadData           = source.spreadData != null ? source.spreadData.clone() : null;
 		// MuzzleOffsetData is a fully immutable record - sharing the same instance across template copies is

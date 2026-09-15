@@ -287,6 +287,19 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		return finalWeapon;
 	}
 
+	/**
+	 * The weapon {@code player} is actually holding: main hand, falling back to the off hand when the main hand
+	 * isn't a weapon. Shared by {@code BartizanApiImpl#getHeldWeapon} and any death/quit cleanup that must
+	 * un-scope/stop-reload whatever weapon the player was holding, not just the main hand.
+	 */
+	@Nullable
+	public Weapon getHeldWeapon(Player player) {
+		Weapon mainHand = validateAndGetWeapon(player, player.getInventory().getItemInMainHand());
+		if (mainHand != null) return mainHand;
+
+		return validateAndGetWeapon(player, player.getInventory().getItemInOffHand());
+	}
+
 	@Override
 	@Nullable
 	public Weapon validateAndGetWeapon(Player player, ItemStack heldItem) {

@@ -46,4 +46,15 @@ public interface BartizanApi {
 	 */
 	boolean isReloading(Player player);
 
+	/**
+	 * Starts a reload for {@code player}'s held weapon (see {@link #getHeldWeapon(Player)}) - the same guarded
+	 * path {@code WeaponDroppedListener} and {@code Reload.Auto_Reload_When_Empty} already go through
+	 * ({@code WeaponService.tryReload}: no-op while already reloading, magazine full, or the player lacks the
+	 * ammo (and isn't creative)). weapons-roadmap.md gate {@code HH}.
+	 *
+	 * @return {@code true} if a reload was started; {@code false} when the player holds no weapon or the reload
+	 * 		was refused.
+	 */
+	boolean tryReload(Player player);
+
 }

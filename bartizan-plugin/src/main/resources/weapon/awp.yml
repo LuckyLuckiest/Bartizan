@@ -180,6 +180,17 @@ Reload:
 
 Scope:
    Level: 4
+   # Night_Vision: false (default) — a bolt-action sniper scope is glass, not thermal.
+   Night_Vision: false
+   # Re-pressing scope steps to a tighter stage instead of unscoping immediately: stage n amplifier =
+   # Level + n * Increase_Per_Stack. Past the last stage, the next press unscopes.
+   # The amplifier is capped at 5 regardless of how high Level/Increase_Per_Stack add up - WeaponMechanics'
+   # Zoom_Amount scale goes to 10, but vanilla SLOWNESS 6+ can freeze the player's movement outright.
+   Zoom_Stacking:
+      Maximum_Stacks: 2
+      Increase_Per_Stack: 1
+   # Ticks after scoping in before the gun may fire — settling the crosshair before the shot counts.
+   Shoot_Delay_After_Scope: 4
 
    Sound:
       Default_Sound:

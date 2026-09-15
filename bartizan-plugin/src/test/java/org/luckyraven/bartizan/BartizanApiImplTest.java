@@ -3,6 +3,7 @@ package org.luckyraven.bartizan;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
@@ -20,15 +21,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Covers the gate-{@code HD} additions to {@link BartizanApiImpl}: {@code getHeldWeapon} checking the main hand
- * then the off hand, and {@code isScoping}/{@code isReloading} reading the resolved weapon's state (mocking the
- * {@code WeaponCatalog} the way its own {@code WeaponManager} does {@code validateAndGetWeapon}).
+ * Covers the gate-{@code HD} additions to {@link BartizanApiImpl}: {@code getHeldWeapon} delegating to
+ * {@code WeaponManager.getHeldWeapon} (the main-then-off-hand probe itself is pinned directly against
+ * {@code WeaponService} - see {@code WeaponServiceTest#getHeldWeapon_mainHandEmpty_fallsBackToOffHand}), and
+ * {@code isScoping}/{@code isReloading} reading the resolved weapon's state; and the gate-{@code HH} addition,
+ * {@code tryReload}, delegating to {@code WeaponManager.tryReload}.
  */
 @DisplayName("BartizanApiImpl")
 class BartizanApiImplTest {
 
+	private final JavaPlugin      plugin        = mock(JavaPlugin.class);
 	private final WeaponManager   weaponManager = mock(WeaponManager.class);
-	private final BartizanApiImpl api           = new BartizanApiImpl(weaponManager, mock(WearableAddon.class),
+	private final BartizanApiImpl api           = new BartizanApiImpl(plugin, weaponManager, mock(WearableAddon.class),
 	                                                                   mock(AmmunitionManager.class),
 	                                                                   mock(NpcWeaponFactory.class),
 	                                                                   mock(WeaponItemApi.class));
@@ -43,17 +47,14 @@ class BartizanApiImplTest {
 	}
 
 	@Test
-	@DisplayName("getHeldWeapon falls back to the off hand when the main hand is not a weapon")
+	@DisplayName("getHeldWeapon delegates to WeaponManager.getHeldWeapon")
 	void getHeldWeapon_mainHandEmpty_fallsBackToOffHand() {
-		ItemStack mainHand = mock(ItemStack.class);
-		ItemStack offHand  = mock(ItemStack.class);
-		Player    player   = player(mainHand, offHand);
+		Player player = player(mock(ItemStack.class), mock(ItemStack.class));
 
-		Weapon offHandWeapon = mock(Weapon.class);
-		when(weaponManager.validateAndGetWeapon(player, mainHand)).thenReturn(null);
-		when(weaponManager.validateAndGetWeapon(player, offHand)).thenReturn(offHandWeapon);
+		Weapon resolvedWeapon = mock(Weapon.class);
+		when(weaponManager.getHeldWeapon(player)).thenReturn(resolvedWeapon);
 
-		assertEquals(offHandWeapon, api.getHeldWeapon(player));
+		assertEquals(resolvedWeapon, api.getHeldWeapon(player));
 	}
 
 	@Test
@@ -67,13 +68,14 @@ class BartizanApiImplTest {
 	@Test
 	@DisplayName("isScoping reads the held weapon's ScopeData")
 	void isScoping_readsScopeData() {
-		ItemStack mainHand = mock(ItemStack.class);
-		Player    player   = player(mainHand, mock(ItemStack.class));
+		Player player = player(mock(ItemStack.class), mock(ItemStack.class));
 
 		Weapon    weapon    = mock(Weapon.class);
-		ScopeData scopeData = new ScopeData(2, true);
+		ScopeData scopeData = new ScopeData();
+		scopeData.setLevel(2);
+		scopeData.setScoped(true);
 		when(weapon.getScopeData()).thenReturn(scopeData);
-		when(weaponManager.validateAndGetWeapon(player, mainHand)).thenReturn(weapon);
+		when(weaponManager.getHeldWeapon(player)).thenReturn(weapon);
 
 		assertTrue(api.isScoping(player));
 
@@ -92,12 +94,11 @@ class BartizanApiImplTest {
 	@Test
 	@DisplayName("isReloading reads the held weapon's isReloading()")
 	void isReloading_readsWeapon() {
-		ItemStack mainHand = mock(ItemStack.class);
-		Player    player   = player(mainHand, mock(ItemStack.class));
+		Player player = player(mock(ItemStack.class), mock(ItemStack.class));
 
 		Weapon weapon = mock(Weapon.class);
 		when(weapon.isReloading()).thenReturn(true);
-		when(weaponManager.validateAndGetWeapon(player, mainHand)).thenReturn(weapon);
+		when(weaponManager.getHeldWeapon(player)).thenReturn(weapon);
 
 		assertTrue(api.isReloading(player));
 	}
@@ -108,6 +109,26 @@ class BartizanApiImplTest {
 		Player player = player(mock(ItemStack.class), mock(ItemStack.class));
 
 		assertFalse(api.isReloading(player));
+	}
+
+	@Test
+	@DisplayName("tryReload delegates to WeaponManager.tryReload for the held weapon")
+	void tryReload_delegatesToWeaponManager() {
+		Player player = player(mock(ItemStack.class), mock(ItemStack.class));
+
+		Weapon weapon = mock(Weapon.class);
+		when(weaponManager.getHeldWeapon(player)).thenReturn(weapon);
+		when(weaponManager.tryReload(plugin, player, weapon)).thenReturn(true);
+
+		assertTrue(api.tryReload(player));
+	}
+
+	@Test
+	@DisplayName("tryReload is false when the player holds no weapon")
+	void tryReload_noWeapon_isFalse() {
+		Player player = player(mock(ItemStack.class), mock(ItemStack.class));
+
+		assertFalse(api.tryReload(player));
 	}
 
 }

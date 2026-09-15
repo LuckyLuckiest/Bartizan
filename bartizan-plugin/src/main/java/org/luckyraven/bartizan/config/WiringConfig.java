@@ -169,8 +169,8 @@ public final class WiringConfig {
 	public BartizanApiImpl bartizanApi(WeaponManager weaponManager, WearableAddon wearableAddon,
 	                               AmmunitionManager ammunitionManager, NpcWeaponFactory npcWeaponFactory,
 	                               WeaponItemApi weaponItemApi) {
-		BartizanApiImpl api = new BartizanApiImpl(weaponManager, wearableAddon, ammunitionManager, npcWeaponFactory,
-		                                      weaponItemApi);
+		BartizanApiImpl api = new BartizanApiImpl(bartizan, weaponManager, wearableAddon, ammunitionManager,
+		                                      npcWeaponFactory, weaponItemApi);
 		Bukkit.getServicesManager().register(BartizanApi.class, api, bartizan, ServicePriority.Normal);
 		return api;
 	}

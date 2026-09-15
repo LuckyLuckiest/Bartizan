@@ -73,7 +73,7 @@ class CircumstanceRulesTest {
 	@DisplayName("Zooming: required — an unscoped weapon is denied")
 	void zooming_required_inactiveIsDenied() {
 		GunWeapon weapon = WeaponFixtures.gunWeapon(6, 1);
-		weapon.setScopeData(new ScopeData(4, false));
+		weapon.setScopeData(scopeData(4, false));
 		HandlingData handling = new HandlingData();
 		handling.getCircumstances().put(Circumstance.ZOOMING, Rule.REQUIRED);
 		weapon.setHandlingData(handling);
@@ -87,7 +87,7 @@ class CircumstanceRulesTest {
 	@DisplayName("Zooming: required — a scoped-in weapon passes")
 	void zooming_required_activePasses() {
 		GunWeapon weapon = WeaponFixtures.gunWeapon(6, 1);
-		weapon.setScopeData(new ScopeData(4, true));
+		weapon.setScopeData(scopeData(4, true));
 		HandlingData handling = new HandlingData();
 		handling.getCircumstances().put(Circumstance.ZOOMING, Rule.REQUIRED);
 		weapon.setHandlingData(handling);
@@ -123,6 +123,13 @@ class CircumstanceRulesTest {
 		when(player.isOnGround()).thenReturn(true);
 
 		assertNull(CircumstanceRules.firstDenied(player, weapon));
+	}
+
+	private static ScopeData scopeData(int level, boolean scoped) {
+		ScopeData scopeData = new ScopeData();
+		scopeData.setLevel(level);
+		scopeData.setScoped(scoped);
+		return scopeData;
 	}
 
 }

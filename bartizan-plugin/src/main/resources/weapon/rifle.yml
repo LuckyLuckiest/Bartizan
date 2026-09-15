@@ -271,8 +271,12 @@ Reload:
 
 # Weapon scope configuration
 Scope:
-   # Sets the scope level
+   # Sets the scope level. The resulting SLOWNESS amplifier is capped at 5 regardless of Level/Zoom_Stacking -
+   # WeaponMechanics' Zoom_Amount scale goes to 10, but vanilla SLOWNESS 6+ can freeze the player outright.
    Level: 2
+   # Zoom_Amount is a WeaponMechanics-style alias for Level, for files ported from there. Ignored here since
+   # Level above is already set (configuring both is a warning; Level always wins).
+   # Zoom_Amount: 2
 
    Sound:
       # The default sound that would be used if the custom sound was not found

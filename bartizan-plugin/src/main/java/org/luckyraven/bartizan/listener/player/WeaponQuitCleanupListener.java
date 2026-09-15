@@ -4,8 +4,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.inventory.ItemStack;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.effect.EffectContext;
@@ -19,6 +19,10 @@ import org.luckyraven.keystone.bean.listener.ListenerPriority;
  * The weapon half of the core's quit cleanup, moved out of {@code RemoveAccountListener} when the feature flipped
  * to a runtime module: unscopes and stops reloading whatever weapon the player was holding when they quit, and
  * (gate {@code HD}) removes any HUD boss bar {@code HudService} still has open for them.
+ *
+ * <p>Also unscopes on {@link PlayerDeathEvent} (gate {@code HH}): vanilla potion effects vanish on death, but
+ * {@code ScopeData.scoped} does not track that on its own - without this, a player who dies while scoped keeps
+ * {@code scoped} stuck {@code true} until they manually toggle it again.
  */
 @ListenerHandler(priority = ListenerPriority.LOW)
 public class WeaponQuitCleanupListener implements Listener {
@@ -39,10 +43,9 @@ public class WeaponQuitCleanupListener implements Listener {
 
 		hudService.remove(player.getUniqueId());
 
-		// search if the player holds a weapon
-		// check if it was a weapon
-		ItemStack item   = player.getInventory().getItemInMainHand();
-		Weapon    weapon = weaponManager.validateAndGetWeapon(player, item);
+		// main hand, falling back to the off hand - a weapon stowed off-hand while quitting must still be
+		// un-scoped/reload-stopped below.
+		Weapon weapon = weaponManager.getHeldWeapon(player);
 
 		if (weapon == null) return;
 
@@ -52,6 +55,16 @@ public class WeaponQuitCleanupListener implements Listener {
 			EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).build();
 			effectRunner.run(weapon, EffectHook.ON_RELOAD_CANCEL, ctx);
 		}
+
+		weapon.unScope(player, true);
+	}
+
+	@EventHandler(priority = EventPriority.HIGHEST)
+	public void onPlayerDeath(PlayerDeathEvent event) {
+		Player player = event.getEntity();
+		Weapon weapon = weaponManager.getHeldWeapon(player);
+
+		if (weapon == null) return;
 
 		weapon.unScope(player, true);
 	}

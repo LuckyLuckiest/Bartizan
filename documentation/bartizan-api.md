@@ -49,7 +49,7 @@ class by name — it only reads a small number of consumer-implemented interface
 (`player -> !player.isDead()`) when no consumer has registered one — a downed-player gate, a PvP-zone gate, or any
 other "can this player currently be hit" rule is entirely the consumer's choice to implement or skip.
 
-## `BartizanApi`'s five accessors, plus three gate-`HD` convenience methods
+## `BartizanApi`'s five accessors, plus gate-`HD`/`HH` convenience methods
 
 ```java
 public interface BartizanApi {
@@ -63,6 +63,9 @@ public interface BartizanApi {
     @Nullable Weapon getHeldWeapon(Player player);
     boolean isScoping(Player player);
     boolean isReloading(Player player);
+
+    // gate HH
+    boolean tryReload(Player player);
 }
 ```
 
@@ -71,6 +74,11 @@ public interface BartizanApi {
 `getHeldWeapon` checks the main hand, then the off hand; `isScoping`/`isReloading` read that weapon's
 `ScopeData`/`Reload` state. Like `validateAndGetWeapon`, `getHeldWeapon` is **not** read-only: it can mint and
 register a live `Weapon` instance for an item that has no runtime registry entry yet.
+
+`tryReload` (gate `HH`) starts a reload for the held weapon through the same guarded path
+`WeaponDroppedListener`/`Reload.Auto_Reload_When_Empty` already use (`WeaponService.tryReload`): a no-op while
+already reloading, the magazine is full, or the player carries none of the configured ammo and isn't in creative
+mode. Returns `false` when the player holds no weapon or the reload was refused.
 
 > `NpcWeaponFactory.create` throws `IllegalArgumentException` for a weapon name that is not configured; call `items().isValidWeaponName(name)` first (Gangland's `BartizanNpcWeapons` does, returning `NpcRangedAttack.NONE`).
 
@@ -84,6 +92,7 @@ register a live `Weapon` instance for an item that has no runtime registry entry
 | `getHeldWeapon(Player)` | `@Nullable weapon.Weapon` | Gate `HD`. Main hand, then off hand; `null` when neither holds a valid weapon. |
 | `isScoping(Player)` | `boolean` | Gate `HD`. `getHeldWeapon(player)` scoped in. |
 | `isReloading(Player)` | `boolean` | Gate `HD`. `getHeldWeapon(player)` mid-reload. |
+| `tryReload(Player)` | `boolean` | Gate `HH`. Starts a reload for `getHeldWeapon(player)` via `WeaponService.tryReload`; `false` when no weapon is held or the reload was refused. |
 | `items()` | `item.WeaponItemApi` | `buildItem(String)`, `isValidWeaponName(String)`, `isSameWeapon(ItemStack, ItemStack)`, `cleanDisplayName(ItemStack)` — see the worked example below. |
 
 ### `WeaponItemApi` notes
