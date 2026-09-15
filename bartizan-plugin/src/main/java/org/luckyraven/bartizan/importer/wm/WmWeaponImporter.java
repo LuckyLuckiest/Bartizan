@@ -161,10 +161,10 @@ public final class WmWeaponImporter {
 
 	/**
 	 * Resolves {@code Skin.Default} into the base custom model data, then every other {@code Skin.<key>} into
-	 * {@code Skins.<Key>} (the 4 known states) or {@code Skins.Named.<key>.Custom_Model_Data} (anything else) - a
-	 * value is either a bare int, an {@code "ADD n"} string (relative to the base), or a mapping with its own
-	 * {@code Custom_Model_Data}. Emitted even though {@code Skins:} isn't wired into {@code WeaponAddon} yet
-	 * (gate {@code HJ}, in review in a sibling worktree) - a pending-gate key only warns on load, never errors.
+	 * {@code Skins.<Key>} (the 4 known states) or {@code Skins.Named.<key>.Default} (anything else) - a value is
+	 * either a bare int, an {@code "ADD n"} string (relative to the base), or a mapping with its own
+	 * {@code Custom_Model_Data}. The emitted keys are exactly the ones {@code SkinSectionParser} (gate {@code HJ})
+	 * reads.
 	 *
 	 * @return the resolved base custom model data (0 when {@code Skin.Default} is absent/unresolvable).
 	 */
@@ -181,12 +181,16 @@ public final class WmWeaponImporter {
 			if (key.equalsIgnoreCase("Default")) continue;
 
 			int resolved = resolveSkinValue(skin, key, base, report);
+			// SkinSectionParser's exact state keys (gate HJ): Scope, Reload, Sprint, No_Ammo; a named skin's
+			// model is its own Default state, not a Custom_Model_Data key.
 			switch (key.toLowerCase(Locale.ROOT)) {
-				case "scope", "reload", "sprint", "no_ammo" ->
-						skins.put(capitalize(key), resolved);
+				case "scope" -> skins.put("Scope", resolved);
+				case "reload" -> skins.put("Reload", resolved);
+				case "sprint" -> skins.put("Sprint", resolved);
+				case "no_ammo" -> skins.put("No_Ammo", resolved);
 				default -> {
 					Map<String, Object> namedEntry = new LinkedHashMap<>();
-					namedEntry.put("Custom_Model_Data", resolved);
+					namedEntry.put("Default", resolved);
 					named.put(key.toLowerCase(Locale.ROOT), namedEntry);
 				}
 			}
@@ -194,8 +198,6 @@ public final class WmWeaponImporter {
 
 		if (!named.isEmpty()) skins.put("Named", named);
 		if (!skins.isEmpty()) {
-			information.put("#skins_note",
-			                "imported: Skin.* -> Skins.* (pending gate HJ - warns as an unknown key until merged)");
 			// Skins lives at the weapon's root, a sibling of Information, not nested inside it.
 			yaml.put("Skins", skins);
 		}
