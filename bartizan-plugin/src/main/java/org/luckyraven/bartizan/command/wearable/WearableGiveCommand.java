@@ -61,8 +61,9 @@ class WearableGiveCommand extends SubArgument {
 				player.sendMessage(BartizanMessages.WEARABLE_INVALID.toString().replace("%name%", itemName));
 			}
 		}, sender -> {
-			return wearableAddon.getWearables().keySet()
-					.stream().toList();
+			return wearableAddon.getWearables().entrySet().stream()
+					.filter(entry -> !entry.getValue().isExternal())
+					.map(Map.Entry::getKey).toList();
 		});
 
 		OptionalArgument amount = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
@@ -99,7 +100,8 @@ class WearableGiveCommand extends SubArgument {
 	private boolean giveWearable(Player player, String name, int amount) {
 		Wearable wearable = wearableAddon.getWearable(name);
 
-		if (wearable == null) return false;
+		// An external (WS7-D4) entry was never built through Bartizan - the registrant's own give path handles it.
+		if (wearable == null || wearable.isExternal()) return false;
 
 		ItemStack       sampleItem   = wearable.buildItem(player);
 		int             maxStackSize = sampleItem.getMaxStackSize();

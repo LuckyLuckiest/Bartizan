@@ -20,8 +20,11 @@ public class WearableRefresher implements ItemRefresher {
 
 	@Override
 	public boolean canRefresh(ItemStack source) {
-		if (source == null) return false;
-		return new ItemBuilder(source).hasNBTTag(Wearable.NBT_KEY);
+		if (source == null || !new ItemBuilder(source).hasNBTTag(Wearable.NBT_KEY)) return false;
+		Wearable wearable = wearableService.getWearable(new ItemBuilder(source).getStringTagData(Wearable.NBT_KEY));
+		// null (unregistered/foreign tag) still claims - refresh() below no-ops safely; only an external
+		// (WS7-D4) entry is excluded, since Wearable#buildItem() throws on its incomplete Material.
+		return wearable == null || !wearable.isExternal();
 	}
 
 	@Override

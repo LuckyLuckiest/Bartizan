@@ -90,7 +90,7 @@ mode. Returns `false` when the player holds no weapon or the reload was refused.
 | Accessor | Returns | Members |
 |---|---|---|
 | `weapons()` | `weapon.WeaponCatalog` | `getWeaponTemplate(String)`, `getWeaponTemplates()`, `createTransientWeapon(String)`, `isWeapon(ItemStack)` — read-only lookups: each may return `null`/empty for an unknown name, and none of them mints or registers a weapon instance. `validateAndGetWeapon(Player, ItemStack)` is **not** read-only — it resolves the held item's uuid and, when that uuid is not yet in the runtime registry, mints and registers a live `Weapon` instance for it (`WeaponService.getWeapon` → `weapons.put`); use `getWeaponTemplate(...)` instead for a read-only lookup. |
-| `wearables()` | `wearable.WearableCatalog` | `getWearable(String)`, `getWearables()`, `resolveWearable(@Nullable ItemStack)`, `applyWearableReduction(double, LivingEntity, boolean)`, `reduceCritBonus(double, LivingEntity)`, `reduceFireTicks(int, LivingEntity)` |
+| `wearables()` | `wearable.WearableCatalog` | `getWearable(String)`, `getWearables()`, `resolveWearable(@Nullable ItemStack)`, `applyWearableReduction(double, LivingEntity, boolean)`, `reduceCritBonus(double, LivingEntity)`, `reduceFireTicks(int, LivingEntity)`, `register(String, Wearable)` (0.4.0, WS7-D4 — external registration hook, see below) |
 | `ammunition()` | `ammo.AmmunitionCatalog` | `getAmmunitionKeys()`, `getAmmunition(String)` |
 | `npcWeapons()` | `npc.NpcWeaponFactory` | `create(LivingEntity shooter, String weaponName, double fireRateMultiplier, double aimErrorDegrees)` → `npc.NpcWeaponController extends org.luckyraven.keystone.npc.spi.NpcRangedAttack` — the sole implementation of that Keystone SPI. A consumer with no Bartizan installed uses `NpcRangedAttack.NONE` instead of calling this accessor. |
 | `getHeldWeapon(Player)` | `@Nullable weapon.Weapon` | Gate `HD`. Main hand, then off hand; `null` when neither holds a valid weapon. |
@@ -287,6 +287,25 @@ happens now, and `applyWearableReduction`/`traitLevel`/`reduceCritBonus`/`reduce
 `applyInsulatedReduction` all read through it. `WearableService.SetTier`/`registerSet`/`activeSetTiers` (the
 `Sets:` runtime) and `WearableEffectsService` are plugin-only — not part of the api surface, since nothing in
 `WearableCatalog`'s own signature requires them.
+
+### External wearable registration (`WearableCatalog.register`, 0.4.0, WS7-D4)
+
+`register(String key, Wearable wearable)` lets a soft-dependent plugin hand Bartizan an armour identity + traits
+without Bartizan gaining any caller-specific code — the mechanism Gangland's rehomed jetpack uses to keep its old
+damage-reduction values (`documentation/migration.md` §12).
+
+**Damage-reduction/effects only — Bartizan never produces the item.** `wearable` must be built with
+`.external(true)` plus at minimum `wearableKey`/`baseDamageReduction`/`traits` (an optional `effects` block is
+honoured too — every other field, including `material`, stays unset). The registrant stamps its own `ItemStack`
+with the raw `"wearable"` NBT tag (`Wearable.NBT_KEY`) under the same key, and from then on
+`resolveWearable`/`applyWearableReduction`/`reduceCritBonus`/`reduceFireTicks` resolve and apply it exactly like a
+`wearables.yml`-loaded entry — but an external entry is excluded from every path that would try to *build* it:
+`Wearable#getPermission()` returns `null` for it (no unregistered permission node silently blocking equip),
+`/bartizan wearable give`/`info`/`list` all skip it, and Bartizan's own `wearable:` item-vocabulary
+converter/serializer/refresher never claim it (each would call `Wearable#buildItem()`, which requires a real
+`Material` an external entry does not carry). The registering plugin owns building the ItemStack, stamping the
+tag, and its own give/converter/refresher/list surface for that item — Bartizan's role is strictly "read the
+registered definition to compute a reduction or run an effect."
 
 `weapon.dto.EffectHook` gained `ON_UNEQUIP` and `ON_HIT_TAKEN` (28 hooks total). `effect.EffectContext.getWeapon()`
 (`bartizan-plugin`) is now `@Nullable` — a wearable's equip/unequip/hit-taken context has no weapon — and

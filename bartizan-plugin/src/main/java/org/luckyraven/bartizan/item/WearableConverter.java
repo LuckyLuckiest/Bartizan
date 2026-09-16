@@ -31,7 +31,9 @@ public class WearableConverter extends ItemAttributes {
 
 		Wearable wearable = wearableService.getWearable(modifier.trim());
 
-		if (wearable == null) return null;
+		// An external (WS7-D4) entry is damage-reduction/effects only - it was never built by the registrant
+		// through this converter, and Wearable#buildItem() throws on its incomplete Material.
+		if (wearable == null || wearable.isExternal()) return null;
 
 		ItemStack itemStack = wearable.buildItem();
 

@@ -66,8 +66,8 @@ public final class ItemConfig {
 	}
 
 	@Bean
-	public WearableItemSerializer wearableItemSerializer() {
-		return new WearableItemSerializer();
+	public WearableItemSerializer wearableItemSerializer(WearableService wearableService) {
+		return new WearableItemSerializer(wearableService);
 	}
 
 	@Bean

@@ -7,8 +7,6 @@ import org.bukkit.Color;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.Material;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.MemoryConfiguration;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.util.Placeholder;
 import org.luckyraven.keystone.exception.PluginException;
@@ -41,8 +39,7 @@ import java.util.regex.Pattern;
  * {@code HL}, §1) — a bad wearable entry is reported exactly like a bad weapon instead of a bare {@code log.warn}.
  * Traits are read as a {@code Map<String,Integer>} keyed by lower-cased trait name (the YAML {@code Traits:} keys
  * stay upper-case unchanged — lower-casing happens here on read) instead of the deleted {@code WearableTrait}
- * enum, and the old {@code Jetpack:} block is translated into the generic {@code Extra_Tags:} map read into
- * {@link Wearable#extraTags()}.
+ * enum. {@code Extra_Tags:} is read generically into {@link Wearable#extraTags()}.
  *
  * <p>Only a missing/invalid {@code Material} skips the whole entry (with a {@link Severity#WARNING}); every other
  * bad value (an unrecognised trait/attribute key, a malformed {@code Sets} tier key, an out-of-range number) is
@@ -102,62 +99,8 @@ public class WearableAddon extends WearableService implements FileInitializer {
 	}
 
 	/**
-	 * Translates the pre-split {@code Jetpack:} block (Gangland 0.8.4 {@code wearables.yml}) into the
-	 * {@code Extra_Tags:} shape the gadget module reads: the fuel tags Gangland's {@code FuelKey} expects plus the
-	 * lower-cased, {@code jetpack_}-prefixed physics scalars. Defaults mirror the 0.8.4 loader.
-	 * {@code Glide_Descent_Rate} is dropped (dead since 152eba4); {@code Sound:} is carried over as {@code Sounds:}.
-	 *
-	 * <p>Kept on a plain {@link ConfigurationSection} parameter (unchanged since before the {@code HL}
-	 * {@code NodeReader} rewrite): the loader below wraps the positional {@code Jetpack:} {@link MappingNode} into
-	 * one via {@link #asConfigurationSection} — the smallest way to reuse this method's body verbatim.
-	 */
-	static Map<String, Object> legacyJetpackToExtraTags(ConfigurationSection jetpack) {
-		Map<String, Object> tags    = new LinkedHashMap<>();
-		int                 maxFuel = jetpack.getInt("Max_Fuel", 3600);
-
-		tags.put("fuel", jetpack.getString("Fuel_Key", ""));
-		tags.put("fuel_current", maxFuel);
-		tags.put("fuel_max", maxFuel);
-		tags.put("jetpack_fuel_consumption_rate", jetpack.getInt("Fuel_Consumption_Rate", 2));
-		tags.put("jetpack_ascend_power", jetpack.getDouble("Ascend_Power", 0.35));
-		tags.put("jetpack_max_speed_y", jetpack.getDouble("Max_Speed_Y", 0.8));
-
-		ConfigurationSection sound = jetpack.getConfigurationSection("Sound");
-		if (sound != null) tags.put("Sounds", sectionToMap(sound));
-
-		return tags;
-	}
-
-	/**
-	 * Recursively converts a {@link ConfigurationSection} into a plain {@code Map<String,Object>} so nested blocks
-	 * (e.g. {@code Extra_Tags.Sounds}) come out as real {@code Map} instances rather than {@code MemorySection}
-	 * objects — the shape {@code extraTags()} consumers (gadget's jetpack code, per bartizan.md §1.6(6)) expect.
-	 */
-	private static Map<String, Object> sectionToMap(ConfigurationSection section) {
-		Map<String, Object> map = new LinkedHashMap<>();
-		for (String key : section.getKeys(false)) {
-			Object value = section.get(key);
-			if (value instanceof ConfigurationSection nested) {
-				value = sectionToMap(nested);
-			}
-			map.put(key, value);
-		}
-		return map;
-	}
-
-	/**
-	 * Wraps a positional {@link MappingNode} as a {@link ConfigurationSection} — the smallest bridge back to
-	 * {@link #legacyJetpackToExtraTags}'s unchanged, {@code ConfigurationSection}-typed signature (and its pinned
-	 * test). {@link MemoryConfiguration#createSection(String, Map)} recursively turns nested {@code Map} values
-	 * (from {@link #nodeToMap}) into real nested sections, so {@code getConfigurationSection("Sound")} still works.
-	 */
-	private static ConfigurationSection asConfigurationSection(MappingNode mapping) {
-		return new MemoryConfiguration().createSection("tmp", nodeToMap(mapping));
-	}
-
-	/**
 	 * Converts a positional {@link MappingNode} into a plain {@code Map<String,Object>} — the {@code Extra_Tags:}
-	 * read path's replacement for the old {@code ConfigurationSection}-based {@link #sectionToMap}. Nested mappings
+	 * read path used for the {@code Extra_Tags:} block. Nested mappings
 	 * become nested maps, sequences become lists, scalars are best-effort typed (int, then double, then boolean,
 	 * else the raw string) so downstream {@code ConfigurationSection}/{@code Map} readers see the type they expect.
 	 */
@@ -412,20 +355,12 @@ public class WearableAddon extends WearableService implements FileInitializer {
 	}
 
 	/**
-	 * {@code Extra_Tags:} (generic) or the legacy {@code Jetpack:} block, translated via
-	 * {@link #legacyJetpackToExtraTags}. {@code null} when neither is present.
+	 * {@code Extra_Tags:} (generic). {@code null} when absent.
 	 */
 	@Nullable
 	private Map<String, Object> readExtraTags(NodeReader wearable, String key) {
 		MappingNode extraSection = wearable.get("Extra_Tags").asMapping().orNull();
 		if (extraSection != null) return nodeToMap(extraSection);
-
-		MappingNode jetpackSection = wearable.get("Jetpack").asMapping().orNull();
-		if (jetpackSection != null) {
-			log.warn("Wearable '{}' uses the legacy Jetpack: block - translated to Extra_Tags for this load; " +
-			         "rename it in wearables.yml (see documentation/migration.md).", key);
-			return legacyJetpackToExtraTags(asConfigurationSection(jetpackSection));
-		}
 
 		return null;
 	}

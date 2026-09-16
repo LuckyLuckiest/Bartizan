@@ -42,8 +42,6 @@
 #     FIRE_RESISTANT    - reduces fire ticks applied (25% per level, max 2)
 #     REACTIVE          - chance to nullify an incoming hit entirely (2% per level, max 3)
 #     LIGHTWEIGHT       - cosmetic only, no combat effect (max 2)
-#     FUEL_EFFICIENT    - jetpack fuel consumption reduction (10% per level, max 2); read by the jetpack gadget,
-#                         not by Bartizan itself
 #     SEALED            - reduces the incoming level of a biological status by this many levels (max 3)
 #     INSULATED         - reduces beam/energy weapon damage (8% per level, max 3)
 #     NIGHT_VISION      - worn effect only, no numeric bonus (max 1) - grants vanilla Night Vision while worn;
@@ -234,37 +232,6 @@ tactical_boots:
    Traits:
       REINFORCED: 1
       LIGHTWEIGHT: 1
-
-jetpack:
-   Material: IRON_CHESTPLATE
-   Name: "&b&lJetpack"
-   Base_Damage_Reduction: 0.05
-   Leather_Color: ""
-   Lore:
-      - "&7Strap it on and take flight"
-      - "&7Hold &bSPACE &7to fly upward"
-      - "&7Fuel: &fGasoline"
-   Traits:
-      REINFORCED: 1
-      LIGHTWEIGHT: 2
-   Extra_Tags:
-      fuel: "gasoline"
-      fuel_current: 3600
-      fuel_max: 3600
-      jetpack_fuel_consumption_rate: 1
-      jetpack_ascend_power: 0.2
-      jetpack_max_speed_y: 0.45
-      Sounds:
-         Thrust:
-            Default_Sound:
-               Sound: ENTITY_BLAZE_SHOOT
-               Volume: 0.6
-               Pitch: 1.8
-         Glide:
-            Default_Sound:
-               Sound: ITEM_ELYTRA_FLYING
-               Volume: 0.4
-               Pitch: 1.0
 
 hazmat_chest:
    Material: LEATHER_CHESTPLATE

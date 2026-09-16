@@ -12,7 +12,7 @@ import org.luckyraven.bartizan.api.wearable.Wearable;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
 
 import java.util.Iterator;
-import java.util.Map;
+import java.util.List;
 
 class WearableListCommand extends SubArgument {
 
@@ -27,15 +27,17 @@ class WearableListCommand extends SubArgument {
 	@Override
 	protected TriConsumer<Argument, CommandSender, String[]> action() {
 		return (argument, sender, args) -> {
-			Map<String, Wearable> wearables = wearableAddon.getWearables();
+			// External (WS7-D4) entries have no display Name of their own and are not Bartizan's to list.
+			List<Wearable> wearables = wearableAddon.getWearables().values().stream()
+					.filter(wearable -> !wearable.isExternal()).toList();
 
 			sender.sendMessage(BartizanMessages.WEARABLE_LIST_HEADER.toString());
 
-			Iterator<Map.Entry<String, Wearable>> iterator = wearables.entrySet().iterator();
-			StringBuilder                         builder  = new StringBuilder();
+			Iterator<Wearable> iterator = wearables.iterator();
+			StringBuilder      builder  = new StringBuilder();
 
 			while (iterator.hasNext()) {
-				Wearable wearable = iterator.next().getValue();
+				Wearable wearable = iterator.next();
 
 				builder.append("&b").append(wearable.getName());
 				if (iterator.hasNext()) builder.append("&7, ");
