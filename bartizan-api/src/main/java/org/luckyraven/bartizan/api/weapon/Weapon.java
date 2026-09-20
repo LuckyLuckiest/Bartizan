@@ -266,6 +266,32 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	}
 
 	/**
+	 * @return ticks left in the current/most recent reload after a Phase 2 resume's offset (weapons-roadmap.md
+	 * 		gate {@code HO}), or 0 when the weapon has no reload configured. Backed by
+	 * 		{@link Reload#remainingDurationTicks()} — read by {@code WeaponReloadListener} for the vanilla
+	 * 		item-cooldown overlay.
+	 */
+	public long reloadRemainingDurationTicks() {
+		return reload != null ? reload.remainingDurationTicks() : 0L;
+	}
+
+	/**
+	 * @return the 0-based index of the reload stage currently in progress, or -1 when not reloading. Backed by
+	 * 		{@link Reload#currentStageIndex()} — weapons-roadmap.md gate {@code HO}, {@code %reload_stage%}.
+	 */
+	public int reloadStageIndex() {
+		return reload != null ? reload.currentStageIndex() : -1;
+	}
+
+	/**
+	 * @return the total stage count of the current/most recent reload attempt, or 0 when not applicable. Backed by
+	 * 		{@link Reload#stageCount()} — {@code %reload_stage_max%}.
+	 */
+	public int reloadStageCount() {
+		return reload != null ? reload.stageCount() : 0;
+	}
+
+	/**
 	 * Re-resolves this weapon's loaded ammo type from the item's persisted {@link WeaponTag#AMMO_TYPE} tag,
 	 * matched by {@link Ammunition#getName()} against the configured {@code Ammunition.Types}/{@code Ammo_Type},
 	 * and pushes it into the {@link Reload} instance. Called whenever a {@code Weapon} is (re)resolved from its

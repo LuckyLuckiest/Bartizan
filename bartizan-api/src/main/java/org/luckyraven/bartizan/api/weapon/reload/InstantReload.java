@@ -12,6 +12,7 @@ import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
+import org.luckyraven.bartizan.api.weapon.dto.ReloadStagesData;
 
 import java.util.Objects;
 
@@ -58,70 +59,107 @@ public class InstantReload extends Reload {
 
 		unloadAmmoIfConfigured(inventory, player, removeAmmunition);
 		setAmmunition(resolveAmmoType(inventory, player, ammunitionData.getConsumeRate()));
+		resetStageTracking();
+
+		// weapons-roadmap.md gate HO: three stages — open (start to the mid sound), insert (mid sound to the
+		// consume — the commit point), close (the final wait before the reload completes). Shares default to
+		// 0.25/0.6/0.15 (Reload.Stages.Open/Insert/Close.Share) when the file has no Stages: section.
+		ReloadStagesData stages      = reloadData.getStages();
+		long             cooldown    = reloadData.getCooldown();
+		long             openTicks   = stages.openTicks(cooldown);
+		long             insertTicks = stages.insertTicks(cooldown);
+		long             closeTicks  = stages.closeTicks(cooldown);
 
 		timer = new SequenceTimer(plugin);
+
+		// Phase 2 resume — never for the NPC path (inventory == null). A stale/expired pending resume is consumed
+		// (cleared) regardless, so it can't be mistakenly offered to a later attempt.
+		boolean resuming   = inventory != null && canResume();
+		int     startStage = resuming ? resumeStageIndex() : 0;
+		clearResume();
+
+		long period              = timer.getPeriod();
+		long totalDurationTicks  = cooldown * period;
+		long elapsedTicksAlready = elapsedTicksFor(startStage, openTicks, insertTicks) * period;
 
 		// start reloading the gun. Reload.Cooldown counts timer periods (one second each on the default
 		// SequenceTimer), so the tick duration the HUD bar and the item-cooldown overlay run on is cooldown * period.
 		timer.addIntervalTaskPair(0, time -> {
-			super.startReloading(player, reloadData.getCooldown() * timer.getPeriod());
+			super.startReloading(player, totalDurationTicks, elapsedTicksAlready);
+			enterStage(startStage, 3);
 		});
 
-		// the sound that plays at the middle
-		long midSound = reloadData.getCooldown() / 2;
-		timer.addIntervalTaskPair(midSound, time -> {
-			if (player != null && (player.isDead() || !CombatEligibility.resolve().canBeHit(player))) {
-				stopReloading();
-				return;
-			}
-
-			if (player != null) {
-				// Per-shell mid sound intentionally stays direct here — no On_Reload_Mid hook in v1.
-				SoundEffect.playSounds(player, getWeapon().getSoundData().getReloadCustomMid(), null);
-			}
-		});
-
-		long remaining = Math.max(0, reloadData.getCooldown() - midSound);
-		// continue execution after the sound had finished
-		timer.addIntervalTaskPair(remaining, time -> {
-			if (player != null && (player.isDead() || !CombatEligibility.resolve().canBeHit(player))) {
-				stopReloading();
-				return;
-			}
-
-			Ammunition ammoToConsume = getAmmunition();
-
-			if (inventory != null && ammoToConsume != null) {
-				// if ammo was lost before or during the reload start (e.g. dropped), abort immediately
-				boolean contains = inventory.containsAtLeast(ammoToConsume.buildItem(player, 1),
-				                                             ammunitionData.getConsumeRate());
-				if (removeAmmunition && !contains) {
+		if (startStage <= 0) {
+			// open -> insert: the mid sound, at Reload.Stages.Open.Share of the way through Cooldown.
+			timer.addIntervalTaskPair(openTicks, time -> {
+				if (player != null && (player.isDead() || !CombatEligibility.resolve().canBeHit(player))) {
 					stopReloading();
 					return;
 				}
 
-				// remove the magazine the moment the reloading starts to prevent bugs
-				if (removeAmmunition) {
-					inventory.removeItem(ammoToConsume.buildItem(player, ammunitionData.getConsumeRate()));
+				if (player != null) {
+					// Per-shell mid sound intentionally stays direct here — no On_Reload_Mid hook in v1.
+					SoundEffect.playSounds(player, getWeapon().getSoundData().getReloadCustomMid(), null);
 				}
-			}
-			// Ammo_Type: none (ammoToConsume == null) — infinite supply, nothing to check/remove.
 
-			// add to the weapon capacity
-			getWeapon().addAmmunition(ammunitionData.getRestore());
+				enterStage(1, 3);
+			});
+		}
 
-			if (inventory != null) {
-				// update the weapon data in the player's inventory
-				int newSlot = findWeaponSlot(inventory, getWeapon());
-
-				if (newSlot > -1) {
-					ItemStack existingItem = inventory.getItem(newSlot);
-					ItemBuilder heldWeapon = new ItemBuilder(
-							Objects.requireNonNullElseGet(existingItem, () -> getWeapon().buildItem(player)));
-
-					getWeapon().updateWeaponData(heldWeapon, player);
-					getWeapon().updateWeapon(player, heldWeapon, newSlot);
+		if (startStage <= 1) {
+			// insert -> close: the commit point — the magazine item is consumed here, exactly as before gate HO.
+			timer.addIntervalTaskPair(insertTicks, time -> {
+				if (player != null && (player.isDead() || !CombatEligibility.resolve().canBeHit(player))) {
+					stopReloading();
+					return;
 				}
+
+				Ammunition ammoToConsume = getAmmunition();
+
+				if (inventory != null && ammoToConsume != null) {
+					// if ammo was lost before or during the reload start (e.g. dropped), abort immediately
+					boolean contains = inventory.containsAtLeast(ammoToConsume.buildItem(player, 1),
+					                                             ammunitionData.getConsumeRate());
+					if (removeAmmunition && !contains) {
+						stopReloading();
+						return;
+					}
+
+					// remove the magazine the moment it's consumed to prevent bugs
+					if (removeAmmunition) {
+						inventory.removeItem(ammoToConsume.buildItem(player, ammunitionData.getConsumeRate()));
+					}
+				}
+				// Ammo_Type: none (ammoToConsume == null) — infinite supply, nothing to check/remove.
+
+				// add to the weapon capacity
+				getWeapon().addAmmunition(ammunitionData.getRestore());
+
+				if (inventory != null) {
+					// update the weapon data in the player's inventory
+					int newSlot = findWeaponSlot(inventory, getWeapon());
+
+					if (newSlot > -1) {
+						ItemStack existingItem = inventory.getItem(newSlot);
+						ItemBuilder heldWeapon = new ItemBuilder(
+								Objects.requireNonNullElseGet(existingItem, () -> getWeapon().buildItem(player)));
+
+						getWeapon().updateWeaponData(heldWeapon, player);
+						getWeapon().updateWeapon(player, heldWeapon, newSlot);
+					}
+				}
+
+				enterStage(2, 3);
+			});
+		}
+
+		// close -> end: nothing left to commit, just the final wait before the reload completes. Ammo is already
+		// consumed by this point (or was never reached), so an interrupt here can only keep the rounds, never
+		// refund or duplicate them.
+		timer.addIntervalTaskPair(closeTicks, time -> {
+			if (player != null && (player.isDead() || !CombatEligibility.resolve().canBeHit(player))) {
+				stopReloading();
+				return;
 			}
 
 			// end reloading the gun
@@ -129,6 +167,17 @@ public class InstantReload extends Reload {
 		});
 
 		timer.start(false);
+	}
+
+	/**
+	 * @return ticks already elapsed by stages skipped on a Phase 2 resume (weapons-roadmap.md gate {@code HO}) —
+	 * 		0 for a fresh reload ({@code startStage == 0}).
+	 */
+	private static long elapsedTicksFor(int startStage, long openTicks, long insertTicks) {
+		long elapsed = 0;
+		if (startStage >= 1) elapsed += openTicks;
+		if (startStage >= 2) elapsed += insertTicks;
+		return elapsed;
 	}
 
 }

@@ -22,6 +22,8 @@ import org.luckyraven.bartizan.util.BartizanChatUtil;
  *   <tr><td>{@code %reload%}</td><td>{@code Reload.Action_Bar.Reloading} while reloading, else empty</td></tr>
  *   <tr><td>{@code %firearm_state%}</td><td>{@code reloading | scoping | empty | ready}</td></tr>
  *   <tr><td>{@code %reload_progress%}</td><td>0-100 integer while reloading, else empty</td></tr>
+ *   <tr><td>{@code %reload_stage%}</td><td>1-based current reload stage while reloading, else empty (gate {@code HO})</td></tr>
+ *   <tr><td>{@code %reload_stage_max%}</td><td>total stage count while reloading, else empty (gate {@code HO})</td></tr>
  * </table>
  */
 public final class WeaponPlaceholders {
@@ -43,7 +45,9 @@ public final class WeaponPlaceholders {
 				.replace("%durability%", durability(weapon))
 				.replace("%reload%", reloadText(weapon))
 				.replace("%firearm_state%", firearmState(weapon))
-				.replace("%reload_progress%", reloadProgress(weapon));
+				.replace("%reload_progress%", reloadProgress(weapon))
+				.replace("%reload_stage%", reloadStage(weapon))
+				.replace("%reload_stage_max%", reloadStageMax(weapon));
 
 		return BartizanChatUtil.color(result);
 	}
@@ -82,6 +86,18 @@ public final class WeaponPlaceholders {
 	private static String reloadProgress(Weapon weapon) {
 		if (!weapon.isReloading()) return "";
 		return String.valueOf((int) Math.round(weapon.reloadProgress() * 100));
+	}
+
+	private static String reloadStage(Weapon weapon) {
+		if (!weapon.isReloading()) return "";
+		int index = weapon.reloadStageIndex();
+		return index >= 0 ? String.valueOf(index + 1) : "";
+	}
+
+	private static String reloadStageMax(Weapon weapon) {
+		if (!weapon.isReloading()) return "";
+		int count = weapon.reloadStageCount();
+		return count > 0 ? String.valueOf(count) : "";
 	}
 
 }

@@ -17,6 +17,7 @@ import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.event.WeaponReloadCompleteEvent;
+import org.luckyraven.bartizan.api.event.WeaponReloadStageEvent;
 import org.luckyraven.bartizan.api.event.WeaponReloadStartEvent;
 
 import java.util.HashSet;
@@ -43,9 +44,17 @@ public class WeaponReloadListener implements Listener {
 		effectRunner.run(event.getWeapon(), EffectHook.ON_RELOAD_START, ctx);
 
 		if (isReloadItemCooldownEnabled(event.getWeapon())) {
-			long ticks = event.getWeapon().reloadDurationTicks();
+			// weapons-roadmap.md gate HO: the remaining duration, not the full one — a resumed reload must not
+			// leave the overlay replaying time already spent on stages skipped by the resume.
+			long ticks = event.getWeapon().reloadRemainingDurationTicks();
 			if (ticks > 0) event.getPlayer().setCooldown(event.getWeapon().getMaterial(), (int) ticks);
 		}
+	}
+
+	@EventHandler
+	public void onReloadStage(WeaponReloadStageEvent event) {
+		EffectContext ctx = EffectContext.builder().weapon(event.getWeapon()).source(event.getPlayer()).build();
+		effectRunner.run(event.getWeapon(), EffectHook.ON_RELOAD_STAGE, ctx);
 	}
 
 	@EventHandler
