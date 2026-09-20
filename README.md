@@ -16,7 +16,7 @@ so it is a hard `depend:`, not a `softdepend:`). Soft-depends on `ViaVersion`, `
 ```
 plugins/Bartizan/settings.yml
 plugins/Bartizan/message/message_en.yml
-plugins/Bartizan/weapon/<22 files>.yml
+plugins/Bartizan/weapon/<24 files>.yml
 plugins/Bartizan/items/ammunition.yml
 plugins/Bartizan/items/wearables.yml
 ```

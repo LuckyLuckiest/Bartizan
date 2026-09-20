@@ -17,7 +17,7 @@ import org.luckyraven.keystone.persistence.FileHandler;
 import org.luckyraven.keystone.persistence.FileManager;
 import org.luckyraven.keystone.persistence.message.LanguageLoader;
 
-import java.util.List;
+import java.security.CodeSource;
 
 /**
  * FILE-phase configuration replacing Gangland's {@code WeaponFileConfig} (bartizan.md §1.3), plus the
@@ -96,14 +96,15 @@ public final class FilesConfig {
 	}
 
 	/**
-	 * {@link WeaponLoader} reads its own folder of YAML files and registers them via {@link WeaponAddon}. The
-	 * expected-file list stays at exactly these five entries — docket T-06, carried over verbatim, not fixed here.
+	 * {@link WeaponLoader} reads its own folder of YAML files and registers them via {@link WeaponAddon}. Every
+	 * {@code weapon/*.yml} bundled in the jar is an expected file, so a fresh install gets the whole default set.
 	 */
 	@Bean
 	public WeaponLoader weaponLoader(FileManager fileManager, AmmunitionManager ammunitionManager,
 	                                 WeaponAddon weaponAddon) {
 		WeaponLoader loader = new WeaponLoader(bartizan, fileManager, weaponAddon, ammunitionManager);
-		for (String name : List.of("rifle", "grenade", "knife", "flamethrower", "syringe_gun")) {
+		CodeSource source = Bartizan.class.getProtectionDomain().getCodeSource();
+		for (String name : WeaponLoader.bundledWeaponNames(source == null ? null : source.getLocation())) {
 			loader.addExpectedFile(new FileHandler(bartizan, name, "weapon", ".yml"));
 		}
 		return loader;
