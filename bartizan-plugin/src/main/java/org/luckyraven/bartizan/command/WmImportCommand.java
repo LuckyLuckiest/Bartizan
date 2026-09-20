@@ -16,6 +16,7 @@ import org.luckyraven.bartizan.importer.wm.WmYamlEmitter;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
 import org.luckyraven.keystone.command.Command;
 import org.luckyraven.keystone.command.argument.Argument;
+import org.luckyraven.keystone.command.argument.types.OptionalArgument;
 import org.luckyraven.keystone.bean.command.CommandHandler;
 import org.luckyraven.keystone.persistence.FileManager;
 
@@ -29,12 +30,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * {@code /bartizan import weaponmechanics [--dry-run] [--force] [path]} (weapons-roadmap.md gate {@code HM},
- * §6.1) - same top-level-command-plus-one-literal-child shape as {@link ReloadCommand}/{@link DebugCommand}; the
- * optional flags/path aren't worth a full {@code Argument} sub-tree (they can appear in any order, or not at all),
- * so the child argument's action just scans the raw {@code args} tail itself.
+ * §6.1) - same top-level-command-plus-one-literal-child shape as {@link ReloadCommand}/{@link DebugCommand}, with
+ * three free-form {@code OptionalArgument} levels under the literal so Keystone lets the flags/path through; they
+ * can appear in any order, or not at all, so every level's action just scans the raw {@code args} tail itself.
  * <p>
  * Lives in {@code command} (not {@code importer.wm}, where the rest of gate {@code HM} lives) because
  * {@code BartizanContext.runCommandPhase} only scans {@code org.luckyraven.bartizan.command} for
@@ -83,6 +85,18 @@ public final class WmImportCommand extends Command {
 	protected void initializeArguments() {
 		Argument weaponMechanics = new Argument(bartizan, "weaponmechanics", getArgumentTree(),
 		                                        this::runImport);
+		// Keystone rejects any token under a leaf, so [--dry-run] [--force] [path] need three free-form levels; the
+		// tokens can come in any order, so every level runs the same parser.
+		Function<CommandSender, List<String>> suggestions = sender -> List.of("--dry-run", "--force", "<path>");
+		OptionalArgument first  = new OptionalArgument(bartizan, getArgumentTree(), this::runImport, suggestions);
+		OptionalArgument second = new OptionalArgument(bartizan, getArgumentTree(), this::runImport, suggestions);
+		OptionalArgument third  = new OptionalArgument(bartizan, getArgumentTree(), this::runImport, suggestions);
+		first.setDisplayName("option");
+		second.setDisplayName("option");
+		third.setDisplayName("option");
+		second.addSubArgument(third);
+		first.addSubArgument(second);
+		weaponMechanics.addSubArgument(first);
 		getArgument().addAllSubArguments(List.of(weaponMechanics));
 	}
 
