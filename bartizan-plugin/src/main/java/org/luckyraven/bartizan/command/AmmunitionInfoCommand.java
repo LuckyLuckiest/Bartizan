@@ -81,9 +81,13 @@ class AmmunitionInfoCommand extends SubArgument {
 		player.sendMessage(jsonFormatter.formatToJson(BartizanChatUtil.color(buildInfo(ammunition)), " ".repeat(3)));
 	}
 
-	private String buildInfo(Ammunition ammunition) {
+	/**
+	 * The id is quoted: {@link JsonFormatter#formatToJson} breaks the line at every unquoted comma, and ammo ids
+	 * carry one ({@code 7,62}).
+	 */
+	static String buildInfo(Ammunition ammunition) {
 		StringBuilder info = new StringBuilder();
-		info.append("&7Name&8: &b").append(ammunition.getName())
+		info.append("&7Name&8: &b\"").append(ammunition.getName()).append('"')
 		    .append("\n&7Display Name&8: &b").append(ammunition.getDisplayName())
 		    .append("\n&7Material&8: &b").append(ammunition.getMaterial().name())
 		    .append("\n&7Custom Model Data&8: &b").append(ammunition.getCustomModelData());

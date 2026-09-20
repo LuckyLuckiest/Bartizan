@@ -221,6 +221,9 @@ existing placed signs keep working without the owner re-placing them. This rewri
   `sealed` — reduces the incoming level of a biological status rather than a damage/duration percentage.
 - `Shoot.Charge_Feedback.Tracer_Color` now also defaults `Modifiers.Tracer` when the weapon declares no explicit
   tracer of its own, so a released biological shot draws a coloured line without any other config change.
+- Ammo ids keep their Gangland spelling, commas included (`7,62`, `5,56`, or your own `1,25`): nothing to rename,
+  and ammo items already in circulation keep resolving. `/bartizan ammo info` and `/bartizan weapon info` now print
+  the id in quotes so Keystone's `JsonFormatter` no longer breaks the line at the comma.
 
 ## 11. Moving off WeaponMechanics (gate `HM`)
 

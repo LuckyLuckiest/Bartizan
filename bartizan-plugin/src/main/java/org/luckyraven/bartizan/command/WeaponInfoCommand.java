@@ -110,7 +110,9 @@ class WeaponInfoCommand extends SubArgument {
 		if (ammunitionData != null) {
 			List<Ammunition> ammoTypes = ammunitionData.getAmmoTypes();
 			String ammoTypeLabel = ammoTypes.isEmpty() ? "none" :
-			                       ammoTypes.stream().map(Ammunition::getName).collect(Collectors.joining(", "));
+			                       // quoted: JsonFormatter breaks the line at an unquoted comma, and ids carry one (7,62)
+			                       ammoTypes.stream().map(ammo -> '"' + ammo.getName() + '"')
+			                                .collect(Collectors.joining(", "));
 
 			info.append("\n&7Magazine&8: &b").append(weapon.getCurrentMagCapacity())
 			    .append("&7/&b").append(ammunitionData.getMaxMagCapacity())

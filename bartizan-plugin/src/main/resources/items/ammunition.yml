@@ -16,9 +16,8 @@
 # |      Ammunition      |
 # +----------------------+
 
-# 9mm is an example of an ammo, which is a string
-# If you try to create a new ammo type that contains "." replace it "," and name it to whatever you want; this issue
-# can cause errors.
+# 9mm is an example of an ammo id, which is a string. An id may contain a comma ("7,62") but never a "." - Bukkit
+# reads a dot as a path separator. Quote an id made of digits and underscores ("7_62"), or YAML reads it as a number.
 9mm:
    # [Material] is used to get the material type, you can use any type of material from any minecraft version.
    Material: "GOLD_NUGGET"
