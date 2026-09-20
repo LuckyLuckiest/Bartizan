@@ -68,13 +68,22 @@ public class HudService implements BeanLifecycle {
 	 */
 	void tick() {
 		for (Player player : Bukkit.getOnlinePlayers()) {
-			// A misconfigured HUD template (or a placeholder blowing up on this one player's weapon state) must
-			// not take the whole tick down with it - same guard StatusEffectService#tick uses.
-			try {
-				tickPlayer(player);
-			} catch (Exception exception) {
-				log.warn("HUD tick failed for " + player.getUniqueId() + ": " + exception.getMessage());
-			}
+			refresh(player);
+		}
+	}
+
+	/**
+	 * Re-renders {@code player}'s HUD right now. The 5-tick sweep alone trails visibly under fire, so
+	 * {@link HudShotRefreshListener} calls this one tick after every shot, once the firing action has written the
+	 * new magazine count to the item. Never throws: a misconfigured HUD template (or a placeholder blowing up on
+	 * this one player's weapon state) must not take a whole sweep down with it - same guard
+	 * {@code StatusEffectService#tick} uses.
+	 */
+	public void refresh(Player player) {
+		try {
+			tickPlayer(player);
+		} catch (Exception exception) {
+			log.warn("HUD tick failed for " + player.getUniqueId() + ": " + exception.getMessage());
 		}
 	}
 

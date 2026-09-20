@@ -86,7 +86,7 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .effect(.impl)          Effect, EffectContext, EffectRunner + 15 *HookEffect
                                        .file                   BartizanSettings, BartizanMessages, WeaponLoader
                                        .fire                   PluginFireRegistry
-                                       .hud                    HudService, WeaponPlaceholders, BartizanExpansion, PlaceholderApiSupport
+                                       .hud                    HudService, HudShotRefreshListener, WeaponPlaceholders, BartizanExpansion, PlaceholderApiSupport
                                        .importer.wm            WmWeaponImporter, WmMechanicsTranslator, WmColorTranslator, WmYamlEmitter,
                                                                 WmImportReport, WmItemConverterListener (gate HM; WmImportCommand is in
                                                                 .command instead - see that row)
