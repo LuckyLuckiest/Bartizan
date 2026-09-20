@@ -48,7 +48,7 @@
         <!-- Single source of truth for the Bartizan version (CI-friendly versioning).
              Bump ONLY this property; child poms reference ${revision} and flatten-maven-plugin
              resolves it in the installed/deployed poms. -->
-        <revision>0.3.0</revision>
+        <revision>0.5.0</revision>
 
         <!-- Java 17, matching Keystone's floor. -->
         <maven.compiler.release>17</maven.compiler.release>
