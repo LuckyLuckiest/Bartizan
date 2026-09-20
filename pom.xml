@@ -58,7 +58,7 @@
         <!-- Compile API level matches Gangland Warfare's root pom: the ported weapon code uses 1.21 API members
              (Enchantment.PROTECTION, PotionEffect.INFINITE_DURATION, Player.isClimbing, Particle.BLOCK). Keystone's
              own floor is 1.16.5; lowering Bartizan back to it is a separate wave (see the wave README decisions log). -->
-        <bukkit.version>1.21.11-R0.1-SNAPSHOT</bukkit.version>
+        <bukkit.version>1.16.5-R0.1-SNAPSHOT</bukkit.version>
 
         <!-- Keystone: provided at runtime from Keystone-<version>.jar in /plugins, never shaded. -->
         <keystone.version>1.9.0</keystone.version>

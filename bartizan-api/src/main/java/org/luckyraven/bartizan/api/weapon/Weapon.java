@@ -1,15 +1,17 @@
 package org.luckyraven.bartizan.api.weapon;
 
 import com.cryptomorin.xseries.XPotion;
+import java.lang.reflect.Method;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Tag;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
-import org.bukkit.inventory.EquipmentSlotGroup;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -526,10 +528,43 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		NamespacedKey resolvedItemModel = resolveItemModel(state);
 		ItemStack     stack             = itemBuilder.build();
 		ItemMeta      meta              = stack != null ? stack.getItemMeta() : null;
-		if (meta == null || Objects.equals(meta.getItemModel(), resolvedItemModel)) return;
+		if (meta == null || Objects.equals(readItemModel(meta), resolvedItemModel)) return;
 
-		meta.setItemModel(resolvedItemModel);
+		writeItemModel(meta, resolvedItemModel);
 		stack.setItemMeta(meta);
+	}
+
+	// ItemMeta#getItemModel/#setItemModel are 1.21.2+ components; the compile floor is 1.16.5, so they are reached
+	// reflectively behind the NmsVersion gate in applySkinRendering. Both are null on an older server and never invoked.
+	private static final Method ITEM_MODEL_GETTER = lookupItemMetaMethod("getItemModel");
+	private static final Method ITEM_MODEL_SETTER = lookupItemMetaMethod("setItemModel", NamespacedKey.class);
+
+	@Nullable
+	private static Method lookupItemMetaMethod(String name, Class<?>... parameterTypes) {
+		try {
+			return ItemMeta.class.getMethod(name, parameterTypes);
+		} catch (NoSuchMethodException absent) {
+			return null;
+		}
+	}
+
+	@Nullable
+	private static NamespacedKey readItemModel(ItemMeta meta) {
+		if (ITEM_MODEL_GETTER == null) return null;
+		try {
+			return (NamespacedKey) ITEM_MODEL_GETTER.invoke(meta);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("ItemMeta#getItemModel is present but not invokable", e);
+		}
+	}
+
+	private static void writeItemModel(ItemMeta meta, @Nullable NamespacedKey itemModel) {
+		if (ITEM_MODEL_SETTER == null) return;
+		try {
+			ITEM_MODEL_SETTER.invoke(meta, itemModel);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("ItemMeta#setItemModel is present but not invokable", e);
+		}
 	}
 
 	/**
@@ -758,10 +793,12 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	}
 
 	protected void applyEffect(Player player, XPotion potion, int amplifier) {
+		// PotionEffect.INFINITE_DURATION (-1) is 1.19.4+; the compile floor is 1.16.5. Integer.MAX_VALUE ticks never
+		// runs out on any version, and removeEffect clears it explicitly.
 		XPotion.of(potion.name())
 		       .map(XPotion::getPotionEffectType)
 		       .ifPresent(type -> player.addPotionEffect(
-					   new PotionEffect(type, PotionEffect.INFINITE_DURATION, amplifier)));
+					   new PotionEffect(type, Integer.MAX_VALUE, amplifier)));
 	}
 
 	protected void removeEffect(Player player, XPotion potion) {
@@ -777,7 +814,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	 */
 	private void applyAttributeModifiers(@Nullable ItemStack item) {
 		if (item == null || handlingData == null) return;
-		AttributeModifiers.apply(item, handlingData.getAttributes(), EquipmentSlotGroup.MAINHAND, "attr_" + name);
+		AttributeModifiers.apply(item, handlingData.getAttributes(), EquipmentSlot.HAND, "attr_" + name);
 	}
 
 	private void push(Player player, double powerUp, double push) {
@@ -821,8 +858,10 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 			return false;
 		}
 
-		// Check if player is climbing (ladders, vines)
-		if (player.isClimbing()) {
+		// Check if player is climbing (ladders, vines). LivingEntity#isClimbing is 1.17+; the compile floor is 1.16.5,
+		// and the climbable block tag has existed since 1.16. The tag is null off-server (unit tests).
+		Tag<Material> climbable = Tag.CLIMBABLE;
+		if (climbable != null && climbable.isTagged(player.getLocation().getBlock().getType())) {
 			return false;
 		}
 

@@ -75,10 +75,10 @@ class WeaponAttributeModifiersTest {
 		ArgumentCaptor<AttributeModifier> addCaptor = ArgumentCaptor.forClass(AttributeModifier.class);
 		verify(meta, times(1)).addAttributeModifier(eq(attribute), addCaptor.capture());
 		AttributeModifier firstModifier = addCaptor.getValue();
-		assertNotNull(firstModifier.getKey());
+		assertNotNull(firstModifier.getUniqueId());
 
 		// Second call (e.g. updateWeaponData rebuilding the same held item): the meta now reports the modifier the
-		// first call added. The fix must remove it by key before re-adding, not stack a duplicate.
+		// first call added. The fix must remove it by id before re-adding, not stack a duplicate.
 		when(meta.getAttributeModifiers(attribute)).thenReturn(List.of(firstModifier));
 		applyAttributeModifiers.invoke(weapon, item);
 

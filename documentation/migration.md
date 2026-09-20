@@ -166,12 +166,17 @@ existing placed signs keep working without the owner re-placing them. This rewri
 - **`WeaponEntityDamageEvent.kind()` is effectively single-valued today.** Only `ThrowableAction` fires this
   event, and it always passes `DamageKind.EXPLOSION` — the other four enum values (`DIRECT`, `FIRE`, `BIOLOGICAL`,
   `MELEE`) exist for future firing actions, not because anything currently produces them.
-- **Compiled against `spigot-api 1.21.11-R0.1-SNAPSHOT`, not Keystone's 1.16.5 API floor.** The ported weapon code
-  uses several 1.21-only Bukkit members (`Enchantment.PROTECTION`, `PotionEffect.INFINITE_DURATION`,
-  `Player.isClimbing()`, the 3-arg `Player.sendBlockDamage`, `Particle.BLOCK`). On a pre-1.21 server these throw
-  `NoSuchFieldError` / `NoSuchMethodError` at the call site rather than failing to load — Bartizan is only
-  verified against 1.21.x. Lowering the compile floor to 1.16.5 (XSeries lookups, reflection, or feature-gating)
-  is a later wave.
+- **Compiled against `spigot-api 1.16.5-R0.1-SNAPSHOT` — Keystone's API floor (`bukkit.version` in the root pom).**
+  Newer Bukkit members are used only when the running server has them: `ItemMeta#setItemModel` (1.21.2+), the
+  3-arg `Player#sendBlockDamage`, `Material#getDefaultAttributeModifiers` and `Firework#setMaxLife` (all 1.19.4+)
+  go through cached reflective lookups that are null on an older server; `Particle.BLOCK` resolves through
+  `XParticle`; the protection enchantments are looked up by namespaced key (`Enchantment.getByKey`, present on
+  both ends of the range); attribute modifiers use the five-argument `UUID` constructor, the one shape shared by
+  1.16.5 and 1.21; `isClimbing()` became the `CLIMBABLE` block tag and `INFINITE_DURATION` became
+  `Integer.MAX_VALUE`. Known ceilings below 1.19.4 are marked with `ponytail:` comments at the call sites
+  (firework visuals self-detonate after the vanilla fuse, a wearable with `Attributes:` loses its vanilla armour
+  points, crack overlays are keyed per viewer). Anything added later that needs a newer API follows the same
+  pattern: reflective or XSeries lookup, never a direct reference.
 - **bStats plugin id ships as `0`.** Bartizan has not yet been registered on bstats.org; `0` is bStats' no-op id
   (metrics silently do nothing rather than throwing). The `number_of_weapons` chart is wired and will start
   reporting the moment a real id is set.

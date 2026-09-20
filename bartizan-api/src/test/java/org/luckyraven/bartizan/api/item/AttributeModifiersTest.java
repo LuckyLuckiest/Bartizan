@@ -3,7 +3,7 @@ package org.luckyraven.bartizan.api.item;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
-import org.bukkit.inventory.EquipmentSlotGroup;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.junit.jupiter.api.BeforeAll;
@@ -52,13 +52,13 @@ class AttributeModifiersTest {
 	void apply_emptyEntries_isNoOp() {
 		ItemStack item = mock(ItemStack.class);
 
-		AttributeModifiers.apply(item, List.of(), EquipmentSlotGroup.HEAD, "attr_test");
+		AttributeModifiers.apply(item, List.of(), EquipmentSlot.HEAD, "attr_test");
 
 		verify(item, never()).getItemMeta();
 	}
 
 	@Test
-	@DisplayName("survives a null getAttributeModifiers (every freshly-built item) and dedupes by key on re-apply")
+	@DisplayName("survives a null getAttributeModifiers (every freshly-built item) and dedupes by id on re-apply")
 	void apply_nullFirstCall_thenDedupesOnRebuild() {
 		Attribute attribute = mockAttribute("armor");
 		List<HandlingData.AttributeEntry> entries = List.of(
@@ -71,19 +71,19 @@ class AttributeModifiersTest {
 		// registered for the attribute yet, i.e. every freshly-built item.
 		when(meta.getAttributeModifiers(attribute)).thenReturn(null);
 
-		AttributeModifiers.apply(item, entries, EquipmentSlotGroup.HEAD, "attr_test");
+		AttributeModifiers.apply(item, entries, EquipmentSlot.HEAD, "attr_test");
 
 		ArgumentCaptor<AttributeModifier> addCaptor = ArgumentCaptor.forClass(AttributeModifier.class);
 		verify(meta, times(1)).addAttributeModifier(eq(attribute), addCaptor.capture());
 		AttributeModifier firstModifier = addCaptor.getValue();
-		assertNotNull(firstModifier.getKey());
-		assertEquals(EquipmentSlotGroup.HEAD, firstModifier.getSlotGroup());
+		assertNotNull(firstModifier.getUniqueId());
+		assertEquals(EquipmentSlot.HEAD, firstModifier.getSlot());
 		assertEquals(4.0, firstModifier.getAmount());
 
 		// Second call (e.g. a rebuild of the same held item): the meta now reports the modifier the first call
-		// added. Calling apply() again must replace it by key, not stack a duplicate.
+		// added. Calling apply() again must replace it by id, not stack a duplicate.
 		when(meta.getAttributeModifiers(attribute)).thenReturn(List.of(firstModifier));
-		AttributeModifiers.apply(item, entries, EquipmentSlotGroup.HEAD, "attr_test");
+		AttributeModifiers.apply(item, entries, EquipmentSlot.HEAD, "attr_test");
 
 		verify(meta, times(1)).removeAttributeModifier(eq(attribute), eq(firstModifier));
 		verify(meta, times(2)).addAttributeModifier(eq(attribute), any());
@@ -99,7 +99,7 @@ class AttributeModifiersTest {
 		ItemStack item = mock(ItemStack.class);
 		when(item.getItemMeta()).thenReturn(null);
 
-		AttributeModifiers.apply(item, entries, EquipmentSlotGroup.HEAD, "attr_test");
+		AttributeModifiers.apply(item, entries, EquipmentSlot.HEAD, "attr_test");
 
 		verify(item, never()).setItemMeta(any());
 	}
@@ -118,7 +118,7 @@ class AttributeModifiersTest {
 		when(item.getItemMeta()).thenReturn(meta);
 		when(meta.getAttributeModifiers(any(Attribute.class))).thenReturn(null);
 
-		AttributeModifiers.apply(item, entries, EquipmentSlotGroup.CHEST, "attr_hazmat_chest");
+		AttributeModifiers.apply(item, entries, EquipmentSlot.CHEST, "attr_hazmat_chest");
 
 		verify(meta, times(1)).addAttributeModifier(eq(armor), any());
 		verify(meta, times(1)).addAttributeModifier(eq(knockback), any());
@@ -139,18 +139,18 @@ class AttributeModifiersTest {
 		when(item.getItemMeta()).thenReturn(meta);
 		when(meta.getAttributeModifiers(speed)).thenReturn(null);
 
-		AttributeModifiers.apply(item, entries, EquipmentSlotGroup.HEAD, "attr_test");
+		AttributeModifiers.apply(item, entries, EquipmentSlot.HEAD, "attr_test");
 
 		ArgumentCaptor<AttributeModifier> addCaptor = ArgumentCaptor.forClass(AttributeModifier.class);
 		verify(meta, times(2)).addAttributeModifier(eq(speed), addCaptor.capture());
 		List<AttributeModifier> added = addCaptor.getAllValues();
-		assertNotEquals(added.get(0).getKey(), added.get(1).getKey(),
-		                "each entry on the same attribute must own a distinct modifier key");
+		assertNotEquals(added.get(0).getUniqueId(), added.get(1).getUniqueId(),
+		                "each entry on the same attribute must own a distinct modifier id");
 
-		// Re-apply (e.g. a rebuild of the same held item) must replace each entry's OWN modifier by its own key -
+		// Re-apply (e.g. a rebuild of the same held item) must replace each entry's OWN modifier by its own id -
 		// not drop the other one, which is exactly what a shared (attribute-only) key caused before this fix.
 		when(meta.getAttributeModifiers(speed)).thenReturn(added);
-		AttributeModifiers.apply(item, entries, EquipmentSlotGroup.HEAD, "attr_test");
+		AttributeModifiers.apply(item, entries, EquipmentSlot.HEAD, "attr_test");
 
 		verify(meta, times(1)).removeAttributeModifier(eq(speed), eq(added.get(0)));
 		verify(meta, times(1)).removeAttributeModifier(eq(speed), eq(added.get(1)));

@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.api.raytrace;
 
+import java.lang.reflect.Method;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -137,7 +138,7 @@ public class WeaponVisualSpawner {
 			// Vanilla fireworks self-detonate once their life reaches maxLife — a random 10-22 tick fuse by
 			// default. A cosmetic visual driven by SteppedProjectileTask must outlive that (HI-b review #3); the
 			// Bukkit API has no setTicksToDetonate, so push maxLife out instead of the current life counter.
-			firework.setMaxLife(Integer.MAX_VALUE);
+			setMaxLife(firework, Integer.MAX_VALUE);
 		} else if (projectile instanceof Fireball fireball) {
 			// world.spawn(loc, Fireball.class) yields a LargeFireball — yield 1, incendiary — by default. Neutralize
 			// both so the purely cosmetic visual can never actually blast/ignite on its own, and set the shooter so
@@ -148,6 +149,28 @@ public class WeaponVisualSpawner {
 		}
 
 		return projectile;
+	}
+
+	// Firework#setMaxLife is 1.19.4+; the compile floor is 1.16.5, so it is reached reflectively.
+	// ponytail: below 1.19.4 a firework visual self-detonates after the vanilla 10-22 tick fuse; drive the NMS
+	// lifetime field through Keystone's NmsCache if anyone runs one.
+	private static final Method SET_MAX_LIFE = lookupSetMaxLife();
+
+	private static Method lookupSetMaxLife() {
+		try {
+			return Firework.class.getMethod("setMaxLife", int.class);
+		} catch (NoSuchMethodException absent) {
+			return null;
+		}
+	}
+
+	private static void setMaxLife(Firework firework, int ticks) {
+		if (SET_MAX_LIFE == null) return;
+		try {
+			SET_MAX_LIFE.invoke(firework, ticks);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Firework#setMaxLife is present but not invokable", e);
+		}
 	}
 
 	private Entity spawnItem(World world, Location loc, VisualData visual) {

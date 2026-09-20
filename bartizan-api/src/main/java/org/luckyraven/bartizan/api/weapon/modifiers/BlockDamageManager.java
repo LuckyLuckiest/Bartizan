@@ -1,6 +1,7 @@
 package org.luckyraven.bartizan.api.weapon.modifiers;
 
 import com.cryptomorin.xseries.XSound;
+import com.cryptomorin.xseries.particles.XParticle;
 import lombok.Getter;
 import lombok.Setter;
 import org.bukkit.*;
@@ -11,6 +12,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.BlockBreakModifier;
 
+import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
@@ -131,7 +133,7 @@ public class BlockDamageManager {
 		World world = Objects.requireNonNull(location.getWorld());
 		for (Player player : world.getPlayers()) {
 			if (player.getLocation().distanceSquared(location) > 64 * 64) continue;
-			player.sendBlockDamage(location, progress, entityId);
+			sendBlockDamage(player, location, progress, entityId);
 		}
 	}
 
@@ -142,7 +144,33 @@ public class BlockDamageManager {
 		World world = Objects.requireNonNull(location.getWorld());
 		for (Player player : world.getPlayers()) {
 			if (player.getLocation().distanceSquared(location) > 64 * 64) continue;
-			player.sendBlockDamage(location, 0.0f, entityId);
+			sendBlockDamage(player, location, 0.0f, entityId);
+		}
+	}
+
+	// Player#sendBlockDamage(Location, float, int) — the per-source crack overlay — is 1.19.4+; the compile floor is
+	// 1.16.5, so it is reached reflectively and the two-argument form is the fallback.
+	// ponytail: below 1.19.4 the overlay is keyed on the viewer, so a second damaged block replaces the first one's
+	// cracks for that viewer; send PacketPlayOutBlockBreakAnimation through Keystone's PacketBridge if that matters.
+	private static final Method SEND_BLOCK_DAMAGE_WITH_SOURCE = lookupSendBlockDamageWithSource();
+
+	private static Method lookupSendBlockDamageWithSource() {
+		try {
+			return Player.class.getMethod("sendBlockDamage", Location.class, float.class, int.class);
+		} catch (NoSuchMethodException absent) {
+			return null;
+		}
+	}
+
+	private static void sendBlockDamage(Player player, Location location, float progress, int entityId) {
+		if (SEND_BLOCK_DAMAGE_WITH_SOURCE == null) {
+			player.sendBlockDamage(location, progress);
+			return;
+		}
+		try {
+			SEND_BLOCK_DAMAGE_WITH_SOURCE.invoke(player, location, progress, entityId);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Player#sendBlockDamage(Location, float, int) is present but not invokable", e);
 		}
 	}
 
@@ -252,7 +280,8 @@ public class BlockDamageManager {
 		XSound.Record breakSound = getBlockBreakSound(material);
 		breakSound.soundPlayer().atLocation(location).play();
 
-		world.spawnParticle(Particle.BLOCK, location.clone().add(0.5, 0.5, 0.5), 25, 0.3, 0.3, 0.3, 0.05, blockData);
+		// Particle.BLOCK is the 1.20.5+ name of BLOCK_CRACK; XParticle resolves whichever the running server has.
+		world.spawnParticle(XParticle.BLOCK.get(), location.clone().add(0.5, 0.5, 0.5), 25, 0.3, 0.3, 0.3, 0.05, blockData);
 	}
 
 	/**

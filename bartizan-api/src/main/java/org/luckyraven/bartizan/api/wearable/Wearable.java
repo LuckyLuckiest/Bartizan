@@ -1,16 +1,17 @@
 package org.luckyraven.bartizan.api.wearable;
 
 import com.google.common.collect.Multimap;
+import java.lang.reflect.Method;
 import lombok.Builder;
 import lombok.Getter;
 import org.bukkit.Color;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
-import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
@@ -136,7 +137,7 @@ public class Wearable {
 	 */
 	public static double getEnchantmentGenericBonus(ItemStack item) {
 		if (!isArmorItem(item)) return 0;
-		return item.getEnchantmentLevel(Enchantment.PROTECTION) * 0.015;
+		return enchantmentLevel(item, "protection") * 0.015;
 	}
 
 	/**
@@ -145,8 +146,8 @@ public class Wearable {
 	 */
 	public static double getEnchantmentProjectileBonus(ItemStack item) {
 		if (!isArmorItem(item)) return 0;
-		int prot     = item.getEnchantmentLevel(Enchantment.PROTECTION);
-		int projProt = item.getEnchantmentLevel(Enchantment.PROJECTILE_PROTECTION);
+		int prot     = enchantmentLevel(item, "protection");
+		int projProt = enchantmentLevel(item, "projectile_protection");
 		return prot * 0.015 + projProt * 0.02;
 	}
 
@@ -155,7 +156,7 @@ public class Wearable {
 	 */
 	public static double getEnchantmentFireBonus(ItemStack item) {
 		if (!isArmorItem(item)) return 0;
-		return item.getEnchantmentLevel(Enchantment.FIRE_PROTECTION) * 0.02;
+		return enchantmentLevel(item, "fire_protection") * 0.02;
 	}
 
 	/**
@@ -163,9 +164,20 @@ public class Wearable {
 	 */
 	public static double getEnchantmentBlastBonus(ItemStack item) {
 		if (!isArmorItem(item)) return 0;
-		int prot  = item.getEnchantmentLevel(Enchantment.PROTECTION);
-		int blast = item.getEnchantmentLevel(Enchantment.BLAST_PROTECTION);
+		int prot  = enchantmentLevel(item, "protection");
+		int blast = enchantmentLevel(item, "blast_protection");
 		return prot * 0.015 + blast * 0.025;
+	}
+
+	/**
+	 * Vanilla enchantment level by namespaced key. Looked up by key rather than through a static constant because
+	 * the constants were renamed between the 1.16.5 compile floor ({@code PROTECTION_ENVIRONMENTAL}) and 1.21
+	 * ({@code PROTECTION}) while {@code Enchantment.getByKey} exists on both — and, unlike XSeries' registry scan,
+	 * it degrades to level 0 off-server (unit tests) instead of failing class initialisation.
+	 */
+	private static int enchantmentLevel(ItemStack item, String key) {
+		Enchantment enchantment = Enchantment.getByKey(NamespacedKey.minecraft(key));
+		return enchantment == null ? 0 : item.getEnchantmentLevel(enchantment);
 	}
 
 	/**
@@ -249,31 +261,19 @@ public class Wearable {
 	}
 
 	/**
-	 * The armour slot group {@code material} occupies — {@code Attributes:} are stamped scoped to this group
-	 * (gate {@code HL}, §2) rather than {@code Weapon}'s fixed {@code MAINHAND}. Every material that reaches here
+	 * The armour slot {@code material} occupies — {@code Attributes:} are stamped scoped to this slot
+	 * (gate {@code HL}, §2) rather than {@code Weapon}'s fixed {@code HAND}. Every material that reaches here
 	 * has already passed {@link #isArmorMaterial(Material)} (the loader skips the entry otherwise), so the
 	 * {@code HEAD} fallback below is unreachable in practice, not a silent misclassification.
 	 */
-	public static EquipmentSlotGroup armorSlotGroup(Material material) {
-		String name = material.name();
-		if (name.endsWith("_CHESTPLATE") || name.equals("ELYTRA")) return EquipmentSlotGroup.CHEST;
-		if (name.endsWith("_LEGGINGS")) return EquipmentSlotGroup.LEGS;
-		if (name.endsWith("_BOOTS")) return EquipmentSlotGroup.FEET;
-		return EquipmentSlotGroup.HEAD;
-	}
-
-	/**
-	 * The concrete {@link EquipmentSlot} counterpart of {@link #armorSlotGroup(Material)} — same branching, needed
-	 * by {@link #restampVanillaAttributeDefaults} because {@link Material#getDefaultAttributeModifiers(EquipmentSlot)}
-	 * (gate {@code HL} review, §3) takes a single slot, not a slot group.
-	 */
-	private static EquipmentSlot armorEquipmentSlot(Material material) {
+	public static EquipmentSlot armorSlot(Material material) {
 		String name = material.name();
 		if (name.endsWith("_CHESTPLATE") || name.equals("ELYTRA")) return EquipmentSlot.CHEST;
 		if (name.endsWith("_LEGGINGS")) return EquipmentSlot.LEGS;
 		if (name.endsWith("_BOOTS")) return EquipmentSlot.FEET;
 		return EquipmentSlot.HEAD;
 	}
+
 
 	/**
 	 * Per-piece base damage reduction by vanilla material tier. These values represent a modest contribution - vanilla
@@ -395,7 +395,7 @@ public class Wearable {
 			// of silently replacing them (gate HL review, §3).
 			restampVanillaAttributeDefaults(item, material);
 		}
-		AttributeModifiers.apply(item, attributes, armorSlotGroup(material), "attr_" + wearableKey);
+		AttributeModifiers.apply(item, attributes, armorSlot(material), "attr_" + wearableKey);
 		return item;
 	}
 
@@ -406,15 +406,37 @@ public class Wearable {
 	 * {@link AttributeModifiers#apply} call never touches, dedupes, or removes them.
 	 */
 	private static void restampVanillaAttributeDefaults(ItemStack item, Material material) {
+		if (DEFAULT_ATTRIBUTE_MODIFIERS == null) return;
 		ItemMeta meta = item.getItemMeta();
 		if (meta == null) return;
 
-		Multimap<Attribute, AttributeModifier> defaults =
-				material.getDefaultAttributeModifiers(armorEquipmentSlot(material));
-		for (Map.Entry<Attribute, AttributeModifier> entry : defaults.entries()) {
+		for (Map.Entry<Attribute, AttributeModifier> entry : vanillaDefaults(material).entries()) {
 			meta.addAttributeModifier(entry.getKey(), entry.getValue());
 		}
 		item.setItemMeta(meta);
+	}
+
+	// Material#getDefaultAttributeModifiers(EquipmentSlot) is 1.19.4+; the compile floor is 1.16.5, so it is reached
+	// reflectively and is null (the restamp is skipped) on an older server.
+	// ponytail: below 1.19.4 a piece with Attributes: loses its vanilla armour points; add a per-tier table if anyone runs one.
+	private static final Method DEFAULT_ATTRIBUTE_MODIFIERS = lookupDefaultAttributeModifiers();
+
+	@Nullable
+	private static Method lookupDefaultAttributeModifiers() {
+		try {
+			return Material.class.getMethod("getDefaultAttributeModifiers", EquipmentSlot.class);
+		} catch (NoSuchMethodException absent) {
+			return null;
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private static Multimap<Attribute, AttributeModifier> vanillaDefaults(Material material) {
+		try {
+			return (Multimap<Attribute, AttributeModifier>) DEFAULT_ATTRIBUTE_MODIFIERS.invoke(material, armorSlot(material));
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("Material#getDefaultAttributeModifiers is present but not invokable", e);
+		}
 	}
 
 	/**
