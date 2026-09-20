@@ -425,6 +425,7 @@ WM's per-weapon modules and where Bartizan lands. "Gate" is where the gap closes
 | `Shoot_Delay_After_Scope` | — | Missing | `HH` |
 | Spread bonus while scoped | Scoping does nothing to spread | Missing | `HE` (`Modify_Spread_When.Zooming`) |
 | `Pumpkin_Overlay` (WMC) | — | Skip | needs helmet-slot swap packets |
+| Spyglass zoom + raised arm (not in WM) | — | Missing | `HP` (§10) — the vanilla spyglass use on 1.17+, no packets |
 
 ### 4.6 Damage
 
@@ -680,6 +681,8 @@ few days, L ≈ a week+), not commitments.
 | `HL` | Wearables | M | `HB`, `HF` | Attributes, set bonuses, worn effects, `sealed`/`insulated`/`night_vision`/`swift` traits, equip effects, armour damage, `ConfigReport` loader |
 | `HM` | WeaponMechanics import | L | `HA`, `HD`, `HE`, `HF`, `HG` (for lossless mapping; can ship earlier with more report lines) | Command, translator, emitter, report, live item conversion, golden test over WM's defaults |
 | `HN` | Stretch | — | `HC` | Sustained beam mode, `Heat:` (minigun spin-up), bayonet, dual wield, attachments, MythicMobs hook |
+| `HO` | Staged reload (backlog, §9) | M | `HG`, `HD` | Stage detection for both reload types, resume within `Resume_Window` after an interrupt, `Reload.Stages`, `%reload_stage%`, `On_Reload_Stage`, `WeaponReloadStageEvent` |
+| `HP` | Spyglass scope + vanilla aim poses (backlog, §10) | S–M | `HH`, `HJ` | `Scope.Type: spyglass` (1.17+ zoom, raised arm, use slowdown, `F` fires while scoped), `< 1.17` fallback to `slowness`, charged-crossbow hold pose on any version |
 
 Every gate ends with: `mvn clean install` green, the new keys documented in the shipped YAML's header comments
 (the house rule: comments are the user docs), `README.md` package map updated, and a `documentation/` note if a
@@ -693,8 +696,141 @@ public API surface changed.
   rule, and `NodeReader` already validates maps.
 - **Packet-level cosmetics** (third-person poses, pumpkin overlays, hurt-animation flinch, client-side beam
   entities). Spigot-only with reflective `PacketAdapter` for recoil is the agreed ceiling; particles and Bukkit
-  APIs cover the rest.
+  APIs cover the rest. Poses the vanilla client draws from the held item's Material (spyglass use,
+  charged-crossbow hold) are not packets; they are gate `HP` (§10).
 - **Spread images**, **Vivecraft**, **Bedrock haptics**, **money-as-ammo** (Vault): no demand, real cost.
 - **Config inheritance / `extends:`** — tempting with 22+ near-identical files, but `Default_Effects` in `HA`
   covers the repetitive half (sounds); revisit when a second repeated block hurts.
 - **Persisting statuses or heat** across restarts.
+---
+
+## 9. Backlog: staged reload (gate `HO`)
+
+Added 2026-09-16 from the first play-test. Not scheduled; depends on `HG` (reload keys) and `HD` (HUD
+placeholders). Size M. Unit note for anyone touching this: `Reload.Cooldown` is in **seconds** (one
+`SequenceTimer` period each, the timer's default period is 20 ticks); the 0.3.0 HUD bar and item-cooldown overlay
+convert with `timer.getPeriod()`.
+
+**Problem.** A reload is all-or-nothing in time. `InstantReload` takes the magazine item and restores the rounds
+only in its final timer step, so a swap, a death or dropped ammo throws away every elapsed second and the next
+press starts from zero. `NumberedReload` already keeps each shell it has inserted (every insertion writes the
+item), but a restart replays the opening delay and nothing knows how far the reload got. Most shooters resume
+from the stage reached: mag out, mag in, chamber; shell four of six.
+
+**Decision.** Model a reload as an ordered list of stages, each a share of the duration with a commit point.
+First detect stages from what the timers already do, with no config; then let the config name, size and resume
+them.
+
+```yaml
+Reload:
+   Cooldown: 4
+   Type: instant
+   Stages:
+      # ticks after an interrupt in which the next reload resumes; 0 = today's restart-from-zero
+      Resume_Window: 60
+      Open:
+         Share: 0.25
+      Insert:
+         # the commit point: the magazine item is consumed here, exactly as today
+         Share: 0.6
+      Close:
+         Share: 0.15
+```
+
+- **Phase 1, detect.** `Reload` derives the stages from the existing timer sequence: instant = `open` (start to
+  the mid sound), `insert` (mid sound to consume), `close` (the final step); numbered = `open`, one `insert` per
+  shell, `close`. It tracks the current stage and its start time, exposes `%reload_stage%` /
+  `%reload_stage_max%` to the HUD, runs an `On_Reload_Stage` hook and fires `WeaponReloadStageEvent`. No config
+  change, no behaviour change.
+- **Phase 2, resume.** `stopReloading()` records the last committed stage and a timestamp on the weapon instance.
+  A reload pressed within `Resume_Window` skips every committed stage and starts the interrupted one from its
+  beginning, so there is no partial-stage credit to exploit. Numbered reload skips `open` and carries on with the
+  next shell. The boss bar shows overall progress with the resumed offset; the item-cooldown overlay is set to the
+  remaining duration only.
+- **Ammo safety.** The magazine item is consumed at the `insert` commit exactly as today: an interrupt before it
+  consumes nothing, an interrupt after it leaves the rounds in the magazine. Nothing is refunded or duplicated.
+- **Manipulate.** `Stages.<name>.Share` resizes a stage (shares are normalised, so they need not sum to one); a
+  stage may carry its own `Sound` and, once skins gain per-stage states, a `Skin`. Unknown stage names warn and
+  are ignored.
+
+**Classes.** api: `weapon/dto/ReloadStagesData`, `event/WeaponReloadStageEvent`, stage bookkeeping on `Reload`.
+plugin: the reload keys in `AmmunitionSectionParser` read `Stages`; `WeaponPlaceholders` gains the two
+placeholders. **Tests:** stage derivation for both reload types, resume-window maths with an injected clock, the
+"interrupt after insert keeps the rounds" case. **Skipped:** mid-stage partial credit, per-stage animation beyond
+a sound and a skin, the NPC path (unlimited ammo, nothing to resume).
+
+---
+
+## 10. Backlog: spyglass scope and vanilla aim poses (gate `HP`)
+
+Added 2026-09-16. Not scheduled; depends on `HH` (scope keys) and `HJ` (the `Scope` skin state), both shipped.
+Size S–M. Everything here is a vanilla client behaviour keyed off the held item's Material, so it stays inside
+the §8 ceiling: no packets, no NMS, nothing to adapt per version.
+
+**Problem.** `Scope` today is a SLOWNESS amplifier: it slows the player and nothing else. There is no zoom, and
+in third person a player aiming a rifle looks exactly like one holding a pickaxe. Since 1.17 the client does
+both for free while the player *uses* a spyglass: the field of view drops to 10 % (lerped in over about five
+ticks), the arm comes up to the eye for everyone watching (the server tracks the use as an entity flag, so
+other clients render it without any packet trick), movement input is cut to 20 % and sprinting is blocked, and
+the scope overlay (`assets/minecraft/textures/misc/spyglass_scope.png`; a resource pack can paint a reticle on
+it) is drawn. The client's `isScoping()` checks the item *type*, not its model, so a spyglass with
+`Custom_Model_Data` that looks like a rifle still zooms.
+
+**The constraint that shapes the key layout.** While any item is in use (bow, shield, food, spyglass) the
+client discards attack clicks (`Minecraft#handleKeybinds` swallows `keyAttack` while `isUsingItem()`), so a
+scoped player cannot fire with left-click, and right-click is the use itself. Fire while scoped therefore moves
+to `F` (`PlayerSwapHandItemsEvent`, cancelled): the one key the client sends during item use with no local
+side effect. `Q` removes the stack locally before the server answers and breaks the use for a tick; sneak is
+already the recoil and spread modifier.
+
+**Decision.** A second scope type, guns only. Existing files change nothing.
+
+```yaml
+Information:
+   # must be SPYGLASS for Type: spyglass - a loader error otherwise
+   Material: SPYGLASS
+   Custom_Model_Data: 1000
+Shoot:
+   # implied by Type: spyglass (right-click is the spyglass use); a loader warning if set to right_click
+   Trigger: left_click
+Scope:
+   # slowness (default, today's behaviour) or spyglass (1.17+: vanilla zoom, raised arm, use slowdown)
+   Type: spyglass
+   # extra SLOWNESS on top of the vanilla use slowdown; 0 = vanilla only (allowed for Type: spyglass)
+   Level: 0
+   Night_Vision: false
+```
+
+- **Keys.** Hold right-click = scope (the vanilla use). Left-click = hip fire, as `Trigger: left_click` already
+  does. `F` while scoped = fire; for `AUTO` it starts the full-auto task and releasing the spyglass stops it
+  (the client sends no further use packets while an item is in use, so the press-hold watchdog cannot see the
+  hold). Sneak + `F` stays selective fire.
+- **Scope-in.** The `WeaponInteract` scope branch lets the use through (`setUseItemInHand(ALLOW)` instead of
+  `DENY`) so the server records it, then runs today's scope-in path unchanged: `Weapon#scope` (SLOWNESS
+  `Level`, which may now be 0), `Night_Vision`, `Shoot_Delay_After_Scope`, `ON_SCOPE_IN`, the `Scope` skin
+  state. `isScoping()` on the API is true for the duration.
+- **Scope-out.** Spigot has no "stopped using item" event, so one repeating task over the set of
+  spyglass-scoped players polls `HumanEntity#isHandRaised()` every few ticks and runs the scope-out path when it
+  drops. That covers release, the 1200-tick vanilla use limit, hotbar change, swap, drop, death and quit in one
+  place; the `HH` death/quit unscope stays as the belt.
+- **Skins.** `persistHeldWeapon` rewrites the held item on scope-in. The client keeps the use because the item
+  type is unchanged (`LivingEntity#updatingUsingItem` compares with `ItemStack#isSameItem`); verify on 1.17 and
+  1.21 in the play-test before relying on it.
+- **Older servers.** `XMaterial.SPYGLASS.isSupported()` false: warn once at load and run the weapon as
+  `Type: slowness` from the same file. `Zoom_Stacking` is meaningless under a fixed vanilla zoom: warn and
+  ignore.
+- **Aim pose without a scope, any version.** A `Material: CROSSBOW` weapon whose `CrossbowMeta` holds one arrow
+  renders the charged-crossbow hold pose (both arms up; `PlayerRenderer#getArmPose` returns `CROSSBOW_HOLD`)
+  while it is merely held: no use, no packets, left-click fires as normal and the swing returns to the pose.
+  The weapon item build adds the arrow whenever the Material is a crossbow. With the default right-click
+  trigger the client predicts the crossbow shot and drops the pose for one round trip until the `DENY` resync,
+  so prefer `Trigger: left_click` on such weapons.
+
+**Classes.** api: `ScopeData.type` (`ScopeType`: `SLOWNESS`, `SPYGLASS`). plugin: `WeaponAddon` reads
+`Scope.Type` plus the Material and Trigger checks, the `WeaponInteract` scope branch, `WeaponSelectiveFireChangeListener`
+gains the scoped `F` fire, `SpyglassScopeTask` (the poll), the crossbow arrow in the weapon item build.
+**Tests:** parser (type, Material mismatch error, `Trigger` warning, the `< 1.17` fallback through a stubbed
+`isSupported`), `F` fire routing with a mocked player whose `isHandRaised()` flips. **Skipped:** swapping a
+non-spyglass Material to a spyglass while scoped (packets, §8), a configurable scoped fire key (`F` only; add
+when a server asks), silencing the vanilla spyglass sounds and overlay (resource-pack work), a spyglass in the
+off hand.
