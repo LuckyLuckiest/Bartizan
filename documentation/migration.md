@@ -266,3 +266,11 @@ registration hook any soft-dependent plugin can use.
 **Data**: any shop/loot-chest entry that still references `wearable:jetpack` stops resolving — re-add it as
 `jetpack:<id>` through Gangland's own item vocabulary. Bartizan keeps no database, so there is nothing to migrate
 on this side.
+
+**Fuel survives the move.** A jetpack chestplate given out before 0.4.0 still carries its old, Bartizan-stamped
+`fuel_max` value (typically `3600`, the stock 0.3.0 default) — Gangland's re-stamp-on-equip migration
+(`JetpackService.migrateLegacyJetpack`, Gangland 0.9.2 G4) only ever touches the item-identity tag, never
+`fuel_max`/`fuel_current`, so a player's fuel and their maximum both carry over unchanged even if the item's
+catalogue definition (now `items/jetpacks.yml`'s `Max_Fuel:`) has since been set to a different value. See
+Gangland's own [`documentation/migration-0.9.2.md`](../../gangland-0.9.2/documentation/migration-0.9.2.md) for the
+full re-stamp mechanics and every other Gangland-side change this version brings.

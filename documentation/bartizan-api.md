@@ -292,7 +292,9 @@ happens now, and `applyWearableReduction`/`traitLevel`/`reduceCritBonus`/`reduce
 
 `register(String key, Wearable wearable)` lets a soft-dependent plugin hand Bartizan an armour identity + traits
 without Bartizan gaining any caller-specific code — the mechanism Gangland's rehomed jetpack uses to keep its old
-damage-reduction values (`documentation/migration.md` §12).
+damage-reduction values (`documentation/migration.md` §12; the Gangland-side story — item ownership, the
+`wearable:jetpack` → `jetpack:<id>` vocabulary rename, fuel/`fuel_max` surviving the move, and what a Bartizan-less
+server keeps versus loses — is [`gangland-0.9.2/documentation/migration-0.9.2.md`](../../gangland-0.9.2/documentation/migration-0.9.2.md)).
 
 **Damage-reduction/effects only — Bartizan never produces the item.** `wearable` must be built with
 `.external(true)` plus at minimum `wearableKey`/`baseDamageReduction`/`traits` (an optional `effects` block is
