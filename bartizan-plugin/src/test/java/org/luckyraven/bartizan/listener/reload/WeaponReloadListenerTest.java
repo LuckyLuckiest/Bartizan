@@ -7,6 +7,7 @@ import org.bukkit.inventory.PlayerInventory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.event.WeaponReloadCompleteEvent;
+import org.luckyraven.bartizan.api.event.WeaponReloadStageEvent;
 import org.luckyraven.bartizan.api.event.WeaponReloadStartEvent;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
@@ -69,6 +70,24 @@ class WeaponReloadListenerTest {
 		listener.onReloadEnd(event);
 
 		verify(effectRunner).run(eq(weapon), eq(EffectHook.ON_RELOAD_END), any(EffectContext.class));
+	}
+
+	@Test
+	@DisplayName("onReloadStage: runs ON_RELOAD_STAGE (weapons-roadmap.md gate HO)")
+	void onReloadStage_runsOnReloadStageHook() {
+		EffectRunner         effectRunner = mock(EffectRunner.class);
+		WeaponReloadListener listener     = new WeaponReloadListener(mock(WeaponService.class), effectRunner);
+
+		Weapon weapon = mock(Weapon.class);
+		Player player = mock(Player.class);
+
+		WeaponReloadStageEvent event = mock(WeaponReloadStageEvent.class);
+		when(event.getWeapon()).thenReturn(weapon);
+		when(event.getPlayer()).thenReturn(player);
+
+		listener.onReloadStage(event);
+
+		verify(effectRunner).run(eq(weapon), eq(EffectHook.ON_RELOAD_STAGE), any(EffectContext.class));
 	}
 
 	@Test

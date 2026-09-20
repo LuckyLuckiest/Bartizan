@@ -58,6 +58,7 @@ public class NumberedReload extends Reload {
 
 		unloadAmmoIfConfigured(inventory, player, removeAmmunition);
 		setAmmunition(resolveAmmoType(inventory, player, amount));
+		resetStageTracking();
 
 		timer = new SequenceTimer(plugin);
 
@@ -88,16 +89,38 @@ public class NumberedReload extends Reload {
 			return;
 		}
 
+		// weapons-roadmap.md gate HO Phase 2 resume — never for the NPC path (inventory == null). Stages here are
+		// derived from the timer, not from Reload.Stages.*.Share (that config only shapes an instant reload): open,
+		// one insert per shell (numberOfInsertions of them, already clamped to what the player carries), close.
+		// A resumed run's own stage numbering is local to itself (1..numberOfInsertions, not the original shell
+		// count) — the magazine already keeps every previously-committed shell regardless.
+		boolean resuming            = inventory != null && canResume();
+		int     previouslyCommitted = resuming ? previouslyCommittedFor(resumeStageIndex()) : 0;
+		clearResume();
+
+		int  stageCount = stageCountFor(numberOfInsertions);
+		long period     = timer.getPeriod();
+
 		// start reloading the gun — the total duration (for Weapon#reloadProgress, gate HD) is known only now that
 		// numberOfInsertions has been clamped to what the player actually carries. Reload.Cooldown counts timer
 		// periods (one second each on the default SequenceTimer), and the trailing end pair below is one more
 		// period, so the tick duration the HUD bar and the item-cooldown overlay run on covers the whole sequence.
-		long totalDurationTicks = ((long) numberOfInsertions * reloadData.getCooldown() + 1) * timer.getPeriod();
+		long elapsedTicksAlready = (long) previouslyCommitted * reloadData.getCooldown() * period;
+		long totalDurationTicks  = elapsedTicksAlready
+		                           + ((long) numberOfInsertions * reloadData.getCooldown() + 1) * period;
+
+		final boolean fResuming = resuming;
 		timer.addIntervalTaskPair(0, time -> {
-			super.startReloading(player, totalDurationTicks);
+			super.startReloading(player, totalDurationTicks, elapsedTicksAlready);
+			// open has zero width of its own (there is no extra delay before the first insertion beyond the
+			// standard per-shell wait below) — a fresh run still reports it once before moving straight to the
+			// first insert; a resumed run skips it and continues with the next shell.
+			if (!fResuming) enterStage(0, stageCount);
+			enterStage(1, stageCount);
 		});
 
 		for (int i = 0; i < numberOfInsertions; ++i) {
+			final int stageIndex = i + 1;
 			timer.addIntervalTaskPair(reloadData.getCooldown(), time -> {
 				if (!isReloading()) return;
 
@@ -140,6 +163,9 @@ public class NumberedReload extends Reload {
 						getWeapon().updateWeapon(player, heldWeapon, newSlot);
 					}
 				}
+
+				// this shell just committed — move on to the next one (or close, once it was the last).
+				enterStage(stageIndex + 1, stageCount);
 			});
 		}
 
@@ -154,6 +180,23 @@ public class NumberedReload extends Reload {
 		});
 
 		timer.start(false);
+	}
+
+	/**
+	 * @return the total stage count of a numbered reload run of {@code numberOfInsertions} shells: {@code open} +
+	 * 		one {@code insert} per shell + {@code close}.
+	 */
+	static int stageCountFor(int numberOfInsertions) {
+		return numberOfInsertions + 2;
+	}
+
+	/**
+	 * @return how many shells had already committed when the interrupted run's {@code resumeStageIndex} was
+	 * 		recorded — {@code resumeStageIndex} counts "open" as stage 0 and the shell currently in progress
+	 * 		(waiting, not yet committed) as its own stage, so every stage before it is a committed shell.
+	 */
+	static int previouslyCommittedFor(int resumeStageIndex) {
+		return Math.max(0, resumeStageIndex - 1);
 	}
 
 }

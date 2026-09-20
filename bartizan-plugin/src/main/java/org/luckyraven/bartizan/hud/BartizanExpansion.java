@@ -16,9 +16,10 @@ import java.util.Locale;
  * {@code bartizan}: {@code %bartizan_<param>%}, backed by the same {@link WeaponPlaceholders} lookups the HUD
  * ticker uses. Never loaded unless PlaceholderAPI is installed — see {@link PlaceholderApiSupport}.
  *
- * <p>Params: {@code ammo_left}, {@code ammo_max}, {@code reload}, {@code reload_progress}, {@code firearm_state},
- * {@code selective_fire}, {@code durability}, {@code weapon_title} (the display name — {@code %weapon%} in
- * {@link WeaponPlaceholders}, renamed here to avoid clashing with other expansions' generic {@code weapon} param).
+ * <p>Params: {@code ammo_left}, {@code ammo_max}, {@code reload}, {@code reload_progress}, {@code reload_stage},
+ * {@code reload_stage_max} (gate {@code HO}), {@code firearm_state}, {@code selective_fire}, {@code durability},
+ * {@code weapon_title} (the display name — {@code %weapon%} in {@link WeaponPlaceholders}, renamed here to avoid
+ * clashing with other expansions' generic {@code weapon} param).
  */
 class BartizanExpansion extends PlaceholderExpansion {
 
@@ -64,6 +65,8 @@ class BartizanExpansion extends PlaceholderExpansion {
 			case "ammo_max" -> WeaponPlaceholders.resolve(weapon, player, "%ammo_max%");
 			case "reload" -> WeaponPlaceholders.resolve(weapon, player, "%reload%");
 			case "reload_progress" -> WeaponPlaceholders.resolve(weapon, player, "%reload_progress%");
+			case "reload_stage" -> WeaponPlaceholders.resolve(weapon, player, "%reload_stage%");
+			case "reload_stage_max" -> WeaponPlaceholders.resolve(weapon, player, "%reload_stage_max%");
 			case "firearm_state" -> WeaponPlaceholders.resolve(weapon, player, "%firearm_state%");
 			case "selective_fire" -> WeaponPlaceholders.resolve(weapon, player, "%selective_fire%");
 			case "durability" -> WeaponPlaceholders.resolve(weapon, player, "%durability%");

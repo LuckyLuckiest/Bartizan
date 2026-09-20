@@ -27,6 +27,12 @@ public class ReloadData {
 	 * playing the empty-mag click.
 	 */
 	private final boolean    autoReloadWhenEmpty;
+	/**
+	 * {@code Reload.Stages} (weapons-roadmap.md gate {@code HO}) — never {@code null}: a file with no {@code
+	 * Stages:} section still gets {@link ReloadStagesData#defaults()}, since resume is on by default.
+	 */
+	@Builder.Default
+	private final ReloadStagesData stages = ReloadStagesData.defaults();
 
 	@Override
 	public String toString() {

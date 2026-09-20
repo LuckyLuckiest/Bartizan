@@ -9,6 +9,7 @@ import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
+import org.luckyraven.bartizan.api.weapon.dto.ReloadStagesData;
 import org.luckyraven.bartizan.api.weapon.reload.ReloadType;
 
 import java.util.ArrayList;
@@ -53,11 +54,12 @@ public class AmmunitionSectionParser {
 		int          consume        = ammo.get("Consume").asInt().min(0).orDefault(1);
 		int          restore        = ammo.get("Restore").asInt().min(0).orDefault(capacity);
 
-		int        cooldown              = 0;
-		ReloadType reloadType            = ReloadType.getType("instant");
-		boolean    unloadAmmoOnReload    = false;
-		int        shootDelayAfterReload = 0;
-		boolean    autoReloadWhenEmpty   = false;
+		int              cooldown              = 0;
+		ReloadType       reloadType            = ReloadType.getType("instant");
+		boolean          unloadAmmoOnReload    = false;
+		int              shootDelayAfterReload = 0;
+		boolean          autoReloadWhenEmpty   = false;
+		ReloadStagesData stages                = ReloadStagesData.defaults();
 
 		MappingNode reloadSection = root.get("Reload").asMapping().orNull();
 		if (reloadSection != null) {
@@ -80,6 +82,7 @@ public class AmmunitionSectionParser {
 			unloadAmmoOnReload    = reload.get("Unload_Ammo_On_Reload").asBool().orDefault(false);
 			shootDelayAfterReload = reload.get("Shoot_Delay_After_Reload").asInt().min(0).orDefault(0);
 			autoReloadWhenEmpty   = reload.get("Auto_Reload_When_Empty").asBool().orDefault(false);
+			stages                = parseStages(reload, report);
 		}
 
 		ReloadData reloadData = ReloadData.builder()
@@ -88,6 +91,7 @@ public class AmmunitionSectionParser {
 				.unloadAmmoOnReload(unloadAmmoOnReload)
 				.shootDelayAfterReload(shootDelayAfterReload)
 				.autoReloadWhenEmpty(autoReloadWhenEmpty)
+				.stages(stages)
 				.build();
 
 		boolean hasSingle = ammoTypeString != null && !ammoTypeString.isEmpty();
@@ -119,6 +123,44 @@ public class AmmunitionSectionParser {
 		if (resolved.contains(null)) return null;
 
 		return new ParsedAmmo(reloadData, new AmmunitionData(resolved, capacity, consume, restore));
+	}
+
+	/**
+	 * {@code Reload.Stages} (weapons-roadmap.md gate {@code HO}) — absent entirely means {@link
+	 * ReloadStagesData#defaults()} (resume is on by default). An unrecognised child key (anything but
+	 * {@code Resume_Window}/{@code Open}/{@code Insert}/{@code Close}) is a {@link Severity#WARNING} and is
+	 * ignored, same house style as {@code EffectsSectionParser}'s unknown hooks.
+	 */
+	private static ReloadStagesData parseStages(NodeReader reload, ConfigReport report) {
+		MappingNode stagesSection = reload.get("Stages").asMapping().orNull();
+		if (stagesSection == null) return ReloadStagesData.defaults();
+
+		NodeReader       stages   = NodeReader.of(stagesSection, report);
+		ReloadStagesData defaults = ReloadStagesData.defaults();
+
+		int    resumeWindow = stages.get("Resume_Window").asInt().min(0).orDefault(defaults.getResumeWindowTicks());
+		double openShare    = shareOf(stages, "Open", defaults.getOpenShare());
+		double insertShare  = shareOf(stages, "Insert", defaults.getInsertShare());
+		double closeShare   = shareOf(stages, "Close", defaults.getCloseShare());
+
+		for (String key : stages.keys()) {
+			if (key.equalsIgnoreCase("Resume_Window") || key.equalsIgnoreCase("Open")
+					|| key.equalsIgnoreCase("Insert") || key.equalsIgnoreCase("Close")) {
+				continue;
+			}
+
+			report.add(Severity.WARNING, stagesSection.location(), "Reload.Stages." + key,
+			           "unknown reload stage '" + key + "'", "reload.unknown_stage");
+		}
+
+		return ReloadStagesData.of(resumeWindow, openShare, insertShare, closeShare);
+	}
+
+	private static double shareOf(NodeReader stages, String key, double fallback) {
+		MappingNode stageMapping = stages.get(key).asMapping().orNull();
+		if (stageMapping == null) return fallback;
+
+		return NodeReader.of(stageMapping, stages.report()).get("Share").asDouble().min(0).orDefault(fallback);
 	}
 
 	@Nullable
