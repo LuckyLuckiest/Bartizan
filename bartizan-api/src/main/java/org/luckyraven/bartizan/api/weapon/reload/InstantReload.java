@@ -61,9 +61,10 @@ public class InstantReload extends Reload {
 
 		timer = new SequenceTimer(plugin);
 
-		// start reloading the gun
+		// start reloading the gun. Reload.Cooldown counts timer periods (one second each on the default
+		// SequenceTimer), so the tick duration the HUD bar and the item-cooldown overlay run on is cooldown * period.
 		timer.addIntervalTaskPair(0, time -> {
-			super.startReloading(player, reloadData.getCooldown());
+			super.startReloading(player, reloadData.getCooldown() * timer.getPeriod());
 		});
 
 		// the sound that plays at the middle

@@ -89,8 +89,10 @@ public class NumberedReload extends Reload {
 		}
 
 		// start reloading the gun — the total duration (for Weapon#reloadProgress, gate HD) is known only now that
-		// numberOfInsertions has been clamped to what the player actually carries.
-		long totalDurationTicks = (long) numberOfInsertions * reloadData.getCooldown();
+		// numberOfInsertions has been clamped to what the player actually carries. Reload.Cooldown counts timer
+		// periods (one second each on the default SequenceTimer), and the trailing end pair below is one more
+		// period, so the tick duration the HUD bar and the item-cooldown overlay run on covers the whole sequence.
+		long totalDurationTicks = ((long) numberOfInsertions * reloadData.getCooldown() + 1) * timer.getPeriod();
 		timer.addIntervalTaskPair(0, time -> {
 			super.startReloading(player, totalDurationTicks);
 		});

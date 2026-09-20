@@ -234,7 +234,8 @@ Ammunition:
 
 # Weapon reload configuration
 Reload:
-   # The reload time taken
+   # The reload time taken, in seconds (each second is one step of the reload timer; the HUD boss bar and the
+   # Reload_Item_Cooldown overlay run for exactly this long, plus one second for a numbered reload)
    Cooldown: 4
 
    Sound:
