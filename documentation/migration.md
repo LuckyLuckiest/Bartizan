@@ -251,3 +251,33 @@ Players' existing WM items keep working without being reissued: `WmItemConverter
 import) rebuilds a held/clicked/carried item that still carries WM's own `weaponmechanics:weapon-title` NBT tag
 into its imported Bartizan equivalent, carrying `ammo-left` over, the moment it's next held, clicked, or the
 player logs in.
+
+## 12. 0.5.0 (gates HO, HP) — staged reload, spyglass scope, crossbow aim pose
+
+No file has to change. Two behaviours do change without a config edit, so read the first two bullets before
+deploying.
+
+- **Every instant reload now runs in three timed stages** (`open` 25 %, `insert` 60 %, `close` 15 % of
+  `Reload.Cooldown`, rounded to whole timer periods). The magazine item is still consumed exactly once, at the
+  `insert` commit, but the mid-reload sound now plays at a quarter of the cooldown instead of half, and short
+  cooldowns (0–3 s and 6 s) have a zero-length `close`. Numbered (shell-by-shell) reloads keep their timing.
+- **An interrupted reload resumes by default.** A swap, drop, death or lost magazine records the last committed
+  stage; a reload pressed within `Reload.Stages.Resume_Window` ticks (default 60) skips the committed stages and
+  restarts the interrupted one from its beginning. Set `Resume_Window: 0` on a weapon to keep the old
+  restart-from-zero behaviour. Nothing is refunded or duplicated; an interrupt at `close` starts a fresh reload.
+- New keys, all optional and documented in `rifle.yml`: `Reload.Stages.Resume_Window`,
+  `Reload.Stages.Open/Insert/Close.Share` (normalised, instant reloads only). New hook `On_Reload_Stage`
+  (`settings.yml` hook list), new HUD/PlaceholderAPI placeholders `%reload_stage%` (1-based) and
+  `%reload_stage_max%`, new api event `WeaponReloadStageEvent`.
+- **`Scope.Type: spyglass`** (1.17+): with `Information.Material: SPYGLASS` the scope becomes the vanilla spyglass
+  use (zoom, raised arm for everyone watching, use slowdown), `Scope.Level` may be 0, and fire while scoped is
+  the `F` key (the client swallows attack clicks during an item use). Set `Shoot.Trigger: left_click` on such
+  weapons (`right_click` loads with a warning); `Zoom_Stacking` is ignored with a warning. On a server below 1.17
+  the weapon loads as `Type: slowness` after one warning. Existing `Scope:` sections (`Type: slowness`, the
+  default) behave exactly as before. Sample: the new bundled `weapon/scout.yml`.
+- **A weapon whose `Information.Material` is `CROSSBOW` now carries one arrow in its item meta**, which makes
+  the client draw the charged-crossbow hold pose while it is merely held. Existing crossbow weapon items gain the
+  arrow on their next refresh; Bartizan denies the vanilla use on every right-click, so the arrow never fires.
+  Prefer `Shoot.Trigger: left_click` on such weapons so the client does not predict a crossbow shot.
+- Not yet play-tested on a real server: the spyglass skin rewrite keeping the vanilla use on 1.17 and 1.21, and
+  the new instant-reload stage timing. Both are flagged in the roadmap's §9/§10 *As built* notes.

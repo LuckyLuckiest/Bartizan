@@ -6,7 +6,7 @@ installed on any Keystone-powered server, not just Gangland's.
 
 ## Install
 
-Drop `Bartizan-0.3.0.jar` beside `Keystone-1.9.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
+Drop `Bartizan-0.5.0.jar` beside `Keystone-1.9.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
 Keystone and NBT-API — both must already be installed and enabled, or Bartizan fails to load (Keystone's
 `NbtBridge.detect()` falls back to a no-op accessor when NBT-API is absent, which makes every Bartizan item inert,
 so it is a hard `depend:`, not a `softdepend:`). Soft-depends on `ViaVersion`, `PlaceholderAPI`.
@@ -16,7 +16,7 @@ so it is a hard `depend:`, not a `softdepend:`). Soft-depends on `ViaVersion`, `
 ```
 plugins/Bartizan/settings.yml
 plugins/Bartizan/message/message_en.yml
-plugins/Bartizan/weapon/<24 files>.yml
+plugins/Bartizan/weapon/<25 files>.yml
 plugins/Bartizan/items/ammunition.yml
 plugins/Bartizan/items/wearables.yml
 ```
@@ -30,7 +30,7 @@ Bartizan keeps no database. A weapon item's identity and state live in its own N
 | Artifact | Purpose |
 |---|---|
 | `bartizan-api` | The weapon/ammo/wearable model and service contracts (`BartizanApi`, `WeaponCatalog`, events, `NpcRangedAttack` SPI impl surface). `provided` scope in every consumer; zero `net.minecraft`, zero `org.bukkit.craftbukkit`, zero `org.luckyraven.gangland` symbols. |
-| `bartizan-plugin` | The runtime: services, listeners, commands, item vocabulary. Shaded into `Bartizan-0.3.0.jar`. Never a dependency of anything else. |
+| `bartizan-plugin` | The runtime: services, listeners, commands, item vocabulary. Shaded into `Bartizan-0.5.0.jar`. Never a dependency of anything else. |
 
 Consumers (e.g. Gangland Warfare's `gangland-features/*` modules) depend on `bartizan-api` at `provided` scope and
 discover `BartizanApi` through Bukkit's `ServicesManager` at runtime — Bartizan never names a consumer's types, and
@@ -40,7 +40,7 @@ See [`documentation/bartizan-api.md`](documentation/bartizan-api.md) for the ser
 example, and [`documentation/migration.md`](documentation/migration.md) for what server owners moving off an older
 Gangland Warfare weapon module need to do.
 
-## Package map (as-built, 0.3.0)
+## Package map (as-built, 0.5.0)
 
 ```
 bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
@@ -49,7 +49,8 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                        .event                  WeaponEvent, WeaponShootEvent, WeaponRaytraceImpactEvent,
                                                                 WeaponEntityDamageEvent (zone/distance, gate HK), WeaponKillEntityEvent,
                                                                 WeaponAssistEvent (gate HK),
-                                                                WeaponReloadEvent/Start/Complete, WeaponChangeSelectiveFireEvent,
+                                                                WeaponReloadEvent/Start/Complete, WeaponReloadStageEvent (gate HO),
+                                                                WeaponChangeSelectiveFireEvent,
                                                                 WeaponChargeLevelEvent, WeaponBeamFireEvent,
                                                                 WeaponStatusApplyEvent, WeaponStatusExpireEvent
                                        .item                   WeaponItemApi, AttributeModifiers
@@ -65,7 +66,7 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                                                 incl. On_Block_Hit, the zone hooks and gate HL's
                                                                 On_Unequip/On_Hit_Taken), EffectSpec, EffectsData, HudData,
                                                                 HandlingData (incl. AttributeEntry), MuzzleOffsetData,
-                                                                SkinsData, ...)
+                                                                SkinsData, ReloadStagesData (gate HO), ScopeType (gate HP), ...)
                                        .weapon.durability        DurabilityCalculator
                                        .weapon.modifiers          BlockDamageManager, DamageMath, ExplosionMath + action/*
                                        .weapon.recoil            RecoilManager
@@ -95,6 +96,7 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                                                 WeaponSprintListener,
                                                                 death/fire/player/projectile/reload/selective/wearable
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
+                                       .scope                  SpyglassScopeTask (gate HP: 2-tick isHandRaised poll, unscope-only, owns the scoped-F auto task)
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
                                                                 ExplosionHandler (gate HI-a, unified AOE explosions), ProjectileMotion,
                                                                 BeamRenderer, HitZone
@@ -103,7 +105,9 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser
                                        .weapon(.action)        WeaponService, WeaponManager, DamageRules, CircumstanceRules,
                                                                 GunAction/FullAutoTask/MeleeAction/...,
-                                                                ChargeController (shared charge-then-release timer), BeamAction
+                                                                ChargeController (shared charge-then-release timer), BeamAction,
+                                                                ScopeToggle + GunFireDispatcher (gate HP: the one scope-in/out path and the
+                                                                one SINGLE/BURST dispatch + press lock shared by click and scoped-F fire)
                                        .wearable               WearableAddon, WearableService (SetTier, resolveTraitLevels,
                                                                 applyInsulatedReduction, onHitTaken), WearableEffectsService
 ```
@@ -128,7 +132,7 @@ details and [`documentation/weapons-roadmap.md`](documentation/weapons-roadmap.m
 ## Build
 
 ```
-mvn clean install            # bartizan-plugin/target/Bartizan-0.3.0.jar
+mvn clean install            # bartizan-plugin/target/Bartizan-0.5.0.jar
 mvn clean install -DskipTests
 ```
 

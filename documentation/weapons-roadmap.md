@@ -1,6 +1,6 @@
 # Weapons roadmap: feedback, beams, WeaponMechanics parity, import
 
-> **How to use this file.** A design plan for Bartizan's next wave (gates `HA`–`HN`), written 2026-09-13 against
+> **How to use this file.** A design plan for Bartizan's next wave (gates `HA`–`HP`), written 2026-09-13 against
 > the working tree at `0e18356` plus the in-progress database removal (0.2.0). It is grounded in two code traces:
 > Bartizan's own runtime (`bartizan-api` / `bartizan-plugin`) and a shallow clone of
 > [WeaponMechanics](https://github.com/WeaponMechanics/WeaponMechanics) (`weaponmechanics-core`, 4.1.x, master on
@@ -15,6 +15,10 @@
 >   **Missing**, **Dead** (config key parsed but never read), **Skip** (deliberately not doing, reason given).
 >
 > Rendered page with the gate strip and status chips: https://claude.ai/code/artifact/193bb934-53aa-428f-8c9d-63a234e9a10a
+>
+> **Status (2026-09-21).** `HA`–`HM` shipped in 0.3.0. `HO` and `HP` shipped in 0.5.0 (branch `0.5.0`; the
+> *As built* paragraphs at the end of §9 and §10 record what differs from the design text). `HN` is not started.
+> 0.4.0 is the Gangland-decoupling wave (external wearables, jetpack residue) and touches no gate.
 
 ---
 
@@ -681,8 +685,8 @@ few days, L ≈ a week+), not commitments.
 | `HL` | Wearables | M | `HB`, `HF` | Attributes, set bonuses, worn effects, `sealed`/`insulated`/`night_vision`/`swift` traits, equip effects, armour damage, `ConfigReport` loader |
 | `HM` | WeaponMechanics import | L | `HA`, `HD`, `HE`, `HF`, `HG` (for lossless mapping; can ship earlier with more report lines) | Command, translator, emitter, report, live item conversion, golden test over WM's defaults |
 | `HN` | Stretch | — | `HC` | Sustained beam mode, `Heat:` (minigun spin-up), bayonet, dual wield, attachments, MythicMobs hook |
-| `HO` | Staged reload (backlog, §9) | M | `HG`, `HD` | Stage detection for both reload types, resume within `Resume_Window` after an interrupt, `Reload.Stages`, `%reload_stage%`, `On_Reload_Stage`, `WeaponReloadStageEvent` |
-| `HP` | Spyglass scope + vanilla aim poses (backlog, §10) | S–M | `HH`, `HJ` | `Scope.Type: spyglass` (1.17+ zoom, raised arm, use slowdown, `F` fires while scoped), `< 1.17` fallback to `slowness`, charged-crossbow hold pose on any version |
+| `HO` | Staged reload (shipped 0.5.0, §9) | M | `HG`, `HD` | Stage detection for both reload types, resume within `Resume_Window` after an interrupt, `Reload.Stages`, `%reload_stage%`, `On_Reload_Stage`, `WeaponReloadStageEvent` |
+| `HP` | Spyglass scope + vanilla aim poses (shipped 0.5.0, §10) | S–M | `HH`, `HJ` | `Scope.Type: spyglass` (1.17+ zoom, raised arm, use slowdown, `F` fires while scoped), `< 1.17` fallback to `slowness`, charged-crossbow hold pose on any version |
 
 Every gate ends with: `mvn clean install` green, the new keys documented in the shipped YAML's header comments
 (the house rule: comments are the user docs), `README.md` package map updated, and a `documentation/` note if a
@@ -706,7 +710,8 @@ public API surface changed.
 
 ## 9. Backlog: staged reload (gate `HO`)
 
-Added 2026-09-16 from the first play-test. Not scheduled; depends on `HG` (reload keys) and `HD` (HUD
+Added 2026-09-16 from the first play-test; shipped in 0.5.0 on 2026-09-21 (*As built* at the end of this
+section). Depends on `HG` (reload keys) and `HD` (HUD
 placeholders). Size M. Unit note for anyone touching this: `Reload.Cooldown` is in **seconds** (one
 `SequenceTimer` period each, the timer's default period is 20 ticks); the 0.3.0 HUD bar and item-cooldown overlay
 convert with `timer.getPeriod()`.
@@ -759,11 +764,34 @@ placeholders. **Tests:** stage derivation for both reload types, resume-window m
 "interrupt after insert keeps the rounds" case. **Skipped:** mid-stage partial credit, per-stage animation beyond
 a sound and a skin, the NPC path (unlimited ammo, nothing to resume).
 
+**As built (0.5.0, 2026-09-21).**
+
+- Resume is **on by default**: `Resume_Window` is 60 ticks when a file has no `Reload.Stages` section; `0` (or a
+  negative value, clamped to 0) restores restart-from-zero. Shares with a non-positive sum fall back to the
+  defaults; unknown stage keys warn. Neither key is `.min(0)`-gated, so no existing file fails to load.
+- **Instant reload timing changed for every weapon.** The old single "consume + end" callback at half the
+  cooldown became three real timer waits: open 0.25, insert 0.6, close 0.15 of `Reload.Cooldown`, rounded to whole
+  timer periods with close taking the remainder (0 periods for cooldowns 0, 1, 2, 3 and 6). The mid-reload sound
+  therefore plays at 25 % of the cooldown instead of 50 %. Worth a play-test before the release.
+- Numbered reload: `open` is a zero-width marker at t=0, then one `insert` stage per shell entered at its own
+  callback, then `close`. A resumed numbered reload skips `open` and counts stages locally
+  (`%reload_stage_max%` = remaining shells + 2, not the original total).
+- `close` has no commit point, so an interrupt recorded there starts a fresh reload (never a re-run of `insert`,
+  never a second magazine). Every stage callback guards `isReloading()`, so an insert abort (ammo gone) cannot
+  cascade into an interval-0 close and report success (Keystone's `SequenceTimer` keeps polling interval-0 pairs
+  inside the same run).
+- Surface: `ReloadStagesData` on `ReloadData`, `WeaponReloadStageEvent(player, stageIndex 0-based, stageCount)`,
+  `EffectHook.ON_RELOAD_STAGE`, `%reload_stage%` (1-based) and `%reload_stage_max%` in the HUD and the
+  PlaceholderAPI expansion, `Weapon#reloadStageIndex/reloadStageCount/reloadRemainingDurationTicks`. The
+  item-cooldown overlay is set to the remaining duration on a resume. Per-stage `Sound`/`Skin` not built; NPCs
+  never resume. Documented in `rifle.yml` (`Reload.Stages`, the two placeholders) and `settings.yml` (hook list).
+
 ---
 
 ## 10. Backlog: spyglass scope and vanilla aim poses (gate `HP`)
 
-Added 2026-09-16. Not scheduled; depends on `HH` (scope keys) and `HJ` (the `Scope` skin state), both shipped.
+Added 2026-09-16; shipped in 0.5.0 on 2026-09-21 (*As built* at the end of this section). Depends on `HH`
+(scope keys) and `HJ` (the `Scope` skin state), both shipped.
 Size S–M. Everything here is a vanilla client behaviour keyed off the held item's Material, so it stays inside
 the §8 ceiling: no packets, no NMS, nothing to adapt per version.
 
@@ -834,3 +862,26 @@ gains the scoped `F` fire, `SpyglassScopeTask` (the poll), the crossbow arrow in
 non-spyglass Material to a spyglass while scoped (packets, §8), a configurable scoped fire key (`F` only; add
 when a server asks), silencing the vanilla spyglass sounds and overlay (resource-pack work), a spyglass in the
 off hand.
+
+**As built (0.5.0, 2026-09-21).**
+
+- `ScopeType { SLOWNESS, SPYGLASS }` on `ScopeData.type`, default `SLOWNESS`; a `Type: slowness` file behaves
+  exactly as before. `WeaponAddon` reads `Scope.Type`: the Material is resolved through `XMaterial.matchXMaterial`
+  (so `minecraft:spyglass` passes) and a mismatch is a load error; `Trigger: right_click` warns; `Zoom_Stacking`
+  warns and is ignored. Below 1.17 it warns once and runs as slowness through a lazy `spyglassSupported` seam:
+  the compile floor is Spigot 1.16.5, so `Material.SPYGLASS` is never a compile-time symbol.
+- Two shared classes fell out of the refactor: `weapon/ScopeToggle` (the one scope-in/out side-effect path, used by
+  `WeaponInteract` and the poll) and `weapon/action/GunFireDispatcher` (SINGLE/BURST dispatch plus the press lock
+  `max(perShot × cooldown, MIN_PRESS_LOCK_TICKS)` keyed by weapon uuid). Scoped `F` fire goes through the same
+  lock, so it obeys `Projectile.Cooldown` like the click path; sneak + `F` is still selective fire.
+- `scope/SpyglassScopeTask` polls `isHandRaised()` every 2 ticks and is **unscope-only**: a hotbar change, death or
+  reload end that already unscoped is never re-scoped. It owns the scoped-`F` `FullAutoTask` and stops it on the
+  drop, so a hotbar change or death can leave at most 2 ticks of fire.
+- `WeaponInteract` denies `useItemInHand` for every right-click on a weapon item before any early return (the
+  spyglass branch re-allows). Without that, the crossbow pose arrow turns sneak + right-click into a real vanilla
+  shot.
+- Crossbow pose: `Weapon#applyCrossbowChargedProjectile` puts one `XMaterial.ARROW` into `CrossbowMeta` on every
+  build (replaces, never stacks). Sample `weapon/scout.yml` (bolt-action, `Scope.Type: spyglass`, `Level: 0`),
+  25 bundled files now.
+- Not verified live yet: the skin rewrite on scope-in keeping the vanilla use on 1.17 and 1.21 (flagged in a
+  code comment; the test server is Paper 1.21.x).

@@ -167,6 +167,28 @@ case. `ReloadData` gained three fields or their `Reload:` YAML keys: `isUnloadAm
 (dynamic), the ammo id currently loaded into the magazine, alongside the existing `AMMO_LEFT`. `Weapon` gained
 `isShootLocked()`, backing `Shoot_Delay_After_Reload`.
 
+### Staged reload (`weapon.dto.ReloadStagesData`, `event.WeaponReloadStageEvent`, gate `HO`)
+
+`ReloadData#getStages()` (`Reload.Stages` in YAML) carries `Resume_Window` (ticks, default 60, `0` = restart from
+zero after an interrupt) and the `Open`/`Insert`/`Close` shares of `Reload.Cooldown` for instant reloads (defaults
+0.25/0.6/0.15, normalised; numbered reloads derive one `insert` per shell and ignore the shares). `Reload` tracks
+the current stage and, on an interrupt, the last committed stage plus a timestamp; a reload pressed inside the
+window skips committed stages. The magazine item is consumed exactly once, at the `insert` commit, and an
+interrupt recorded at `close` starts a fresh reload. `Weapon` gained `reloadStageIndex()` (0-based, -1 when idle),
+`reloadStageCount()` and `reloadRemainingDurationTicks()`. `WeaponReloadStageEvent` (weapon, player, `stageIndex`,
+`stageCount`; not cancellable) fires on every stage transition for players, never for NPCs; `EffectHook` gained
+`ON_RELOAD_STAGE`. The HUD placeholders `%reload_stage%` (1-based) and `%reload_stage_max%` mirror them.
+
+### Spyglass scope (`weapon.dto.ScopeType`, `weapon.dto.ScopeData#getType()`, gate `HP`)
+
+`ScopeData` gained `type` (`ScopeType.SLOWNESS`, the default, or `SPYGLASS`; `Scope.Type` in YAML). A spyglass
+scope is the vanilla spyglass use (1.17+ zoom, raised arm, use slowdown; `Level` may be 0) and requires
+`Information.Material: SPYGLASS`; fire while scoped is the `F` key. `BartizanApi#isScoping` is true for the
+duration and a consumer that unscopes through `Weapon#unScope` is honoured: the 2-tick poll that ends a spyglass
+scope only ever unscopes, it never re-scopes. Below 1.17 the weapon loads as `SLOWNESS` after one warning. A weapon
+whose Material is a crossbow carries one arrow in its `CrossbowMeta` on every build (the charged-crossbow hold
+pose); Bartizan denies the vanilla use on every right-click, so the arrow never fires.
+
 ### Biological status (`weapon.dto.StatusData`, gate `HB`)
 
 `BiologicalData#getStatus()` (never `null`) is the tracked status — infection, radiation, whatever the weapon
@@ -298,7 +320,8 @@ the existing `run(Weapon, EffectHook, EffectContext)`, for exactly this non-weap
 
 `WeaponEvent`, `WeaponShootEvent`, `WeaponRaytraceImpactEvent` (cancelling suppresses damage only — penetration and
 ricochet counters still advance), `WeaponEntityDamageEvent`, `WeaponKillEntityEvent`, `WeaponAssistEvent` (gate
-`HK`), `WeaponReloadEvent` / `WeaponReloadStartEvent` / `WeaponReloadCompleteEvent`, `WeaponChangeSelectiveFireEvent`,
+`HK`), `WeaponReloadEvent` / `WeaponReloadStartEvent` / `WeaponReloadCompleteEvent` / `WeaponReloadStageEvent` (gate
+`HO`), `WeaponChangeSelectiveFireEvent`,
 `WeaponChargeLevelEvent`, `WeaponBeamFireEvent`.
 `WeaponStatusApplyEvent`, `WeaponStatusExpireEvent`.
 
