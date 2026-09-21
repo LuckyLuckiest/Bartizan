@@ -138,7 +138,10 @@ public class AmmunitionSectionParser {
 		NodeReader       stages   = NodeReader.of(stagesSection, report);
 		ReloadStagesData defaults = ReloadStagesData.defaults();
 
-		int    resumeWindow = stages.get("Resume_Window").asInt().min(0).orDefault(defaults.getResumeWindowTicks());
+		// Not .min(0): a non-positive Resume_Window/Share is a deliberate, documented fallback (ReloadStagesData's
+		// javadoc), not a config error - .min(0) would record a ConfigReport ERROR and fail the whole file's load
+		// for a value the DTO already clamps/normalises on its own.
+		int    resumeWindow = stages.get("Resume_Window").asInt().orDefault(defaults.getResumeWindowTicks());
 		double openShare    = shareOf(stages, "Open", defaults.getOpenShare());
 		double insertShare  = shareOf(stages, "Insert", defaults.getInsertShare());
 		double closeShare   = shareOf(stages, "Close", defaults.getCloseShare());
@@ -160,7 +163,8 @@ public class AmmunitionSectionParser {
 		MappingNode stageMapping = stages.get(key).asMapping().orNull();
 		if (stageMapping == null) return fallback;
 
-		return NodeReader.of(stageMapping, stages.report()).get("Share").asDouble().min(0).orDefault(fallback);
+		// Not .min(0) - see the Resume_Window comment above; a non-positive share falls back, it isn't an error.
+		return NodeReader.of(stageMapping, stages.report()).get("Share").asDouble().orDefault(fallback);
 	}
 
 	@Nullable

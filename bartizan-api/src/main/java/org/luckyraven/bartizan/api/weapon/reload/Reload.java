@@ -138,8 +138,9 @@ public abstract class Reload implements Cloneable {
 
 	/**
 	 * @return the total duration (ticks) of the current/most recent reload, as passed to {@link
-	 * 		#startReloading(Player, long)} — read by {@code HudService} for the boss bar denominator
-	 * 		(weapons-roadmap.md gate {@code HD}).
+	 * 		#startReloading(Player, long)}. {@code HudService} reads {@link #reloadProgress()} for the boss bar
+	 * 		denominator (weapons-roadmap.md gate {@code HD}), not this — this backs {@code
+	 * 		Weapon#reloadDurationTicks()} for other callers.
 	 */
 	public long totalDurationTicks() {
 		return reloadDurationTicks;

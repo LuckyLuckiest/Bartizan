@@ -39,6 +39,8 @@ public class ReloadStagesData {
 	}
 
 	/**
+	 * @param resumeWindowTicks raw, possibly negative {@code Reload.Stages.Resume_Window} — clamped to 0 (no
+	 *                          resume, the pre-{@code HO} restart-from-zero behaviour) rather than rejected.
 	 * @param openShare/insertShare/closeShare raw, possibly un-normalised {@code Reload.Stages.*.Share} values —
 	 *                                          "shares are normalised, so they need not sum to one" (weapons-roadmap.md
 	 *                                          gate {@code HO}). Non-positive input falls back to {@link #defaults()}'s
@@ -46,13 +48,14 @@ public class ReloadStagesData {
 	 */
 	public static ReloadStagesData of(int resumeWindowTicks, double openShare, double insertShare,
 	                                  double closeShare) {
+		int clampedResumeWindow = Math.max(0, resumeWindowTicks);
 		double sum = openShare + insertShare + closeShare;
 		if (sum <= 0) {
-			return new ReloadStagesData(resumeWindowTicks, DEFAULT_OPEN_SHARE, DEFAULT_INSERT_SHARE,
+			return new ReloadStagesData(clampedResumeWindow, DEFAULT_OPEN_SHARE, DEFAULT_INSERT_SHARE,
 			                            DEFAULT_CLOSE_SHARE);
 		}
 
-		return new ReloadStagesData(resumeWindowTicks, openShare / sum, insertShare / sum, closeShare / sum);
+		return new ReloadStagesData(clampedResumeWindow, openShare / sum, insertShare / sum, closeShare / sum);
 	}
 
 	/**
