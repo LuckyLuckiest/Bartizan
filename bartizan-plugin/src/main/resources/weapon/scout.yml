@@ -1,0 +1,149 @@
+# +-----------------+ #
+# |      SCOUT      | #
+# +-----------------+ #
+# Sample Scope.Type: spyglass weapon (weapons-roadmap.md gate HP) - a bolt-action rifle that uses the real
+# vanilla spyglass item so the client zooms/raises the arm/slows movement for free. Falls back to Type: slowness
+# (with a loader warning) on a server older than 1.17.
+
+Information:
+   Name: "&bScout&r"
+   Category: gun
+   # Type: spyglass below requires this to be exactly SPYGLASS - a loader error otherwise.
+   Material: SPYGLASS
+   Custom_Model_Data: 2000
+   Durability:
+      Base: 100
+      Change:
+         On_Shot: 0
+   Lore:
+      - "&7Bolt-action scout rifle.&r"
+      - "&7Fast to shoulder, honest at range.&r"
+   Drop_Hologram: true
+   Equip_Delay: 3
+   Cancel:
+      Arm_Swing: true
+   Attributes:
+      - "MOVEMENT_SPEED ADD_SCALAR -0.02"
+
+Shoot:
+   Destroy_When_Empty: false
+   Selective_Fire: single
+   Allowed_Modes:
+      - single
+   # Right-click is the spyglass's own vanilla use (the scope); left-click hip-fires, and F fires while scoped
+   # (weapons-roadmap.md gate HP). Left_click is required here - right_click would collide with the scope and
+   # only produces a loader warning, not an error.
+   Trigger: left_click
+
+   Projectile:
+      Speed: 6
+      Type: BULLET
+      Damage:
+         Base: 32
+         Explosion_Damage: 0
+         Fire_Ticks: 0
+         Head: 20
+         Critical_Hit:
+            Chance: 15
+            Amount: 15
+         Legs: 0
+         Back: 0
+         Armor_Damage: 0
+         Ignore_Teams: false
+      Consumed_Amount: 1
+      Per_Shot: 1
+      Cooldown: 1.2
+      Distance: 100
+      Particle: true
+      Gravity: 0.05
+
+   Weapon_Consumed:
+      Consume_On_Shot: 0
+      Time: -1
+
+   Spread:
+      Starting_Spread: 0.0
+      Time: 1
+      Change:
+         Base: 0.0
+         Bounds:
+            Reset_On_Bound: true
+            Min: 0.0
+            Max: 0.0
+
+   Recoil:
+      Amount: 0.18
+      Push: 0.12
+      Power_Up: 0.001
+      Random:
+         Mean_X: 3.0
+         Mean_Y: 0.0
+         Variance_X: 1.0
+         Variance_Y: 0.4
+
+   Sound:
+      Default_Sound:
+         Sound: ENTITY_GENERIC_EXPLODE
+         Volume: 1.2
+         Pitch: 1.0
+      Empty_Default_Sound:
+         Sound: BLOCK_NOTE_BLOCK_HAT
+         Volume: 1.0
+         Pitch: 0.6
+      Flyby_Range: 3.0
+      Flyby_Default_Sound:
+         Sound: ENTITY_ARROW_SHOOT
+         Volume: 1.0
+         Pitch: 0.9
+      Impact_Default_Sound:
+         Sound: BLOCK_ANVIL_LAND
+         Volume: 1.0
+         Pitch: 1.5
+
+Ammunition:
+   Capacity: 5
+   Ammo_Type: "7,62"
+   Consume: 1
+   Restore: 5
+
+Reload:
+   Cooldown: 4
+
+   Sound:
+      Default_Sound_Before:
+         Sound: BLOCK_IRON_TRAPDOOR_OPEN
+         Volume: 1.0
+         Pitch: 0.9
+      Default_Sound_After:
+         Sound: BLOCK_IRON_TRAPDOOR_CLOSE
+         Volume: 1.0
+         Pitch: 0.9
+
+   Action_Bar:
+      Reloading: "&cReloading...&r"
+      Opening: "&cOpening...&r"
+
+   Type: instant
+
+Scope:
+   # spyglass (weapons-roadmap.md gate HP): vanilla zoom/raised-arm/use-slowdown, 1.17+ only - falls back to
+   # Type: slowness (with a loader warning) on an older server. Guns only.
+   Type: spyglass
+   # Extra SLOWNESS on top of the vanilla use slowdown - 0 is vanilla-only, allowed for Type: spyglass.
+   Level: 0
+   # Night_Vision: false (default) - the vanilla spyglass zoom doesn't need it.
+   Night_Vision: false
+
+   Sound:
+      Default_Sound:
+         Sound: ITEM_SPYGLASS_USE
+         Volume: 1
+         Pitch: 1.0
+
+Modifiers:
+   Flat_Damage: 2.0
+   Penetration: 3-3-0.1
+
+Death_Messages:
+   - "&c%victim% was picked off by %killer%'s %item%."
+   - "&c%killer% called it with the %item%."

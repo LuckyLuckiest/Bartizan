@@ -23,6 +23,7 @@ import org.luckyraven.bartizan.hud.PlaceholderApiSupport;
 import org.luckyraven.bartizan.npc.NpcWeaponFactoryImpl;
 import org.luckyraven.bartizan.raytrace.ExplosionHandler;
 import org.luckyraven.bartizan.raytrace.WeaponRaytracerImpl;
+import org.luckyraven.bartizan.scope.SpyglassScopeTask;
 import org.luckyraven.bartizan.stats.StatsService;
 import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponManager;
@@ -123,6 +124,19 @@ public final class WiringConfig {
 	@Bean
 	public WearableService wearableService(WearableAddon wearableAddon) {
 		return wearableAddon;
+	}
+
+	/**
+	 * {@code Scope.Type: spyglass}'s scope-out poll and scoped-{@code F}-fire bookkeeping (weapons-roadmap.md gate
+	 * {@code HP}) - shared by {@code WeaponInteract} (registers a player on scope-in) and
+	 * {@code WeaponSelectiveFireChangeListener} (the scoped {@code F} fire trigger).
+	 */
+	@Bean
+	public SpyglassScopeTask spyglassScopeTask(WeaponService weaponService, WeaponRaytracer raytracer,
+	                                           EffectRunner effectRunner) {
+		SpyglassScopeTask task = new SpyglassScopeTask(bartizan, weaponService, raytracer, effectRunner);
+		task.start();
+		return task;
 	}
 
 	@Bean

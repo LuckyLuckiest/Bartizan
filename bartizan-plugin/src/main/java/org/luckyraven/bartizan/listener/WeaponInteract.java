@@ -21,18 +21,20 @@ import org.luckyraven.keystone.bean.listener.ListenerHandler;
 import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.keystone.timer.CountdownTimer;
 import org.luckyraven.keystone.timer.RepeatingTimer;
-import org.luckyraven.keystone.timer.SequenceTimer;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
 import org.luckyraven.bartizan.weapon.CircumstanceRules;
+import org.luckyraven.bartizan.weapon.ScopeToggle;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.weapon.dto.ScopeData;
+import org.luckyraven.bartizan.api.weapon.dto.ScopeType;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
+import org.luckyraven.bartizan.scope.SpyglassScopeTask;
 import org.luckyraven.bartizan.weapon.action.BeamAction;
 import org.luckyraven.bartizan.api.weapon.BeamWeapon;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
@@ -41,7 +43,7 @@ import org.luckyraven.bartizan.weapon.action.BiologicalAction;
 import org.luckyraven.bartizan.weapon.action.ChargeController;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 import org.luckyraven.bartizan.weapon.action.FullAutoTask;
-import org.luckyraven.bartizan.weapon.action.GunAction;
+import org.luckyraven.bartizan.weapon.action.GunFireDispatcher;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.weapon.action.IncendiaryAction;
 import org.luckyraven.bartizan.api.weapon.IncendiaryWeapon;
@@ -59,7 +61,7 @@ import java.util.function.BooleanSupplier;
 
 @ListenerHandler
 @AutowireTarget({WeaponService.class, WeaponRaytracer.class, PluginFireRegistry.class, CombatEligibility.class,
-                EffectRunner.class, BlockDamageManager.class, StatusEffectService.class})
+                EffectRunner.class, BlockDamageManager.class, StatusEffectService.class, SpyglassScopeTask.class})
 public class WeaponInteract implements Listener {
 
 	/**
@@ -92,6 +94,7 @@ public class WeaponInteract implements Listener {
 	private final EffectRunner       effectRunner;
 	private final BlockDamageManager blockDamageManager;
 	private final StatusEffectService statusService;
+	private final SpyglassScopeTask  spyglassScopeTask;
 
 	private final Map<UUID, AtomicReference<WeaponData>> continuousFire;
 	/**
@@ -145,7 +148,7 @@ public class WeaponInteract implements Listener {
 	public WeaponInteract(JavaPlugin plugin, WeaponService weaponService, WeaponRaytracer raytracer,
 	                      PluginFireRegistry fireRegistry, CombatEligibility combatEligibility,
 	                      EffectRunner effectRunner, BlockDamageManager blockDamageManager,
-	                      StatusEffectService statusService) {
+	                      StatusEffectService statusService, SpyglassScopeTask spyglassScopeTask) {
 		this.plugin             = plugin;
 		this.weaponService      = weaponService;
 		this.raytracer          = raytracer;
@@ -154,6 +157,7 @@ public class WeaponInteract implements Listener {
 		this.effectRunner       = effectRunner;
 		this.blockDamageManager = blockDamageManager;
 		this.statusService      = statusService;
+		this.spyglassScopeTask  = spyglassScopeTask;
 		this.continuousFire     = new ConcurrentHashMap<>();
 		this.pressLockUntilTick = new ConcurrentHashMap<>();
 		this.equipDelayUntil    = new ConcurrentHashMap<>();
@@ -189,32 +193,24 @@ public class WeaponInteract implements Listener {
 
 		// scope toggle for any weapon type that has a scope configured
 		ScopeData scopeData     = weapon.getScopeData();
-		boolean   validateScope = true;
-		if (scopeData != null) {
-			validateScope = scopeData.getLevel() > 0;
-		}
+		boolean   spyglassScope = scopeData != null && scopeData.getType() == ScopeType.SPYGLASS;
+		// Type: spyglass scopes even at Level: 0 - the vanilla use is the point, the extra SLOWNESS is optional.
+		boolean   validateScope = scopeData == null || scopeData.getLevel() > 0 || spyglassScope;
 
 		if (scopeClick && !player.isSneaking() && validateScope && !weapon.isReloading() &&
 		    !isEquipDelayActive(weapon.getUuid())) {
 			event.setUseInteractedBlock(Event.Result.DENY);
-			event.setUseItemInHand(Event.Result.DENY);
+			// Type: spyglass lets the vanilla use through instead of swallowing it - the client drives its own
+			// zoom/raised-arm/movement-slowdown/scope-overlay off that use, no packets or NMS involved (weapons-
+			// roadmap.md gate HP). Every other scope keeps DENY, today's behaviour.
+			event.setUseItemInHand(spyglassScope ? Event.Result.ALLOW : Event.Result.DENY);
 
-			boolean scopingIn = weapon.cycleScope(player);
+			boolean scopingIn = ScopeToggle.apply(weapon, player, weaponService, effectRunner);
 
-			// gate HJ: refresh the item's Scope-state skin, but only for a weapon that actually has one configured
-			// - persistHeldWeapon rebuilds+rewrites the held item unconditionally, which is otherwise unnecessary
-			// churn on every scope toggle for the vast majority of weapons with no Skins: block at all.
-			if (weapon.getSkinsData() != null) weaponService.persistHeldWeapon(weapon, player);
+			// Scope-out for a spyglass weapon is driven by SpyglassScopeTask's isHandRaised() poll, not a second
+			// click - the client won't send another PlayerInteractEvent while the item is in use.
+			if (scopingIn && spyglassScope) spyglassScopeTask.register(player, weapon);
 
-			// A scopeless weapon (scopeData == null) still reaches this branch (validateScope defaults to true)
-			// but has no ON_SCOPE_IN/ON_SCOPE_OUT of its own to fire.
-			if (scopeData != null) {
-				// Zoom_Stacking stage (1-based) so Pitch_Per_Level sounds can differ per scope-in stage; 0 on
-				// scope-out (currentStack is already reset by ScopeData.advanceZoomStack by this point).
-				int level = scopingIn ? scopeData.getCurrentStack() + 1 : 0;
-				EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).level(level).build();
-				effectRunner.run(weapon, scopingIn ? EffectHook.ON_SCOPE_IN : EffectHook.ON_SCOPE_OUT, ctx);
-			}
 			return;
 		}
 
@@ -871,48 +867,14 @@ public class WeaponInteract implements Listener {
 		}
 	}
 
+	/**
+	 * The first round fires inside the event that pulled the trigger; a BURST's remaining rounds are spaced by the
+	 * projectile cooldown. Delegates to {@link GunFireDispatcher} so a trigger click and
+	 * {@code WeaponSelectiveFireChangeListener}'s scoped {@code F} fire (weapons-roadmap.md gate {@code HP}) share
+	 * the exact same dispatch instead of two copies of it.
+	 */
 	private void shoot(Player player, GunWeapon weapon) {
-		// The first round fires inside the event that pulled the trigger. Routing it through the scheduler (as the
-		// old zero-interval SequenceTimer pair did) lands it on the next tick at the earliest.
-		shootInterval(player, weapon);
-
-		if (weapon.getCurrentSelectiveFire() != SelectiveFire.BURST) return;
-
-		// BURST: the remaining rounds of the sequence, each spaced by the projectile cooldown.
-		int perShot  = weapon.getProjectileData().getPerShot();
-		int cooldown = weapon.getProjectileData().getCooldown();
-
-		if (perShot <= 1) return;
-
-		SequenceTimer sequenceTimer = new SequenceTimer(plugin, 1L, 1L);
-
-		for (int i = 1; i < perShot; ++i) {
-			sequenceTimer.addIntervalTaskPair(cooldown, time -> shootInterval(player, weapon));
-		}
-
-		sequenceTimer.start(false);
-	}
-
-	private void shootInterval(Player player, GunWeapon weapon) {
-		GunAction gunAction = new GunAction(plugin, weaponService, weapon, raytracer, effectRunner);
-
-		// shoot the weapon
-		gunAction.weaponShoot(player);
-
-		// weapon consumption
-		if (weapon.getWeaponConsumedOnShot() > 0 &&
-		    weapon.getCurrentMagCapacity() == weapon.getWeaponConsumedOnShot()) {
-			weapon.removeWeapon(player, player.getInventory().getHeldItemSlot());
-		}
-
-		int consumeOnTime = weapon.getDurabilityData().getConsumeOnTime();
-		if (consumeOnTime <= -1) return;
-
-		CountdownTimer timer = new CountdownTimer(plugin, 0L, 0L, consumeOnTime, null, null,
-		                                          time -> weapon.removeWeapon(player,
-		                                                                      player.getInventory().getHeldItemSlot()));
-
-		timer.start(false);
+		GunFireDispatcher.shoot(plugin, weaponService, weapon, raytracer, effectRunner, player);
 	}
 
 	/**
