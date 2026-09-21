@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.api.weapon;
 
+import com.cryptomorin.xseries.XMaterial;
 import com.cryptomorin.xseries.XPotion;
 import java.lang.reflect.Method;
 import lombok.AccessLevel;
@@ -14,6 +15,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.CrossbowMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
@@ -443,7 +445,25 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 
 		ItemStack item = builder.build();
 		applyAttributeModifiers(item);
+		applyCrossbowChargedProjectile(item);
 		return item;
+	}
+
+	/**
+	 * {@code Material: CROSSBOW} weapons render the vanilla charged-crossbow hold pose (both arms up) purely from
+	 * one arrow sitting in {@link CrossbowMeta} - no packets, no NMS (weapons-roadmap.md gate {@code HP}). The
+	 * arrow is cosmetic only; Bartizan's own shooting path never reads it. {@code Material} is compared through
+	 * {@link XMaterial#CROSSBOW} per house rule even though the enum constant itself is safe on the 1.16.5 compile
+	 * floor (added 1.14).
+	 */
+	private void applyCrossbowChargedProjectile(ItemStack item) {
+		if (material != XMaterial.CROSSBOW.get()) return;
+
+		ItemMeta meta = item.getItemMeta();
+		if (!(meta instanceof CrossbowMeta crossbowMeta)) return;
+
+		crossbowMeta.setChargedProjectiles(List.of(new ItemStack(Material.ARROW)));
+		item.setItemMeta(crossbowMeta);
 	}
 
 	public void updateWeaponData(ItemBuilder itemBuilder) {

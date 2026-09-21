@@ -31,6 +31,7 @@ import org.luckyraven.bartizan.api.weapon.WeaponType;
 import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 
 import java.util.*;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 
 @CustomLog
@@ -136,7 +137,7 @@ public class WeaponAddon {
 		applyShootSounds(shoot, weapon, report);
 		applyReloadSoundsAndActionBar(root, weapon, report);
 		applyOptionalShootConfig(shoot, weapon, report);
-		applyScope(root, weapon, report);
+		applyScope(root, materialString, weapon, report);
 		ModifiersSectionParser.apply(root, weapon, report);
 		if (weapon instanceof BeamWeapon beamWeapon) {
 			BeamWeaponParser.lowerPierce(beamWeapon);
@@ -477,7 +478,22 @@ public class WeaponAddon {
 		weapon.setSkinsData(SkinSectionParser.parse(skins, customModelData, report));
 	}
 
-	private void applyScope(NodeReader root, Weapon weapon, ConfigReport report) {
+	/**
+	 * {@code XMaterial.SPYGLASS.isSupported()} behind a swappable seam (weapons-roadmap.md gate {@code HP}).
+	 * Package-visible so {@code ScopeConfigTest} can stub the &lt;1.17 fallback (and the happy path it would
+	 * otherwise gate) without a matching spigot-api jar on the test classpath. Reset by every test that touches it.
+	 * <p/>
+	 * Deliberately a lambda, not a {@code XMaterial.SPYGLASS::isSupported} method reference: binding that
+	 * reference evaluates {@code XMaterial.SPYGLASS} immediately, which forces {@code XMaterial}'s static
+	 * initialiser to run the moment THIS class is merely loaded (e.g. by {@code mock(WeaponAddon.class)}) - inside
+	 * a {@code mockStatic(Bukkit.class)} block that never stubbed {@code getVersion()}, that initialiser NPEs and
+	 * permanently poisons both classes for the rest of the JVM fork. The lambda defers the {@code XMaterial} touch
+	 * to the moment {@link BooleanSupplier#getAsBoolean()} actually runs, exactly like every other {@code XMaterial}
+	 * call in this file.
+	 */
+	static BooleanSupplier spyglassSupported = () -> XMaterial.SPYGLASS.isSupported();
+
+	private void applyScope(NodeReader root, @Nullable String materialString, Weapon weapon, ConfigReport report) {
 		MappingNode scopeSection = root.get("Scope").asMapping().orNull();
 		if (scopeSection == null) return;
 
@@ -485,6 +501,9 @@ public class WeaponAddon {
 
 		ScopeData scopeData = new ScopeData();
 		weapon.setScopeData(scopeData);
+
+		ScopeType type = parseScopeType(scope, scopeSection, materialString, weapon, report);
+		scopeData.setType(type);
 
 		// Zoom_Amount is a WeaponMechanics-style alias for Level; when both are given, Level wins with a warning.
 		// Both keys are read unconditionally (NodeReader.has() alone does not mark a key as touched, and a
@@ -506,9 +525,17 @@ public class WeaponAddon {
 
 		MappingNode zoomStackingSection = scope.get("Zoom_Stacking").asMapping().orNull();
 		if (zoomStackingSection != null) {
-			NodeReader zoomStacking = NodeReader.of(zoomStackingSection, report);
-			scopeData.setZoomStacks(zoomStacking.get("Maximum_Stacks").asInt().min(1).orDefault(1));
-			scopeData.setZoomPerStack(zoomStacking.get("Increase_Per_Stack").asInt().min(0).orDefault(1));
+			if (type == ScopeType.SPYGLASS) {
+				// Meaningless under a fixed vanilla zoom - warned and ignored rather than silently read, so an
+				// admin who copies Zoom_Stacking onto a spyglass weapon finds out why it does nothing.
+				report.add(Severity.WARNING, scopeSection.location(), scopeSection.path(),
+				           "Scope.Zoom_Stacking is meaningless for Scope.Type: spyglass (fixed vanilla zoom) - ignored",
+				           "scope.zoom_stacking_ignored_spyglass");
+			} else {
+				NodeReader zoomStacking = NodeReader.of(zoomStackingSection, report);
+				scopeData.setZoomStacks(zoomStacking.get("Maximum_Stacks").asInt().min(1).orDefault(1));
+				scopeData.setZoomPerStack(zoomStacking.get("Increase_Per_Stack").asInt().min(0).orDefault(1));
+			}
 		}
 
 		MappingNode soundSection = scope.get("Sound").asMapping().orNull();
@@ -520,6 +547,48 @@ public class WeaponAddon {
 		                                                 SoundEffect.SoundType.VANILLA, report));
 		weapon.getSoundData().setScopeCustom(parseSound(sound, "Custom_Sound",
 		                                                SoundEffect.SoundType.CUSTOM, report));
+	}
+
+	/**
+	 * {@code Scope.Type} (weapons-roadmap.md gate {@code HP}): {@code slowness} (default, today's behaviour) or
+	 * {@code spyglass} (1.17+ vanilla zoom/raised-arm/use-slowdown, guns only - no packets, no NMS). Falls back to
+	 * {@link ScopeType#SLOWNESS} - the weapon keeps loading and scopes exactly like a {@code Type: slowness} gun -
+	 * when the running server predates spyglasses ({@link Severity#WARNING}) or {@code Information.Material} isn't
+	 * literally {@code SPYGLASS} ({@link Severity#ERROR}: the vanilla zoom is keyed off the held item's real type,
+	 * so a mismatched material could never actually zoom). {@code Shoot.Trigger: right_click} is also warned about
+	 * once the weapon is confirmed spyglass - right-click is the spyglass's own vanilla use, so left-click is
+	 * implied.
+	 */
+	private ScopeType parseScopeType(NodeReader scope, MappingNode scopeSection, @Nullable String materialString,
+	                                 Weapon weapon, ConfigReport report) {
+		String raw = scope.get("Type").asString().orNull();
+		if (raw == null || !raw.trim().equalsIgnoreCase("spyglass")) return ScopeType.SLOWNESS;
+
+		if (!spyglassSupported.getAsBoolean()) {
+			report.add(Severity.WARNING, scopeSection.location(), scopeSection.path(),
+			           "Scope.Type: spyglass requires server 1.17+ - '" + weapon.getName() +
+			           "' will scope as slowness instead",
+			           "scope.spyglass_unsupported_version");
+			return ScopeType.SLOWNESS;
+		}
+
+		if (materialString == null || !materialString.trim().equalsIgnoreCase("SPYGLASS")) {
+			report.add(Severity.ERROR, scopeSection.location(), scopeSection.path(),
+			           "Scope.Type: spyglass requires Information.Material: SPYGLASS in '" + weapon.getName() +
+			           "' - scoping as slowness instead",
+			           "scope.material_mismatch");
+			return ScopeType.SLOWNESS;
+		}
+
+		HandlingData handling = weapon.getHandlingData();
+		if (handling != null && handling.getTrigger() == HandlingData.Trigger.RIGHT_CLICK) {
+			report.add(Severity.WARNING, scopeSection.location(), scopeSection.path(),
+			           "'" + weapon.getName() + "' uses Scope.Type: spyglass with the default Shoot.Trigger: " +
+			           "right_click - right-click is the spyglass's own vanilla use, so left-click is implied",
+			           "scope.spyglass_right_click_trigger");
+		}
+
+		return ScopeType.SPYGLASS;
 	}
 
 	private void applyShootSounds(@Nullable NodeReader shoot, Weapon weapon, ConfigReport report) {

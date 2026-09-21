@@ -46,8 +46,8 @@ class WeaponLoaderBundledNamesTest {
 		List<String> names = WeaponLoader.bundledWeaponNames(
 				WeaponLoader.class.getProtectionDomain().getCodeSource().getLocation());
 
-		assertEquals(24, names.size(), names.toString());
-		assertTrue(names.containsAll(List.of("pistol", "awp", "golden_ak47", "arc_lance", "syringe_gun")));
+		assertEquals(25, names.size(), names.toString());
+		assertTrue(names.containsAll(List.of("pistol", "awp", "golden_ak47", "arc_lance", "syringe_gun", "scout")));
 	}
 
 	@Test

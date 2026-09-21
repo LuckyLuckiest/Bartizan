@@ -10,6 +10,9 @@ public class ScopeData implements Cloneable {
 
 	private int     level;
 	private boolean scoped;
+	// weapons-roadmap.md gate HP - slowness (default, today's behaviour) or spyglass (1.17+ vanilla zoom, guns
+	// only; WeaponAddon falls this back to SLOWNESS itself when the server/Material don't support it).
+	private ScopeType type = ScopeType.SLOWNESS;
 	// weapons-roadmap.md gate HH
 	private boolean nightVision;
 	private int      zoomStacks   = 1;
