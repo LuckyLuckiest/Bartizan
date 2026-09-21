@@ -277,6 +277,25 @@ Reload:
    #          dynamically insert in the weapon. This would work similarly to type one.
    Type: instant
 
+   # Stages: splits an instant reload's Cooldown above into three timed steps and lets an interrupted reload
+   # (weapon-swapped mid-reload) pick back up instead of restarting - optional, absent entirely uses the defaults
+   # commented below. A numbered reload (Type: one / num-N) ignores Open/Insert/Close.Share - its stages are one
+   # insert per shell instead, derived from the shell count at reload time.
+   # Stages:
+   #    # How many ticks after an interrupt a reload may still resume from where it left off, instead of starting
+   #    # over. 0 (or negative) = always restart from zero, the pre-staged-reload behaviour. Default: 60.
+   #    Resume_Window: 60
+   #    # Open/Insert/Close.Share split Cooldown into open (start -> the mid sound), insert (mid sound -> the
+   #    # magazine is actually consumed - the commit point) and close (the final wait before the reload
+   #    # completes). Shares are normalised, so they don't need to sum to 1 - three 1's split the same as
+   #    # 0.25/0.6/0.15 below. Non-positive shares fall back to these defaults instead of dividing by zero.
+   #    Open:
+   #       Share: 0.25
+   #    Insert:
+   #       Share: 0.6
+   #    Close:
+   #       Share: 0.15
+
 # Weapon scope configuration
 Scope:
    # Sets the scope level. The resulting SLOWNESS amplifier is capped at 5 regardless of Level/Zoom_Stacking -
@@ -336,7 +355,8 @@ HUD:
    # weapon has no magazine), %selective_fire% (current fire mode name, empty if the weapon has none),
    # %reload% (Reload.Action_Bar.Reloading while reloading, else empty), %durability% (current/max, empty when
    # unbreakable), %firearm_state% (reloading|scoping|empty|ready), %reload_progress% (0-100 while reloading,
-   # else empty).
+   # else empty), %reload_stage%/%reload_stage_max% (1-based current stage / total stage count while reloading,
+   # else empty - the Reload.Stages open/insert/close split above, gate HO).
    Action_Bar: "&6%weapon% &8«&e%ammo_left%&7/&e%ammo_max%&8» &7%selective_fire% %reload%"
 
    Boss_Bar:

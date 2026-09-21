@@ -19,7 +19,8 @@ Block_Regeneration:
 #
 # Hooks (v1): On_Shoot, On_Hit, On_Block_Hit (a hitscan ray striking a block - no damage, fired alongside the
 # hardcoded block-crack impact particle), On_Headshot, On_Critical, On_Kill, On_Miss, On_Empty, On_Deny, On_Equip,
-# On_Holster, On_Reload_Start, On_Reload_End, On_Reload_Cancel, On_Scope_In, On_Scope_Out, On_Explode,
+# On_Holster, On_Reload_Start, On_Reload_End, On_Reload_Cancel, On_Reload_Stage (an instant reload's open/insert/
+# close split, or one per shell for a numbered reload - gate HO), On_Scope_In, On_Scope_Out, On_Explode,
 # On_Charge_Level, On_Charge_Full, On_Beam_Fire (reserved - fired by later gates), On_Status_Apply (reserved -
 # fired by later gates), On_Status_Expire (reserved - fired by later gates). An unknown hook name is a warning,
 # not an error - the rest of the file still loads.

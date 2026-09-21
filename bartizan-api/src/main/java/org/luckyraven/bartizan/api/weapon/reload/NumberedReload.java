@@ -114,15 +114,22 @@ public class NumberedReload extends Reload {
 			super.startReloading(player, totalDurationTicks, elapsedTicksAlready);
 			// open has zero width of its own (there is no extra delay before the first insertion beyond the
 			// standard per-shell wait below) — a fresh run still reports it once before moving straight to the
-			// first insert; a resumed run skips it and continues with the next shell.
+			// first insert; a resumed run skips it and continues with the next shell. Stage 1 itself is entered
+			// by the first insert callback below, at its own start, not here — entering both back to back in this
+			// same interval-0 tick fired ON_RELOAD_STAGE twice at once and reported a zero-insertion reload as
+			// already at its final stage (weapons-roadmap.md gate HO review fix 4).
 			if (!fResuming) enterStage(0, stageCount);
-			enterStage(1, stageCount);
 		});
 
 		for (int i = 0; i < numberOfInsertions; ++i) {
 			final int stageIndex = i + 1;
 			timer.addIntervalTaskPair(reloadData.getCooldown(), time -> {
 				if (!isReloading()) return;
+
+				// the first insertion enters its own stage here, at its own callback's start, instead of the
+				// interval-0 anchor above; every later insertion's stage was already entered by the previous
+				// insertion's commit below (gate HO review fix 4).
+				if (stageIndex == 1) enterStage(1, stageCount);
 
 				if (player != null && (player.isDead() || !CombatEligibility.resolve().canBeHit(player))) {
 					stopReloading();
