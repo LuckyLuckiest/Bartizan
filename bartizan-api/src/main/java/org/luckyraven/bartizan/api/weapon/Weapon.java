@@ -462,7 +462,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		ItemMeta meta = item.getItemMeta();
 		if (!(meta instanceof CrossbowMeta crossbowMeta)) return;
 
-		crossbowMeta.setChargedProjectiles(List.of(new ItemStack(Material.ARROW)));
+		crossbowMeta.setChargedProjectiles(List.of(XMaterial.ARROW.parseItem()));
 		item.setItemMeta(crossbowMeta);
 	}
 

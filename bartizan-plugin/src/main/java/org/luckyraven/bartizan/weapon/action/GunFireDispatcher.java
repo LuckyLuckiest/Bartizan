@@ -10,6 +10,10 @@ import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.weapon.WeaponService;
 
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * The SINGLE/BURST shot (and burst-sequence) dispatch, extracted out of {@code WeaponInteract} so
  * {@code WeaponSelectiveFireChangeListener}'s scoped {@code F} fire (weapons-roadmap.md gate {@code HP}) fires
@@ -19,7 +23,56 @@ import org.luckyraven.bartizan.weapon.WeaponService;
  */
 public final class GunFireDispatcher {
 
+	/**
+	 * Floor on the fire-rate lock window, in ticks - mirrors {@code WeaponInteract#MIN_PRESS_LOCK_TICKS}.
+	 */
+	private static final long MIN_PRESS_LOCK_TICKS = 4L;
+	private static final long MILLIS_PER_TICK = 50L;
+
+	/**
+	 * Shared {@code Projectile.Cooldown} fire-rate gate for SINGLE/BURST, keyed by weapon UUID (weapons-roadmap.md
+	 * gate {@code HP} review): {@code WeaponInteract}'s RMB click (via {@link #isLocked}/{@link #lock}, replacing
+	 * that class's own copy of this map) and {@code WeaponSelectiveFireChangeListener}'s scoped {@code F} fire both
+	 * check and set this same map, so mashing either input can't outrun the weapon's configured cooldown.
+	 * {@code WeaponInteract}'s held-trigger release watchdog ({@code pressHoldState}) is a separate, orthogonal
+	 * concern that still lives there.
+	 */
+	private static final Map<UUID, Long> pressLockUntilTick = new ConcurrentHashMap<>();
+
 	private GunFireDispatcher() {
+	}
+
+	/**
+	 * @return {@code true} while {@code weaponUuid}'s fire-rate window (set by the last {@link #lock} call) hasn't
+	 * 		elapsed yet.
+	 */
+	public static boolean isLocked(UUID weaponUuid) {
+		Long lockedUntil = pressLockUntilTick.get(weaponUuid);
+		return lockedUntil != null && System.currentTimeMillis() < lockedUntil;
+	}
+
+	/**
+	 * Records {@code weaponUuid}'s fire-rate deadline, {@code lockTicks} ticks from now.
+	 */
+	public static void lock(UUID weaponUuid, long lockTicks) {
+		pressLockUntilTick.put(weaponUuid, System.currentTimeMillis() + lockTicks * MILLIS_PER_TICK);
+	}
+
+	/**
+	 * Clears {@code weaponUuid}'s fire-rate deadline - called on weapon swap so a fresh selection isn't gated by a
+	 * stale lock left over from before the swap.
+	 */
+	public static void unlock(UUID weaponUuid) {
+		pressLockUntilTick.remove(weaponUuid);
+	}
+
+	/**
+	 * {@code Projectile.Cooldown}-derived fire-rate window, in ticks, floored at {@link #MIN_PRESS_LOCK_TICKS} -
+	 * the one formula every {@link #shoot} caller uses to compute how long to {@link #lock} the weapon for.
+	 */
+	public static long lockTicksFor(GunWeapon weapon) {
+		var projectileData = weapon.getProjectileData();
+		return Math.max((long) projectileData.getPerShot() * projectileData.getCooldown(), MIN_PRESS_LOCK_TICKS);
 	}
 
 	public static void shoot(JavaPlugin plugin, WeaponService weaponService, GunWeapon weapon,

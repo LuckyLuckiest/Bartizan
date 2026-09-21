@@ -98,21 +98,10 @@ public class WeaponInteract implements Listener {
 
 	private final Map<UUID, AtomicReference<WeaponData>> continuousFire;
 	/**
-	 * SINGLE/BURST per-shot cooldown gate: maps weapon UUID to the wall-clock millisecond at which the next RMB press
-	 * becomes eligible to fire. While the current time is below this value, fresh RMB presses are dropped — this
-	 * prevents click-spam from outpacing the weapon's natural fire rate even when the player release-and-re-presses RMB
-	 * rapidly. Cleared on weapon swap.
-	 *
-	 * <p>This is the cooldown gate only. Held-RMB suppression (one-shot-per-press) is handled separately by
-	 * {@link #pressHoldState}; without that watchdog, the cooldown gate would lapse mid-hold and the next Spigot
-	 * held-RMB event would fire another shot.
-	 */
-	private final Map<UUID, Long>                        pressLockUntilTick;
-	/**
 	 * {@code Information.Equip_Delay} gate — dedicated map, seeded in {@link #onWeaponHeld} and cleared on weapon
-	 * swap. Kept separate from {@link #pressLockUntilTick}: that map also carries the per-shot fire cooldown,
-	 * rewritten on every shot by {@link #engagePressHoldWatchdog(UUID, long)}, so sharing it here would refuse the
-	 * scope toggle for the whole fire-rate window after every shot, not just after an equip.
+	 * swap. Kept separate from {@link GunFireDispatcher}'s shared fire-rate map: that map also carries the per-shot
+	 * fire cooldown, rewritten on every shot by {@link #engagePressHoldWatchdog(UUID, long)}, so sharing it here
+	 * would refuse the scope toggle for the whole fire-rate window after every shot, not just after an equip.
 	 */
 	private final Map<UUID, Long>                        equipDelayUntil;
 	/**
@@ -124,8 +113,10 @@ public class WeaponInteract implements Listener {
 	 * incoming event), which signals that RMB has actually been released and the trigger should be re-armed for the
 	 * next press.
 	 *
-	 * <p>This is orthogonal to {@link #pressLockUntilTick}: the cooldown gate enforces the weapon's natural fire rate
-	 * across separate presses, while this map enforces "one shot per press" across the lifetime of a single hold.
+	 * <p>This is orthogonal to {@link GunFireDispatcher}'s shared fire-rate gate (weapons-roadmap.md gate {@code HP}
+	 * review — moved out of this class so {@code WeaponSelectiveFireChangeListener}'s scoped F fire goes through the
+	 * same map): that gate enforces the weapon's natural fire rate across separate presses, while this map enforces
+	 * "one shot per press" across the lifetime of a single hold.
 	 */
 	private final Map<UUID, AtomicReference<WeaponData>> pressHoldState;
 	/**
@@ -159,7 +150,6 @@ public class WeaponInteract implements Listener {
 		this.statusService      = statusService;
 		this.spyglassScopeTask  = spyglassScopeTask;
 		this.continuousFire     = new ConcurrentHashMap<>();
-		this.pressLockUntilTick = new ConcurrentHashMap<>();
 		this.equipDelayUntil    = new ConcurrentHashMap<>();
 		this.pressHoldState     = new ConcurrentHashMap<>();
 		this.releaseCallbacks   = new ConcurrentHashMap<>();
@@ -177,11 +167,19 @@ public class WeaponInteract implements Listener {
 
 		if (weapon == null) return;
 
-		if (player.isDead() || !combatEligibility.canBeHit(player)) return;
-
 		boolean leftClick = event.getAction() == Action.LEFT_CLICK_AIR || event.getAction() == Action.LEFT_CLICK_BLOCK;
 		boolean rightClick = event.getAction() == Action.RIGHT_CLICK_AIR ||
 		                     event.getAction() == Action.RIGHT_CLICK_BLOCK;
+
+		// A Material: CROSSBOW weapon carries the gate-HP aim-pose arrow (Weapon#applyCrossbowChargedProjectile),
+		// which makes the item a LOADED crossbow as far as the client/server are concerned - any right-click that
+		// reaches an exit below without denying the vanilla item use (isDead/!canBeHit, sneak + right-click on a
+		// left_click-trigger weapon, right-click during Equip_Delay, scoped-but-Level:-0) would otherwise fire a
+		// real vanilla arrow. DENY unconditionally here; the spyglass branch below still overrides it with ALLOW
+		// (last write wins).
+		if (rightClick) event.setUseItemInHand(Event.Result.DENY);
+
+		if (player.isDead() || !combatEligibility.canBeHit(player)) return;
 
 		// Shoot.Trigger: left_click (guns only) swaps which click fires and which toggles scope. Every other WM
 		// trigger type is deliberately unsupported.
@@ -381,7 +379,7 @@ public class WeaponInteract implements Listener {
 
 			// drop the SINGLE/BURST press lock, equip-delay gate and held-trigger gate so the new selection starts
 			// on a clean trigger (applies to both gun and incendiary weapons, all of which share these maps)
-			pressLockUntilTick.remove(weaponUuid);
+			GunFireDispatcher.unlock(weaponUuid);
 			equipDelayUntil.remove(weaponUuid);
 			pressHoldState.remove(weaponUuid);
 
@@ -674,16 +672,18 @@ public class WeaponInteract implements Listener {
 			return true;
 		}
 
-		// cooldown gate (rapid release-and-press faster than the weapon's natural fire rate), plus
-		// Information.Equip_Delay so a fresh equip can't skip its own delay window on the first press.
-		return isLockActive(pressLockUntilTick, weaponUuid) || isEquipDelayActive(weaponUuid);
+		// cooldown gate (rapid release-and-press faster than the weapon's natural fire rate) - shared with
+		// GunFireDispatcher's scoped F fire path (weapons-roadmap.md gate HP review) - plus Information.Equip_Delay
+		// so a fresh equip can't skip its own delay window on the first press.
+		return GunFireDispatcher.isLocked(weaponUuid) || isEquipDelayActive(weaponUuid);
 	}
 
 	/**
 	 * {@code Information.Equip_Delay}: {@code true} while a recently-equipped weapon's delay window (seeded in
 	 * {@link #onWeaponHeld}) hasn't elapsed yet. Read-only — unlike {@link #isPressGated(UUID)} this never mutates
 	 * {@link #pressHoldState}, so it is safe to call from the scope-toggle branch without side effects. Backed by
-	 * its own {@link #equipDelayUntil} map, not {@link #pressLockUntilTick} — see that field's javadoc.
+	 * its own {@link #equipDelayUntil} map, not {@link GunFireDispatcher}'s shared fire-rate gate — see that field's
+	 * javadoc.
 	 */
 	private boolean isEquipDelayActive(UUID weaponUuid) {
 		return isLockActive(equipDelayUntil, weaponUuid);
@@ -726,8 +726,7 @@ public class WeaponInteract implements Listener {
 	 * entry is cleared, {@link #isPressGated(UUID)} will continue to drop incoming events for this weapon.
 	 */
 	private void engagePressHoldWatchdog(UUID weaponUuid, long lockTicks) {
-		long lockMillis = lockTicks * MILLIS_PER_TICK;
-		pressLockUntilTick.put(weaponUuid, System.currentTimeMillis() + lockMillis);
+		GunFireDispatcher.lock(weaponUuid, lockTicks);
 
 		WeaponData freshWeaponData = new WeaponData();
 		freshWeaponData.shooting = true;
@@ -762,8 +761,10 @@ public class WeaponInteract implements Listener {
 	 * previous trigger pull is still "held". The watchdog only clears its entry once it observes a quiet tick window
 	 * (the held-RMB packet stream has stopped), at which point the trigger is re-armed for the next genuine press.
 	 *
-	 * <p>The cooldown gate ({@link #pressLockUntilTick}) is preserved as an orthogonal rate limiter that prevents
-	 * firing faster than the weapon's natural fire rate even when the player release-and-re-presses RMB rapidly.
+	 * <p>The cooldown gate ({@link GunFireDispatcher#isLocked}/{@link GunFireDispatcher#lock}) is preserved as an
+	 * orthogonal rate limiter that prevents firing faster than the weapon's natural fire rate even when the player
+	 * release-and-re-presses RMB rapidly — shared with {@code WeaponSelectiveFireChangeListener}'s scoped F fire
+	 * (weapons-roadmap.md gate {@code HP} review) so mashing either input is rate-limited identically.
 	 */
 	private void shootOtherModes(GunWeapon weapon, Player player) {
 		UUID weaponUuid = weapon.getUuid();
@@ -779,9 +780,7 @@ public class WeaponInteract implements Listener {
 			return;
 		}
 
-		var projectileData = weapon.getProjectileData();
-		long lockTicks = Math.max((long) projectileData.getPerShot() * projectileData.getCooldown(),
-		                          MIN_PRESS_LOCK_TICKS);
+		long lockTicks = GunFireDispatcher.lockTicksFor(weapon);
 
 		engagePressHoldWatchdog(weaponUuid, lockTicks);
 
@@ -885,8 +884,8 @@ public class WeaponInteract implements Listener {
 	 * <ul>
 	 *   <li>AUTO uses this via {@link #continuousFire} to know when to stop the {@link FullAutoTask}.
 	 *   <li>SINGLE/BURST uses this via {@link #pressHoldState} to know when the trigger should be re-armed for the
-	 *       next press (the cooldown gate {@link #pressLockUntilTick} alone is not sufficient — once it lapses
-	 *       mid-hold, the next held-RMB event would otherwise fire a second shot).
+	 *       next press (the cooldown gate {@link GunFireDispatcher#isLocked} alone is not sufficient — once it
+	 *       lapses mid-hold, the next held-RMB event would otherwise fire a second shot).
 	 *   <li>Biological charge-then-release uses this via {@link #continuousFire} to know when to fire the charged
 	 *       shot.
 	 * </ul>

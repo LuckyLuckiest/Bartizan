@@ -572,7 +572,12 @@ public class WeaponAddon {
 			return ScopeType.SLOWNESS;
 		}
 
-		if (materialString == null || !materialString.trim().equalsIgnoreCase("SPYGLASS")) {
+		// Compared through XMaterial.matchXMaterial, like every other Material read in this file (line ~89), so
+		// "minecraft:spyglass" / legacy forms don't wrongly trip this - the vanilla zoom is keyed off the held
+		// item's real type, so only the resolved material actually matters, not the raw YAML string.
+		Optional<XMaterial> resolvedMaterial = materialString == null ? Optional.empty()
+		                                                               : XMaterial.matchXMaterial(materialString);
+		if (resolvedMaterial.orElse(null) != XMaterial.SPYGLASS) {
 			report.add(Severity.ERROR, scopeSection.location(), scopeSection.path(),
 			           "Scope.Type: spyglass requires Information.Material: SPYGLASS in '" + weapon.getName() +
 			           "' - scoping as slowness instead",

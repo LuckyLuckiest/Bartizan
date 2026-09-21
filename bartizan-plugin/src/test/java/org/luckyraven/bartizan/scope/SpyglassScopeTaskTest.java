@@ -93,6 +93,36 @@ class SpyglassScopeTaskTest {
 	}
 
 	@Test
+	@DisplayName("scope already cleared elsewhere (hotbar swap/death/reload) before the poll runs: stays unscoped, ON_SCOPE_IN never fires")
+	void tick_alreadyUnscopedElsewhere_staysUnscopedAndNeverReScopes() {
+		GunWeapon         weapon        = spyglassScopedGun();
+		WeaponService     weaponService = mock(WeaponService.class);
+		EffectRunner      effectRunner  = mock(EffectRunner.class);
+		SpyglassScopeTask task          = new SpyglassScopeTask(mock(JavaPlugin.class), weaponService,
+		                                                        mock(WeaponRaytracer.class), effectRunner);
+
+		Player player   = mock(Player.class);
+		UUID   playerId = UUID.randomUUID();
+		when(player.getUniqueId()).thenReturn(playerId);
+		when(player.isHandRaised()).thenReturn(false);
+
+		task.register(player, weapon);
+
+		// something else - WeaponInteract's hotbar swap, WeaponQuitCleanupListener's death/quit cleanup, or
+		// Reload#endReloading - already cleared ScopeData while this poll entry was still registered.
+		// ScopeToggle.apply is a TOGGLE, so without the guard this poll would scope the player back IN.
+		weapon.unScope(player, true);
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			bukkit.when(() -> Bukkit.getPlayer(playerId)).thenReturn(player);
+			task.tick();
+		}
+
+		assertFalse(weapon.getScopeData().isScoped(), "must stay unscoped, not get toggled back in");
+		verify(effectRunner, never()).run(any(), eq(EffectHook.ON_SCOPE_IN), any());
+	}
+
+	@Test
 	@DisplayName("a quit mid-scope (no live Player) is cleaned up without touching ScopeData again")
 	void tick_playerGone_cleansUpWithoutTouchingScopeData() {
 		GunWeapon         weapon        = spyglassScopedGun();

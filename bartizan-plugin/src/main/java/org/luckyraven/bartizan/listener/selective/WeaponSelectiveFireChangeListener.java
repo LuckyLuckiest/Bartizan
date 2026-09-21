@@ -28,6 +28,8 @@ import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.weapon.action.GunFireDispatcher;
 import org.luckyraven.bartizan.api.event.WeaponChangeSelectiveFireEvent;
 
+import java.util.UUID;
+
 /**
  * Sneak + {@code F} still cycles {@code Selective_Fire} (unchanged). Not sneaking + {@code F} is otherwise a no-op
  * - except while a {@code Scope.Type: spyglass} weapon is scoped in (weapons-roadmap.md gate {@code HP}): the
@@ -116,8 +118,8 @@ public class WeaponSelectiveFireChangeListener implements Listener {
 	}
 
 	/**
-	 * // ponytail: no per-press cooldown/circumstance re-check beyond the one below - F is a discrete key press,
-	 * // not a held button Spigot keeps re-firing, so it needs no press-lock watchdog of its own.
+	 * // ponytail: no held-trigger watchdog of its own - F is a discrete key press, not a held button Spigot keeps
+	 * // re-firing, so it only needs the fire-rate gate below, not WeaponInteract's full press/release tracking.
 	 */
 	private void fireScoped(GunWeapon weapon, Player player, ItemStack item) {
 		if (weapon.isReloading()) return;
@@ -131,9 +133,17 @@ public class WeaponSelectiveFireChangeListener implements Listener {
 
 		if (weapon.getCurrentSelectiveFire() == SelectiveFire.AUTO) {
 			spyglassScopeTask.startAutoFire(weapon, player, item);
-		} else {
-			GunFireDispatcher.shoot(plugin, weaponService, weapon, raytracer, effectRunner, player);
+			return;
 		}
+
+		// Projectile.Cooldown fire-rate gate, shared with WeaponInteract's RMB click path through
+		// GunFireDispatcher (weapons-roadmap.md gate HP review) - without it, mashing F fires every press with no
+		// rate limit at all, draining the magazine and overlapping BURST sequences.
+		UUID weaponUuid = weapon.getUuid();
+		if (GunFireDispatcher.isLocked(weaponUuid)) return;
+		GunFireDispatcher.lock(weaponUuid, GunFireDispatcher.lockTicksFor(weapon));
+
+		GunFireDispatcher.shoot(plugin, weaponService, weapon, raytracer, effectRunner, player);
 	}
 
 }
