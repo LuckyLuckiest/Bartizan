@@ -9,6 +9,7 @@ import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.dto.ScopeData;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.weapon.ScopeToggle;
 import org.luckyraven.bartizan.weapon.WeaponService;
@@ -122,6 +123,15 @@ public class SpyglassScopeTask implements BeanLifecycle {
 
 		// No live Player left (quit mid-scope) - WeaponQuitCleanupListener already unscoped it directly.
 		if (player == null) return;
+
+		// Something else already cleared ScopeData while this entry was still registered - a hotbar swap
+		// (WeaponInteract#onWeaponHeld's previousWeapon.unScope), death/quit cleanup, or a reload ending
+		// (Reload#endReloading's weapon.unScope(player, true)). ScopeToggle.apply delegates to Weapon#cycleScope,
+		// which is a TOGGLE (ScopeData#advanceZoomStack scopes IN when scoped == false) - calling it here would
+		// re-scope the player (SLOWNESS at Integer.MAX_VALUE ticks, ON_SCOPE_IN) instead of leaving them unscoped,
+		// and since this entry is already removed above, it would never get another chance to notice.
+		ScopeData data = weapon.getScopeData();
+		if (data != null && !data.isScoped()) return;
 
 		try {
 			ScopeToggle.apply(weapon, player, weaponService, effectRunner);

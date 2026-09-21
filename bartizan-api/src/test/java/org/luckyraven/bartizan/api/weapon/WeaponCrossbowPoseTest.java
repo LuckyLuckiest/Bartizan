@@ -3,9 +3,11 @@ package org.luckyraven.bartizan.api.weapon;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.CrossbowMeta;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.support.WeaponFixtures;
+import org.luckyraven.bartizan.api.testsupport.BukkitRegistryFixture;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -28,6 +30,11 @@ import static org.mockito.Mockito.when;
  */
 @DisplayName("Weapon crossbow charged-projectile pose (gate HP)")
 class WeaponCrossbowPoseTest {
+
+	@BeforeAll
+	static void bootstrapBukkitRegistry() {
+		BukkitRegistryFixture.install();
+	}
 
 	private static GunWeapon crossbowWeapon() {
 		return new GunWeapon(UUID.randomUUID(), "test_crossbow", "&fTest Crossbow", WeaponType.GUN, Material.CROSSBOW,

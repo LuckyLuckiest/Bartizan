@@ -85,6 +85,34 @@ class WeaponSelectiveFireChangeListenerTest {
 	}
 
 	@Test
+	@DisplayName("two F presses on the same tick fire once - GunFireDispatcher's shared Projectile.Cooldown gate blocks the second")
+	void twoPressesSameTick_fireOnce() {
+		GunWeapon weapon = spyglassScopedGun(5);
+
+		WeaponService weaponService = mock(WeaponService.class);
+		JavaPlugin    plugin        = mock(JavaPlugin.class);
+		Player        player        = mockShooter(weaponService, weapon, false);
+
+		SpyglassScopeTask task = new SpyglassScopeTask(plugin, weaponService, mock(WeaponRaytracer.class),
+		                                               mock(EffectRunner.class));
+		WeaponSelectiveFireChangeListener listener = new WeaponSelectiveFireChangeListener(
+				plugin, weaponService, mock(WeaponRaytracer.class), mock(EffectRunner.class), task);
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class);
+		     MockedStatic<WeaponShooting> shooting = mockStatic(WeaponShooting.class)) {
+			bukkit.when(Bukkit::getPluginManager).thenReturn(mock(PluginManager.class));
+			shooting.when(() -> WeaponShooting.fire(any(), any(), any(), any(), any())).thenReturn(true);
+			shooting.when(() -> WeaponShooting.isHitscan(any())).thenReturn(true);
+
+			listener.onSwapHand(new PlayerSwapHandItemsEvent(player, mock(ItemStack.class), mock(ItemStack.class)));
+			// second F press lands on (effectively) the same tick - Projectile.Cooldown(4) hasn't elapsed yet.
+			listener.onSwapHand(new PlayerSwapHandItemsEvent(player, mock(ItemStack.class), mock(ItemStack.class)));
+		}
+
+		assertEquals(4, weapon.getCurrentMagCapacity(), "the second press must be gated - mashing F must not fire twice");
+	}
+
+	@Test
 	@DisplayName("F does nothing once the scope has dropped (SpyglassScopeTaskTest covers the isHandRaised() poll itself)")
 	void doesNotFire_onceUnscoped() {
 		GunWeapon weapon = spyglassScopedGun(5);
