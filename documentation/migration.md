@@ -41,7 +41,10 @@ A server that customised the old files under `plugins/Gangland_Warfare/` copies 
 required edit below. Do this before starting the server with Bartizan installed — Keystone's file recovery only
 regenerates a *missing* file from the jar's bundled defaults, it does not merge an existing one.
 
-### `items/wearables.yml` edit — `Jetpack:` → `Extra_Tags:`
+### `items/wearables.yml` edit — `Jetpack:` → `Extra_Tags:` (superseded by §12 — historical, 0.1.0–0.3.0 installs only)
+
+**Superseded as of 0.4.0**: the jetpack itself left `wearables.yml` entirely — see §12. This section stays for an
+install still mid-upgrade from a pre-0.2.0 `Jetpack:` block on a Bartizan version before 0.4.0.
 
 The wearable's jetpack-specific block was renamed and its keys lower-cased/flattened. Rename the block and its
 child keys; values carry over unchanged. Before (Gangland 0.8.4):
@@ -252,7 +255,35 @@ import) rebuilds a held/clicked/carried item that still carries WM's own `weapon
 into its imported Bartizan equivalent, carrying `ammo-left` over, the moment it's next held, clicked, or the
 player logs in.
 
-## 12. 0.5.0 (gates HO, HP) — staged reload, spyglass scope, crossbow aim pose
+## 12. 0.4.0 — jetpack leaves Bartizan entirely (Gangland WS7)
+
+The `jetpack:` entry left `items/wearables.yml` (deleted, not renamed) along with the `FUEL_EFFICIENT`-jetpack
+comment and the legacy `Jetpack:`→`Extra_Tags:` migration converter (`legacyJetpackToExtraTags`, superseding §3.4
+above). The jetpack is now a Gangland-owned item, defined in `gangland-gadget`'s own `items/jetpacks.yml`
+(Gangland 0.9.2+) — Bartizan no longer knows about it as a catalogued wearable.
+
+**Armour/trait loss, and the opt-in fix**: the jetpack's `Base_Damage_Reduction: 0.05` and
+`Traits: {REINFORCED: 1, LIGHTWEIGHT: 2}` are gone by default — a rehomed jetpack is a plain fuel/thrust
+chestplate with vanilla `IRON_CHESTPLATE` protection only. A server owner who wants those values back configures
+an optional `Bartizan_Traits:` block in Gangland's `items/jetpacks.yml`; when Bartizan is installed, Gangland
+registers that definition into Bartizan's wearable catalog through the new `WearableCatalog.register(String,
+Wearable)` api method (added this version) so Bartizan's existing damage-reduction path applies to the jetpack
+exactly as it did before — Bartizan gains no jetpack-specific code to do this, it is a generic external
+registration hook any soft-dependent plugin can use.
+
+**Data**: any shop/loot-chest entry that still references `wearable:jetpack` stops resolving — re-add it as
+`jetpack:<id>` through Gangland's own item vocabulary. Bartizan keeps no database, so there is nothing to migrate
+on this side.
+
+**Fuel survives the move.** A jetpack chestplate given out before 0.4.0 still carries its old, Bartizan-stamped
+`fuel_max` value (typically `3600`, the stock 0.3.0 default) — Gangland's re-stamp-on-equip migration
+(`JetpackService.migrateLegacyJetpack`, Gangland 0.9.2 G4) only ever touches the item-identity tag, never
+`fuel_max`/`fuel_current`, so a player's fuel and their maximum both carry over unchanged even if the item's
+catalogue definition (now `items/jetpacks.yml`'s `Max_Fuel:`) has since been set to a different value. See
+Gangland's own [`documentation/migration-0.9.2.md`](../../gangland-0.9.2/documentation/migration-0.9.2.md) for the
+full re-stamp mechanics and every other Gangland-side change this version brings.
+
+## 13. 0.5.0 (gates HO, HP) — staged reload, spyglass scope, crossbow aim pose
 
 No file has to change. Two behaviours do change without a config edit, so read the first two bullets before
 deploying.

@@ -91,6 +91,15 @@ public class Wearable {
 	private final boolean              temporary;
 
 	/**
+	 * {@code true} for a {@code WearableCatalog.register}-registered entry (WS7-D4): an armour identity + traits
+	 * handed to Bartizan by another plugin, damage-reduction/effects only. Bartizan never builds, converts, gives,
+	 * lists or serialises an external wearable — the owning plugin does; see {@code WearableCatalog.register}'s
+	 * javadoc for the full contract.
+	 */
+	@Builder.Default
+	private final boolean external = false;
+
+	/**
 	 * {@code Attributes:} — Bukkit attribute modifiers stamped on the piece's own armour slot group (gate
 	 * {@code HL}, §2), stamped via the same {@link AttributeModifiers#apply} helper {@code Weapon} uses.
 	 */
@@ -293,10 +302,12 @@ public class Wearable {
 	/**
 	 * Returns the permission node for this wearable, derived from its registry key.
 	 *
-	 * @return {@code "bartizan.wearables.<wearableKey>"}, or {@code null} for temporary wearables
+	 * @return {@code "bartizan.wearables.<wearableKey>"}, or {@code null} for a temporary or external wearable
+	 *         (an external key is never registered with Bukkit — {@code WearableEquipListener} treats a
+	 *         {@code null} permission as "no gate", so an unregistered node never silently blocks equipping)
 	 */
 	public String getPermission() {
-		if (temporary || wearableKey == null) return null;
+		if (temporary || external || wearableKey == null) return null;
 		return "bartizan.wearables." + wearableKey;
 	}
 

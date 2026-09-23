@@ -38,8 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code items/wearables.yml} through the real {@code NodeReader}/{@code ConfigReport} pipeline and asserts zero
  * issues, plus one registered wearable per top-level entry (mirrors {@code WeaponAddonTest}). Also covers a
  * {@code Sets}/{@code Attributes}/{@code Effects_While_Worn} fixture and the missing/invalid {@code Material}
- * warning path. {@code WearableAddonLegacyJetpackTest} covers {@code legacyJetpackToExtraTags} separately and is
- * untouched by this rewrite; runtime set-bonus/trait resolution is covered by {@code WearableServiceTest}, not
+ * warning path. Runtime set-bonus/trait resolution is covered by {@code WearableServiceTest}, not
  * here — this class only pins what the loader produces from YAML.
  */
 class WearableAddonTest {

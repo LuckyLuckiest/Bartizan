@@ -50,7 +50,9 @@ class WearableInfoCommand extends SubArgument {
 
 			Wearable wearable = wearableAddon.getWearable(key);
 
-			if (wearable == null) {
+			// An external (WS7-D4) entry has no Material/Name/Lore of its own - treat it as unregistered here,
+			// the same as no entry at all.
+			if (wearable == null || wearable.isExternal()) {
 				player.sendMessage(BartizanMessages.WEARABLE_NOT_REGISTERED.toString().replace("%key%", key));
 				return;
 			}

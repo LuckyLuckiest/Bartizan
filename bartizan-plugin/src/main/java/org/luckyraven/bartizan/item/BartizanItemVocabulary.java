@@ -54,7 +54,10 @@ public final class BartizanItemVocabulary implements ItemVocabulary {
 
 		registrar.serializer(WeaponItemPredicates.WEAPON, weaponItemSerializer, 0);
 		registrar.serializer(WeaponItemPredicates.AMMUNITION, ammunitionItemSerializer, 0);
-		registrar.serializer(BartizanItemPredicates.WEARABLE, wearableItemSerializer, 0);
+		// WS7-D4 Important-3 fix: excludes an externally-registered key (see WearableItemSerializer#claims) so a
+		// foreign plugin's own item is never claimed here - only BartizanItemPredicates.WEARABLE's raw tag check
+		// would have.
+		registrar.serializer(BartizanItemPredicates.WEARABLE.and(wearableItemSerializer::claims), wearableItemSerializer, 0);
 
 		registrar.refresher(weaponRefresher, 10);
 		registrar.refresher(wearableRefresher, 10);

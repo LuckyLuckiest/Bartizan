@@ -62,6 +62,7 @@ public class WearableService implements WearableCatalog {
 	public record SetTier(Map<String, Integer> traits, List<String> effectsWhileWorn) {
 	}
 
+	@Override
 	public void register(String key, Wearable wearable) {
 		wearables.put(key.toLowerCase(), wearable);
 	}
