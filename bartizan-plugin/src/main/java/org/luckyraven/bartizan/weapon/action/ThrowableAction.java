@@ -25,6 +25,7 @@ import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.raytrace.ExplosionHandler;
+import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.ThrowableType;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
@@ -83,6 +84,15 @@ public class ThrowableAction {
 	}
 
 	public void activate(Player player) {
+		// BZ-FA-03 follow-up: consumeAmmoIfTracked() below depletes a configured magazine but nothing ever gated
+		// on it, so a throwable authored with Ammunition:/Reload: kept throwing on an empty magazine. Mirrors
+		// MeleeAction.activate's empty-mag guard (MeleeAction:73), placed before the WeaponShootEvent so a
+		// listener never observes an empty-mag "shot".
+		if (weapon.getReloadData() != null && weapon.isMagazineEmpty()) {
+			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
+			return;
+		}
+
 		ThrowableData data = weapon.getThrowableData();
 
 		// HK: WeaponShootEvent fired once per trigger pull, before the held stack is decremented below - cancelling
