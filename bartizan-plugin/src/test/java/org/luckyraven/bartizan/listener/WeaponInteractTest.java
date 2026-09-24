@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.listener;
 
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -63,7 +64,7 @@ class WeaponInteractTest {
 		putInto(interact, "meleeCooldowns", weaponUuid, System.currentTimeMillis());
 		putInto(interact, "lastMeleeSwingMs", weaponUuid, System.currentTimeMillis());
 
-		interact.clearWeaponState(weapon);
+		interact.clearWeaponState(mock(Player.class), weapon);
 
 		for (String fieldName : TRACKING_MAP_FIELDS) {
 			assertFalse(mapField(interact, fieldName).containsKey(weaponUuid),
@@ -79,7 +80,7 @@ class WeaponInteractTest {
 	void clearWeaponState_nullWeapon_isNoOp() {
 		WeaponInteract interact = newInteract();
 
-		interact.clearWeaponState(null);
+		interact.clearWeaponState(mock(Player.class), null);
 	}
 
 	@Test

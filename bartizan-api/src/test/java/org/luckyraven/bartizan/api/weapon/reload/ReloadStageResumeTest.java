@@ -37,9 +37,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -190,7 +193,7 @@ class ReloadStageResumeTest {
 		MeleeWeapon    weapon         = weaponWith(reloadData, ammunitionData);
 		weapon.setSoundData(new SoundData());
 
-		InstantReload   reload    = new InstantReload(weapon, mockAmmo);
+		InstantReload   reload    = weaponStillInInventory(new InstantReload(weapon, mockAmmo));
 		JavaPlugin      plugin    = mock(JavaPlugin.class);
 		Player          player    = mock(Player.class);
 		PlayerInventory inventory = mock(PlayerInventory.class);
@@ -248,16 +251,16 @@ class ReloadStageResumeTest {
 		AmmunitionData ammunitionData = new AmmunitionData(mockAmmo, 6, 1, 6);
 		ReloadData     reloadData     = ReloadData.builder().cooldown(4).type(ReloadType.getType("instant"))
 		                                          .unloadAmmoOnReload(true).build();
-		MeleeWeapon    weapon         = weaponWith(reloadData, ammunitionData);
+		MeleeWeapon    weapon         = itemWritesStubbed(weaponWith(reloadData, ammunitionData));
 		weapon.setSoundData(new SoundData());
 
-		InstantReload   reload    = new InstantReload(weapon, mockAmmo);
+		InstantReload   reload    = weaponStillInInventory(new InstantReload(weapon, mockAmmo));
 		JavaPlugin      plugin    = mock(JavaPlugin.class);
 		Player          player    = mock(Player.class);
 		PlayerInventory inventory = mock(PlayerInventory.class);
 		when(player.getInventory()).thenReturn(inventory);
 		when(inventory.containsAtLeast(any(), anyInt())).thenReturn(true);
-		when(inventory.getContents()).thenReturn(new ItemStack[0]);
+		when(inventory.getItem(0)).thenReturn(mock(ItemStack.class));
 
 		weapon.setCurrentMagCapacity(0);
 
@@ -359,6 +362,26 @@ class ReloadStageResumeTest {
 	}
 
 	// ---------------------------------------------------------------------------------------------------------------
+
+	/**
+	 * The insert commit only runs while the weapon is still a top-level inventory item (BZ-WM-15). Weapon uuids are
+	 * NBT tags and no NBT provider is installed in a unit test, so the slot lookup is stubbed to slot 0.
+	 */
+	static <R extends Reload> R weaponStillInInventory(R reload) {
+		R spied = spy(reload);
+		doReturn(0).when(spied).findWeaponSlot(any(), any());
+		return spied;
+	}
+
+	/**
+	 * Stubs the commit's write-back onto the found slot: a real item update needs item meta a unit test lacks.
+	 */
+	static MeleeWeapon itemWritesStubbed(MeleeWeapon weapon) {
+		MeleeWeapon spied = spy(weapon);
+		doNothing().when(spied).updateWeaponData(any(), any());
+		doNothing().when(spied).updateWeapon(any(), any(), anyInt());
+		return spied;
+	}
 
 	private static ReloadData instantReloadData() {
 		return WeaponFixtures.instantReload();

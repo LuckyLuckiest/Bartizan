@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -31,10 +32,9 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,12 +53,13 @@ class GunActionHandlingTest {
 		GunWeapon weapon = gunWithHandling(1, handlingWith(true, false));
 
 		PlayerInventory inventory = mock(PlayerInventory.class);
-		when(inventory.getHeldItemSlot()).thenReturn(0);
 		Player shooter = mockShooter(inventory);
+		ItemStack updatedItem = mock(ItemStack.class);
 
 		WeaponService weaponService = mock(WeaponService.class);
 		JavaPlugin     plugin        = mock(JavaPlugin.class);
-		when(weaponService.getHeldWeaponItem(shooter)).thenReturn(mock(ItemBuilder.class));
+		ItemBuilder   heldItem      = heldItemBuilding(updatedItem);
+		when(weaponService.getHeldWeaponItem(shooter, weapon)).thenReturn(heldItem);
 
 		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class);
 		     MockedStatic<WeaponShooting> shooting = mockStatic(WeaponShooting.class)) {
@@ -73,8 +74,10 @@ class GunActionHandlingTest {
 			action.weaponShoot(shooter);
 		}
 
-		// the magazine is now empty (maxMag=1, consumed=1) and the weapon carries Destroy_When_Empty: true
-		verify(inventory, times(2)).setItem(eq(0), any());
+		// the magazine is now empty (maxMag=1, consumed=1) and the weapon carries Destroy_When_Empty: true - the
+		// item update is written first, then the destroy clears the same weapon's own hand
+		verify(weaponService).replaceHeldWeapon(shooter, weapon, updatedItem);
+		verify(weaponService).replaceHeldWeapon(shooter, weapon, null);
 	}
 
 	@Test
@@ -83,12 +86,13 @@ class GunActionHandlingTest {
 		GunWeapon weapon = gunWithHandling(2, handlingWith(true, false));
 
 		PlayerInventory inventory = mock(PlayerInventory.class);
-		when(inventory.getHeldItemSlot()).thenReturn(0);
 		Player shooter = mockShooter(inventory);
+		ItemStack updatedItem = mock(ItemStack.class);
 
 		WeaponService weaponService = mock(WeaponService.class);
 		JavaPlugin     plugin        = mock(JavaPlugin.class);
-		when(weaponService.getHeldWeaponItem(shooter)).thenReturn(mock(ItemBuilder.class));
+		ItemBuilder   heldItem      = heldItemBuilding(updatedItem);
+		when(weaponService.getHeldWeaponItem(shooter, weapon)).thenReturn(heldItem);
 
 		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class);
 		     MockedStatic<WeaponShooting> shooting = mockStatic(WeaponShooting.class)) {
@@ -103,9 +107,10 @@ class GunActionHandlingTest {
 			action.weaponShoot(shooter);
 		}
 
-		// one shot out of a 2-round magazine: still not empty, so only the normal item-update setItem runs —
-		// removeWeapon's extra AIR setItem must not.
-		verify(inventory, times(1)).setItem(eq(0), any());
+		// one shot out of a 2-round magazine: still not empty, so only the normal item update runs - the destroy's
+		// extra clear must not.
+		verify(weaponService).replaceHeldWeapon(shooter, weapon, updatedItem);
+		verify(weaponService, never()).replaceHeldWeapon(shooter, weapon, null);
 	}
 
 	@Test
@@ -114,12 +119,13 @@ class GunActionHandlingTest {
 		GunWeapon weapon = gunWithHandling(6, handlingWith(false, true));
 
 		PlayerInventory inventory = mock(PlayerInventory.class);
-		when(inventory.getHeldItemSlot()).thenReturn(0);
 		Player shooter = mockShooter(inventory);
+		ItemStack updatedItem = mock(ItemStack.class);
 
 		WeaponService weaponService = mock(WeaponService.class);
 		JavaPlugin     plugin        = mock(JavaPlugin.class);
-		when(weaponService.getHeldWeaponItem(shooter)).thenReturn(mock(ItemBuilder.class));
+		ItemBuilder   heldItem      = heldItemBuilding(updatedItem);
+		when(weaponService.getHeldWeaponItem(shooter, weapon)).thenReturn(heldItem);
 
 		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class);
 		     MockedStatic<WeaponShooting> shooting = mockStatic(WeaponShooting.class)) {
@@ -149,6 +155,12 @@ class GunActionHandlingTest {
 		when(shooter.getInventory()).thenReturn(inventory);
 		when(shooter.getEyeLocation()).thenReturn(new Location(null, 0, 64, 0, 0f, 0f));
 		return shooter;
+	}
+
+	private static ItemBuilder heldItemBuilding(ItemStack built) {
+		ItemBuilder builder = mock(ItemBuilder.class);
+		when(builder.build()).thenReturn(built);
+		return builder;
 	}
 
 	private static HandlingData handlingWith(boolean destroyWhenEmpty, boolean resetFallDistance) {

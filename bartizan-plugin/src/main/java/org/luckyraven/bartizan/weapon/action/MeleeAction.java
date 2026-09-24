@@ -5,6 +5,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.util.ParticleUtil;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
@@ -19,6 +20,7 @@ import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.wearable.WearableService;
+import org.luckyraven.bartizan.weapon.WeaponService;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -48,13 +50,15 @@ public class MeleeAction {
 	private final WeaponRaytracer raytracer;
 	private final Map<UUID, Long> cooldowns;
 	private final EffectRunner    effectRunner;
+	private final WeaponService   weaponService;
 
 	public MeleeAction(MeleeWeapon weapon, WeaponRaytracer raytracer, Map<UUID, Long> cooldowns,
-	                   EffectRunner effectRunner) {
-		this.weapon       = weapon;
-		this.raytracer    = raytracer;
-		this.cooldowns    = cooldowns;
-		this.effectRunner = effectRunner;
+	                   EffectRunner effectRunner, WeaponService weaponService) {
+		this.weapon        = weapon;
+		this.raytracer     = raytracer;
+		this.cooldowns     = cooldowns;
+		this.effectRunner  = effectRunner;
+		this.weaponService = weaponService;
 	}
 
 	/**
@@ -87,6 +91,14 @@ public class MeleeAction {
 		WeaponShootEvent shootEvent = new WeaponShootEvent(weapon, player);
 		Bukkit.getPluginManager().callEvent(shootEvent);
 		if (shootEvent.isCancelled()) return false;
+
+		// BZ-FA-03: depletes a configured magazine on every swing. Gated on getReloadData() != null, same as the
+		// empty-mag guard above, so a melee weapon authored without Ammunition:/Reload: sections is unaffected. The
+		// guard above already guarantees the magazine isn't empty, so consumeShot() always succeeds here.
+		if (weapon.getReloadData() != null) {
+			weapon.consumeShot();
+			weaponService.persistHeldWeapon(weapon, player);
+		}
 
 		Vector lookDir = player.getEyeLocation().getDirection().normalize();
 		double range   = data.getRange();
@@ -176,15 +188,12 @@ public class MeleeAction {
 		if (ap != null && ap.armorBypass() > 0) {
 			double armoredDmg = baseDmg * (1.0 - ap.armorBypass());
 			double pierceDmg  = baseDmg * ap.armorBypass();
-			pendingDamage.add(target.getUniqueId());
-			target.damage(armoredDmg, player);
+			dealPendingDamage(target, armoredDmg, player);
 			if (!target.isDead() && pierceDmg > 0) {
-				pendingDamage.add(target.getUniqueId());
-				target.damage(pierceDmg);
+				dealPendingDamage(target, pierceDmg, null);
 			}
 		} else {
-			pendingDamage.add(target.getUniqueId());
-			target.damage(baseDmg, player);
+			dealPendingDamage(target, baseDmg, player);
 		}
 
 		// If health didn't decrease, a protection plugin blocked the damage (same "damageBlocked" shape as
@@ -210,6 +219,26 @@ public class MeleeAction {
 		if (target.isDead() || knockback <= 0) return;
 		Vector kb = lookDir.clone().multiply(knockback);
 		target.setVelocity(target.getVelocity().add(kb));
+	}
+
+	/**
+	 * BZ-FA-11: {@code pendingDamage} used to be drained only by {@code WeaponInteract.onEntityDamage}, which fires
+	 * exclusively on {@link org.bukkit.event.entity.EntityDamageByEntityEvent} — a call with no {@code source}
+	 * (the armor-piercing follow-up below) raises no such event at all, and even a sourced call raises none when
+	 * the target is fully invulnerable (creative, {@code EntityDamageEvent} cancelled upstream, ...), so the UUID
+	 * was stranded in the static set until the next unrelated hit on that same entity wrongly drained it and
+	 * skipped {@code WeaponInteract}'s cancel guard. Draining synchronously in a {@code finally} right after the
+	 * damage call returns — regardless of whether an event fired at all — removes the dependency on that
+	 * event-based drain entirely.
+	 */
+	private void dealPendingDamage(LivingEntity target, double amount, @Nullable Player source) {
+		pendingDamage.add(target.getUniqueId());
+		try {
+			if (source != null) target.damage(amount, source);
+			else target.damage(amount);
+		} finally {
+			pendingDamage.remove(target.getUniqueId());
+		}
 	}
 
 }

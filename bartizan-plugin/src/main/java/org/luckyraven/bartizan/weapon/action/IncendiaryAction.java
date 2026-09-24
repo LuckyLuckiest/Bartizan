@@ -69,6 +69,10 @@ public class IncendiaryAction {
 	 * magazine empties.
 	 */
 	public boolean fireOnce(Player player) {
+		// the flamethrower left both hands (dropped, moved into a container): no spray, and false stops the AUTO
+		// loop instead of letting it run on until the release watchdog notices (BZ-EV-13)
+		if (weaponService.getHeldHand(player, weapon.getUuid()) == null) return false;
+
 		if (weapon.isBroken()) {
 			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 			return false;
@@ -100,12 +104,10 @@ public class IncendiaryAction {
 	// --- Per-tick spray ---
 
 	private void sprayFire(Player player, IncendiaryData data, boolean tracksAmmo) {
-		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(player);
+		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(player, weapon);
 		if (heldWeapon == null) {
 			return;
 		}
-
-		int slot = player.getInventory().getHeldItemSlot();
 
 		// consume fuel
 		if (tracksAmmo) weapon.consumeShot();
@@ -118,7 +120,7 @@ public class IncendiaryAction {
 		if (onShot > 0) weapon.decreaseDurability(heldWeapon, onShot);
 
 		// push updated item to inventory
-		weapon.updateWeapon(player, heldWeapon, slot);
+		weaponService.replaceHeldWeapon(player, weapon, heldWeapon.build());
 
 		// recoil and push per tick
 		if (weapon.getRecoilData() != null) {
@@ -222,8 +224,7 @@ public class IncendiaryAction {
 			double attributed = flatBonus > 0 ? flatBonus : 0.001;
 			target.setNoDamageTicks(0);
 			double healthBefore = target.getHealth();
-			pendingDamage.add(target.getUniqueId());
-			target.damage(attributed, event.getShooter());
+			dealPendingDamage(target, attributed, event.getShooter());
 
 			// If health didn't decrease, a protection plugin blocked the damage (same "damageBlocked" shape as
 			// WeaponRaytracerImpl.handleEntityImpact) — skip the event below.
@@ -249,6 +250,23 @@ public class IncendiaryAction {
 		// Non-living entity (vehicle, etc.). The unified WeaponRaytraceImpactEvent has already
 		// fired with damage = flatBonus (set in the request), so CarDamageListener picks it up via
 		// its WeaponRaytraceImpactEvent handler. Nothing to do here.
+	}
+
+	/**
+	 * BZ-FA-11: {@code pendingDamage} used to be drained only by {@code WeaponInteract.onEntityDamage}, which fires
+	 * exclusively on {@link org.bukkit.event.entity.EntityDamageByEntityEvent} - {@code target.damage()} raises no
+	 * such event at all against a fully invulnerable/creative target, which stranded the UUID in the static set
+	 * until an unrelated later hit wrongly drained it and skipped {@code WeaponInteract}'s cancel guard. Draining
+	 * synchronously in a {@code finally} right after the damage call returns removes the dependency on that
+	 * event-based drain entirely. Mirrors {@code MeleeAction}'s own {@code dealPendingDamage}.
+	 */
+	private void dealPendingDamage(LivingEntity target, double amount, Entity source) {
+		pendingDamage.add(target.getUniqueId());
+		try {
+			target.damage(amount, source);
+		} finally {
+			pendingDamage.remove(target.getUniqueId());
+		}
 	}
 
 }

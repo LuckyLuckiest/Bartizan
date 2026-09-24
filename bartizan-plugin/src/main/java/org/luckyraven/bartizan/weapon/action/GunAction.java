@@ -39,8 +39,9 @@ public class GunAction {
 			return;
 		}
 
-		// update data
-		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(shooter);
+		// update data - this weapon's own item only, from whichever hand holds it; a holstered weapon (a burst round
+		// or full-auto tick landing after a swap) must not consume a round or stamp its state onto another item
+		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(shooter, weapon);
 
 		if (heldWeapon == null) {
 			return;
@@ -55,8 +56,10 @@ public class GunAction {
 			return;
 		}
 
-		// consume a bullet
-		boolean consumed = weapon.consumeShot();
+		// consume a bullet - captured pre-consume so a cancelled WeaponShootEvent below can restore the exact
+		// magazine count (BZ-FA-05: refunding a hardcoded 1 round shorted every Consumed_Amount > 1 weapon)
+		int     magBeforeConsume = weapon.getCurrentMagCapacity();
+		boolean consumed         = weapon.consumeShot();
 
 		// no shot fired
 		if (!consumed) {
@@ -79,7 +82,9 @@ public class GunAction {
 		Bukkit.getPluginManager().callEvent(shootEvent);
 
 		if (shootEvent.isCancelled()) {
-			weapon.addAmmunition(1);
+			// BZ-FA-05: restores the exact pre-shot magazine count rather than a hardcoded 1 round, so a
+			// Consumed_Amount > 1 weapon isn't shorted a round every time a listener cancels the shot.
+			weapon.setCurrentMagCapacity(magBeforeConsume);
 			return;
 		}
 
@@ -93,7 +98,7 @@ public class GunAction {
 			weapon.decreaseDurability(heldWeapon, durabilityOnShot);
 		}
 
-		weapon.updateWeapon(shooter, heldWeapon, shooter.getInventory().getHeldItemSlot());
+		weaponService.replaceHeldWeapon(shooter, weapon, heldWeapon.build());
 
 		// Shoot.Destroy_When_Empty / Reset_Fall_Distance: after the item update above, so a destroy wins over
 		// whatever updateWeapon just pushed to the slot. A full-auto loop holding a stale ItemStack reference
@@ -107,7 +112,7 @@ public class GunAction {
 				shooter.setFallDistance(0f);
 			}
 			if (handling.isDestroyWhenEmpty() && weapon.isMagazineEmpty()) {
-				weapon.removeWeapon(shooter, shooter.getInventory().getHeldItemSlot());
+				weaponService.replaceHeldWeapon(shooter, weapon, null);
 			}
 		}
 

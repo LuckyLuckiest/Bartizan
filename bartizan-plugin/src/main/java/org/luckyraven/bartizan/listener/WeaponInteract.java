@@ -14,6 +14,8 @@ import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
@@ -100,7 +102,7 @@ public class WeaponInteract implements Listener {
 
 	private final Map<UUID, AtomicReference<WeaponData>> continuousFire;
 	/**
-	 * {@code Information.Equip_Delay} gate — dedicated map, seeded in {@link #onWeaponHeld} and cleared on weapon
+	 * {@code Information.Equip_Delay} gate — dedicated map, seeded in {@link #equip} and cleared on weapon
 	 * swap. Kept separate from {@link GunFireDispatcher}'s shared fire-rate map: that map also carries the per-shot
 	 * fire cooldown, rewritten on every shot by {@link #engagePressHoldWatchdog(UUID, long)}, so sharing it here
 	 * would refuse the scope toggle for the whole fire-rate window after every shot, not just after an equip.
@@ -184,8 +186,6 @@ public class WeaponInteract implements Listener {
 		ItemStack item   = event.getItem();
 		Weapon    weapon = weaponService.validateAndGetWeapon(player, item);
 
-		if (weapon == null) return;
-
 		boolean leftClick = event.getAction() == Action.LEFT_CLICK_AIR || event.getAction() == Action.LEFT_CLICK_BLOCK;
 		boolean rightClick = event.getAction() == Action.RIGHT_CLICK_AIR ||
 		                     event.getAction() == Action.RIGHT_CLICK_BLOCK;
@@ -194,16 +194,25 @@ public class WeaponInteract implements Listener {
 		// which makes the item a LOADED crossbow as far as the client/server are concerned - any right-click that
 		// reaches an exit below without denying the vanilla item use (isDead/!canBeHit, sneak + right-click on a
 		// left_click-trigger weapon, right-click during Equip_Delay, scoped-but-Level:-0) would otherwise fire a
-		// real vanilla arrow. DENY unconditionally here; the spyglass branch below still overrides it with ALLOW
-		// (last write wins).
-		if (rightClick) event.setUseItemInHand(Event.Result.DENY);
+		// real vanilla arrow. DENY for every weapon-tagged item, including one that no longer resolves (its type was
+		// removed from config - BZ-EV-16); the spyglass branch below still overrides it with ALLOW (last write wins).
+		if (rightClick && (weapon != null || weaponService.getHeldWeaponName(item) != null)) {
+			event.setUseItemInHand(Event.Result.DENY);
+		}
+
+		if (weapon == null) return;
+
+		// Off-hand weapons are inert (Dual_Wield is Missing, gate HN): an OFF_HAND use threw an off-hand grenade
+		// while ThrowableAction took the item from the main hand, and a gun in each hand fired both on one click
+		// (BZ-EV-11, BZ-EV-12). The vanilla use stays denied above.
+		if (event.getHand() == EquipmentSlot.OFF_HAND) return;
 
 		if (player.isDead() || !combatEligibility.canBeHit(player)) return;
 
 		// Shoot.Trigger: left_click (guns only) swaps which click fires and which toggles scope. Every other WM
 		// trigger type is deliberately unsupported.
-		// ponytail: PlayerInteractEntityEvent (right-click-on-entity firing) is not swapped — a left_click gun
-		// aimed at a mob keeps firing through EntityDamageByEntityEvent's melee-only path, i.e. it doesn't fire.
+		// A right click on an entity arrives as PlayerInteractEntityEvent, which never fires a left_click gun (see
+		// onPlayerInteractWithEntity); the USE_ITEM that follows it lands here and scopes.
 		boolean gunLeftTrigger = weapon instanceof GunWeapon && isLeftClickTrigger(weapon);
 		boolean scopeClick     = gunLeftTrigger ? rightClick : leftClick;
 		boolean fireClick      = gunLeftTrigger ? leftClick : rightClick;
@@ -212,7 +221,8 @@ public class WeaponInteract implements Listener {
 		ScopeData scopeData     = weapon.getScopeData();
 		boolean   spyglassScope = scopeData != null && scopeData.getType() == ScopeType.SPYGLASS;
 		// Type: spyglass scopes even at Level: 0 - the vanilla use is the point, the extra SLOWNESS is optional.
-		boolean   validateScope = scopeData == null || scopeData.getLevel() > 0 || spyglassScope;
+		// No scope configured: the click falls through to the weapon's own action (BZ-EV-03, a plain melee swing).
+		boolean   validateScope = scopeData != null && (scopeData.getLevel() > 0 || spyglassScope);
 
 		if (scopeClick && !player.isSneaking() && validateScope && !weapon.isReloading() &&
 		    !isEquipDelayActive(pressKey(weapon, player))) {
@@ -325,6 +335,11 @@ public class WeaponInteract implements Listener {
 		// non-GUN types: no right-click-on-entity behavior
 		if (!(weapon instanceof GunWeapon gunWeapon)) return;
 
+		// Shoot.Trigger: left_click - right click is the scope input, never a shot (BZ-EV-14). Not scoped here: the
+		// client follows up with a USE_ITEM that reaches onPlayerInteract as RIGHT_CLICK_AIR and scopes there, and
+		// cycleScope toggles, so scoping in both handlers would scope straight back out.
+		if (isLeftClickTrigger(gunWeapon)) return;
+
 		if (gunWeapon.isReloading()) {
 			return;
 		}
@@ -377,7 +392,7 @@ public class WeaponInteract implements Listener {
 		if (weapon instanceof MeleeWeapon melee) {
 			event.setCancelled(true);
 			if (tryClaimMeleeSwing(melee.getUuid())) {
-				boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner).activate(player);
+				boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner, weaponService).activate(player);
 				if (hit) melee.applyOnHitDurability(player, player.getInventory().getHeldItemSlot());
 			}
 			return;
@@ -395,46 +410,74 @@ public class WeaponInteract implements Listener {
 		ItemStack previousItem   = player.getInventory().getItem(event.getPreviousSlot());
 		Weapon    previousWeapon = weaponService.validateAndGetWeapon(player, previousItem);
 
-		if (previousWeapon != null) {
-			// unscoped and reset recoil for any weapon type
-			previousWeapon.unScope(player, true);
-			previousWeapon.getRecoil().resetRecoilPattern();
-
-			clearWeaponState(previousWeapon);
-
-			EffectContext holsterCtx = EffectContext.builder().weapon(previousWeapon).source(player).build();
-			effectRunner.run(previousWeapon, EffectHook.ON_HOLSTER, holsterCtx);
-		}
+		if (previousWeapon != null) holster(player, previousWeapon);
 
 		// new slot: ON_EQUIP when it holds a weapon
 		ItemStack newItem   = player.getInventory().getItem(event.getNewSlot());
 		Weapon    newWeapon = weaponService.validateAndGetWeapon(player, newItem);
 
-		if (newWeapon != null) {
-			EffectContext equipCtx = EffectContext.builder().weapon(newWeapon).source(player).build();
-			effectRunner.run(newWeapon, EffectHook.ON_EQUIP, equipCtx);
+		if (newWeapon != null) equip(player, newWeapon);
+	}
 
-			// Information.Equip_Delay: seed the dedicated gate — isPressGated (firing) and the scope-toggle branch
-			// in onPlayerInteract both consult it via isEquipDelayActive.
-			HandlingData handling = newWeapon.getHandlingData();
-			if (handling != null && handling.getEquipDelay() > 0) {
-				equipDelayUntil.put(pressKey(newWeapon, player),
-				                   System.currentTimeMillis() + handling.getEquipDelay() * MILLIS_PER_TICK);
-			}
+	/**
+	 * The F key moves a weapon into or out of the main hand without a {@link PlayerItemHeldEvent}, so it gets the
+	 * same holster/equip handling here - without it an F swap skipped {@code Information.Equip_Delay} (BZ-EV-15).
+	 * MONITOR + ignoreCancelled: a swap that {@code WeaponSelectiveFireChangeListener} cancels (selective-fire
+	 * change, spyglass fire, {@code Cancel.Swap_Hands}) moves nothing.
+	 */
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onSwapHands(PlayerSwapHandItemsEvent event) {
+		Player player = event.getPlayer();
+
+		// getOffHandItem() is the item leaving the main hand, getMainHandItem() the one entering it
+		Weapon outgoing = weaponService.validateAndGetWeapon(player, event.getOffHandItem());
+		if (outgoing != null) holster(player, outgoing);
+
+		Weapon incoming = weaponService.validateAndGetWeapon(player, event.getMainHandItem());
+		if (incoming != null) equip(player, incoming);
+	}
+
+	/**
+	 * A weapon left the main hand: cleanup + ON_HOLSTER.
+	 */
+	private void holster(Player player, Weapon previousWeapon) {
+		// unscoped and reset recoil for any weapon type
+		previousWeapon.unScope(player, true);
+		previousWeapon.getRecoil().resetRecoilPattern();
+
+		clearWeaponState(player, previousWeapon);
+
+		EffectContext holsterCtx = EffectContext.builder().weapon(previousWeapon).source(player).build();
+		effectRunner.run(previousWeapon, EffectHook.ON_HOLSTER, holsterCtx);
+	}
+
+	/**
+	 * A weapon entered the main hand: ON_EQUIP + the {@code Information.Equip_Delay} gate.
+	 */
+	private void equip(Player player, Weapon newWeapon) {
+		EffectContext equipCtx = EffectContext.builder().weapon(newWeapon).source(player).build();
+		effectRunner.run(newWeapon, EffectHook.ON_EQUIP, equipCtx);
+
+		// Information.Equip_Delay: seed the dedicated gate — isPressGated (firing) and the scope-toggle branch
+		// in onPlayerInteract both consult it via isEquipDelayActive.
+		HandlingData handling = newWeapon.getHandlingData();
+		if (handling != null && handling.getEquipDelay() > 0) {
+			equipDelayUntil.put(pressKey(newWeapon, player),
+			                   System.currentTimeMillis() + handling.getEquipDelay() * MILLIS_PER_TICK);
 		}
 	}
 
 	/**
 	 * Drops {@code weapon}'s entry from all eight per-weapon tracking maps, stopping any live
-	 * {@link FullAutoTask}/{@link RepeatingTimer} it finds along the way. Shared by {@link #onWeaponHeld} (a
-	 * hotbar swap) and {@code WeaponQuitCleanupListener} (bug docket BZ-EV-01) — without this on quit, a player
+	 * {@link FullAutoTask}/{@link RepeatingTimer} it finds along the way. Shared by {@link #holster} (a hotbar
+	 * or F swap) and {@code WeaponQuitCleanupListener} (bug docket BZ-EV-01) — without this on quit, a player
 	 * who disconnects mid-AUTO-fire or mid-throwable-charge leaves the task running and calling Bukkit
 	 * {@code Player} APIs against an offline {@code Player} until its own watchdog times out.
 	 */
-	public void clearWeaponState(@Nullable Weapon weapon) {
+	public void clearWeaponState(Player player, @Nullable Weapon weapon) {
 		if (weapon == null) return;
 
-		UUID weaponUuid = weapon.getUuid();
+		UUID weaponUuid = pressKey(weapon, player);
 
 		// drop the SINGLE/BURST press lock, equip-delay gate and held-trigger gate so the next selection of this
 		// weapon starts on a clean trigger (applies to both gun and incendiary weapons, all of which share these
@@ -496,7 +539,7 @@ public class WeaponInteract implements Listener {
 		} else if (weapon instanceof MeleeWeapon melee) {
 			if (leftClick) {
 				if (tryClaimMeleeSwing(melee.getUuid())) {
-					boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner).activate(player);
+					boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner, weaponService).activate(player);
 					if (hit) melee.applyOnHitDurability(player, player.getInventory().getHeldItemSlot());
 				}
 			}
@@ -577,6 +620,9 @@ public class WeaponInteract implements Listener {
 			return;
 		}
 
+		// Information.Equip_Delay gates a charge start like every other first press (BZ-EV-17)
+		if (isEquipDelayActive(weaponUuid)) return;
+
 		if (!start.getAsBoolean()) return;
 
 		WeaponData freshWeaponData = new WeaponData();
@@ -620,7 +666,7 @@ public class WeaponInteract implements Listener {
 
 		engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS);
 
-		new ThrowableAction(plugin, weapon, fireRegistry, effectRunner).activate(player);
+		new ThrowableAction(plugin, weapon, fireRegistry, effectRunner, weaponService).activate(player);
 	}
 
 	/**
@@ -660,8 +706,8 @@ public class WeaponInteract implements Listener {
 
 		// The first spray fires inside the event that pulled the trigger; the loop below (a RepeatingTimer skips
 		// its first scheduled run) continues the cadence from the next tick-rate boundary. Empty or broken: nothing
-		// to loop over.
-		if (!action.fireOnce(player)) return;
+		// to loop over. Information.Equip_Delay gates the first spray like every other first press (BZ-EV-17).
+		if (isEquipDelayActive(weaponUuid) || !action.fireOnce(player)) return;
 
 		WeaponData freshWeaponData = new WeaponData();
 		freshWeaponData.shooting = true;
@@ -694,7 +740,7 @@ public class WeaponInteract implements Listener {
 				return;
 			}
 			stillShooting.get().shooting = false;
-		}).start(true);
+		}).start(false);
 	}
 
 	/**
@@ -721,7 +767,7 @@ public class WeaponInteract implements Listener {
 
 	/**
 	 * {@code Information.Equip_Delay}: {@code true} while a recently-equipped weapon's delay window (seeded in
-	 * {@link #onWeaponHeld}) hasn't elapsed yet. Read-only — unlike {@link #isPressGated(UUID)} this never mutates
+	 * {@link #equip}) hasn't elapsed yet. Read-only — unlike {@link #isPressGated(UUID)} this never mutates
 	 * {@link #pressHoldState}, so it is safe to call from the scope-toggle branch without side effects. Backed by
 	 * its own {@link #equipDelayUntil} map, not {@link GunFireDispatcher}'s shared fire-rate gate — see that field's
 	 * javadoc.
@@ -788,7 +834,8 @@ public class WeaponInteract implements Listener {
 		AtomicReference<WeaponData> ref = new AtomicReference<>(freshWeaponData);
 		pressHoldState.put(weaponUuid, ref);
 
-		// release-detection watchdog. Pure flag-flipping + map mutation, so safe to run async.
+		// release-detection watchdog. Main thread, like every watchdog here: WeaponData.shooting is a plain field the
+		// interact handler also writes, and the AUTO one resets the recoil pattern (BZ-EV-02).
 		new RepeatingTimer(plugin, MIN_PRESS_LOCK_TICKS, time -> {
 			AtomicReference<WeaponData> stillHeld = pressHoldState.get(weaponUuid);
 			if (stillHeld == null) {
@@ -804,7 +851,7 @@ public class WeaponInteract implements Listener {
 				return;
 			}
 			stillHeld.get().shooting = false;
-		}).start(true);
+		}).start(false);
 	}
 
 	/**
@@ -910,7 +957,7 @@ public class WeaponInteract implements Listener {
 				}
 
 				stillShooting.get().shooting = false;
-			}).start(true);
+			}).start(false);
 		} else {
 			AtomicReference<WeaponData> weaponData = continuousFire.get(weaponUuid);
 

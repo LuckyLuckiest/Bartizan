@@ -9,6 +9,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.util.Vector;
+import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.keystone.timer.CountdownTimer;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.keystone.util.ParticleUtil;
@@ -25,9 +26,11 @@ import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.listener.projectile.CosmeticTag;
 import org.luckyraven.bartizan.raytrace.ExplosionHandler;
+import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.ThrowableType;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
+import org.luckyraven.bartizan.weapon.WeaponService;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -70,16 +73,27 @@ public class ThrowableAction {
 	private final ThrowableWeapon    weapon;
 	private final PluginFireRegistry fireRegistry;
 	private final EffectRunner       effectRunner;
+	private final WeaponService      weaponService;
 
 	public ThrowableAction(JavaPlugin plugin, ThrowableWeapon weapon, PluginFireRegistry fireRegistry,
-	                       EffectRunner effectRunner) {
-		this.plugin       = plugin;
-		this.weapon       = weapon;
-		this.fireRegistry = fireRegistry;
-		this.effectRunner = effectRunner;
+	                       EffectRunner effectRunner, WeaponService weaponService) {
+		this.plugin        = plugin;
+		this.weapon        = weapon;
+		this.fireRegistry  = fireRegistry;
+		this.effectRunner  = effectRunner;
+		this.weaponService = weaponService;
 	}
 
 	public void activate(Player player) {
+		// BZ-FA-03 follow-up: consumeAmmoIfTracked() below depletes a configured magazine but nothing ever gated
+		// on it, so a throwable authored with Ammunition:/Reload: kept throwing on an empty magazine. Mirrors
+		// MeleeAction.activate's empty-mag guard (MeleeAction:73), placed before the WeaponShootEvent so a
+		// listener never observes an empty-mag "shot".
+		if (weapon.getReloadData() != null && weapon.isMagazineEmpty()) {
+			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
+			return;
+		}
+
 		ThrowableData data = weapon.getThrowableData();
 
 		// HK: WeaponShootEvent fired once per trigger pull, before the held stack is decremented below - cancelling
@@ -88,6 +102,9 @@ public class ThrowableAction {
 		WeaponShootEvent shootEvent = new WeaponShootEvent(weapon, player);
 		Bukkit.getPluginManager().callEvent(shootEvent);
 		if (shootEvent.isCancelled()) return;
+
+		consumeAmmoIfTracked(player);
+		applyDurabilityOnShot(player);
 
 		// Detonation.Impact_When/Delay_After_Impact (gate HI-a) — everything else about the flight loop below is
 		// unchanged; Fuse_Time (the fuseTimer further down) remains the fallback exactly as before when Impact_When
@@ -228,6 +245,35 @@ public class ThrowableAction {
 
 		physicsTimer.start(false);
 		fuseTimer.start(false);
+	}
+
+	/**
+	 * BZ-FA-03: depletes a configured magazine on every throw. Gated on {@code getReloadData() != null}, same as
+	 * the {@link MeleeAction}/{@link BiologicalAction} guard, so a throwable authored without an
+	 * {@code Ammunition:}/{@code Reload:} section is unaffected. Package-private (rather than inlined into
+	 * {@link #activate}) so a unit test can pin this without the rest of {@code activate}'s real-world
+	 * grenade/physics setup (world drops, scheduler timers).
+	 */
+	void consumeAmmoIfTracked(Player player) {
+		if (weapon.getReloadData() == null) return;
+		weapon.consumeShot();
+		weaponService.persistHeldWeapon(weapon, player);
+	}
+
+	/**
+	 * BZ-FA-06: {@code Durability_On_Shot}, ignored until now for throwables — mirrors GunAction/IncendiaryAction's
+	 * own {@code On_Shot} handling. Package-private for the same unit-testability reason as
+	 * {@link #consumeAmmoIfTracked}.
+	 */
+	void applyDurabilityOnShot(Player player) {
+		short onShot = weapon.getDurabilityData().getOnShot();
+		if (onShot <= 0) return;
+
+		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(player, weapon);
+		if (heldWeapon == null) return;
+
+		weapon.decreaseDurability(heldWeapon, onShot);
+		weaponService.replaceHeldWeapon(player, weapon, heldWeapon.build());
 	}
 
 	/**

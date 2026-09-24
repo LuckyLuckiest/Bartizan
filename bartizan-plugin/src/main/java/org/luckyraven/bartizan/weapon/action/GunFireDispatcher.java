@@ -11,6 +11,7 @@ import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.weapon.WeaponService;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -39,6 +40,12 @@ public final class GunFireDispatcher {
 	 */
 	private static final Map<UUID, Long> pressLockUntilTick = new ConcurrentHashMap<>();
 
+	/**
+	 * Weapons with a pending {@code Weapon_Consumed.Time} countdown (BZ-EV-06): the first shot starts it, later shots
+	 * while it runs don't stack another one. The countdown drops its own entry when it ends.
+	 */
+	private static final Set<UUID> consumeCountdowns = ConcurrentHashMap.newKeySet();
+
 	private GunFireDispatcher() {
 	}
 
@@ -52,10 +59,15 @@ public final class GunFireDispatcher {
 	}
 
 	/**
-	 * Records {@code weaponUuid}'s fire-rate deadline, {@code lockTicks} ticks from now.
+	 * Records {@code weaponUuid}'s fire-rate deadline, {@code lockTicks} ticks from now, and drops every lapsed
+	 * deadline (BZ-FA-12): only {@link #unlock} on a hotbar swap removed entries, so a weapon consumed, destroyed or
+	 * taken off a quitting player kept its entry for the life of the JVM. A lapsed entry gates nothing, so the map
+	 * now holds only weapons fired within their last fire-rate window.
 	 */
 	public static void lock(UUID weaponUuid, long lockTicks) {
-		pressLockUntilTick.put(weaponUuid, System.currentTimeMillis() + lockTicks * MILLIS_PER_TICK);
+		long now = System.currentTimeMillis();
+		pressLockUntilTick.values().removeIf(lockedUntil -> lockedUntil <= now);
+		pressLockUntilTick.put(weaponUuid, now + lockTicks * MILLIS_PER_TICK);
 	}
 
 	/**
@@ -68,11 +80,13 @@ public final class GunFireDispatcher {
 
 	/**
 	 * {@code Projectile.Cooldown}-derived fire-rate window, in ticks, floored at {@link #MIN_PRESS_LOCK_TICKS} -
-	 * the one formula every {@link #shoot} caller uses to compute how long to {@link #lock} the weapon for.
+	 * the one formula every {@link #shoot} caller uses to compute how long to {@link #lock} the weapon for. Only a
+	 * BURST fires {@code Per_Shot} rounds per press, so only a BURST locks for all of them (BZ-EV-07).
 	 */
 	public static long lockTicksFor(GunWeapon weapon) {
-		var projectileData = weapon.getProjectileData();
-		return Math.max((long) projectileData.getPerShot() * projectileData.getCooldown(), MIN_PRESS_LOCK_TICKS);
+		var  projectileData = weapon.getProjectileData();
+		long rounds         = weapon.getCurrentSelectiveFire() == SelectiveFire.BURST ? projectileData.getPerShot() : 1;
+		return Math.max(rounds * projectileData.getCooldown(), MIN_PRESS_LOCK_TICKS);
 	}
 
 	public static void shoot(JavaPlugin plugin, WeaponService weaponService, GunWeapon weapon,
@@ -105,15 +119,19 @@ public final class GunFireDispatcher {
 
 		if (weapon.getWeaponConsumedOnShot() > 0 &&
 		    weapon.getCurrentMagCapacity() == weapon.getWeaponConsumedOnShot()) {
-			weapon.removeWeapon(player, player.getInventory().getHeldItemSlot());
+			weaponService.replaceHeldWeapon(player, weapon, null);
 		}
 
 		int consumeOnTime = weapon.getDurabilityData().getConsumeOnTime();
 		if (consumeOnTime <= -1) return;
 
-		CountdownTimer timer = new CountdownTimer(plugin, 0L, 0L, consumeOnTime, null, null,
-		                                          time -> weapon.removeWeapon(player,
-		                                                                      player.getInventory().getHeldItemSlot()));
+		UUID weaponUuid = weapon.getUuid();
+		if (!consumeCountdowns.add(weaponUuid)) return;
+
+		CountdownTimer timer = new CountdownTimer(plugin, 0L, 0L, consumeOnTime, null, null, time -> {
+			consumeCountdowns.remove(weaponUuid);
+			weaponService.replaceHeldWeapon(player, weapon, null);
+		});
 
 		timer.start(false);
 	}

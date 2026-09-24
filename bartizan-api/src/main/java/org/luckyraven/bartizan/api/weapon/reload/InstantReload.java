@@ -131,6 +131,15 @@ public class InstantReload extends Reload {
 					return;
 				}
 
+				// the weapon must still be a top-level inventory item (hotbar, storage, armour or off hand): on the
+				// cursor, in the crafting grid, an ender chest or a bundle the fill could never be written back and
+				// the consumed ammo would be lost - interrupt before the commit consumes anything (BZ-WM-15)
+				int newSlot = inventory != null ? findWeaponSlot(inventory, getWeapon()) : -1;
+				if (inventory != null && newSlot < 0) {
+					stopReloading();
+					return;
+				}
+
 				Ammunition ammoToConsume = getAmmunition();
 
 				if (inventory != null && ammoToConsume != null) {
@@ -154,8 +163,6 @@ public class InstantReload extends Reload {
 
 				if (inventory != null) {
 					// update the weapon data in the player's inventory
-					int newSlot = findWeaponSlot(inventory, getWeapon());
-
 					if (newSlot > -1) {
 						ItemStack existingItem = inventory.getItem(newSlot);
 						ItemBuilder heldWeapon = new ItemBuilder(

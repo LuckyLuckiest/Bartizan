@@ -20,6 +20,7 @@ import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.wearable.WearableService;
+import org.luckyraven.keystone.item.ItemBuilder;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,6 +55,10 @@ public class BiologicalAction {
 	public void fire(Player player, int level) {
 		if (level <= 0) return;
 
+		// the release watchdog (or Auto_Fire_At_Max) can land after the weapon left both hands - dropped or moved
+		// into a container mid-charge: no shot then, and nothing to consume (BZ-EV-13)
+		if (weaponService.getHeldHand(player, weapon.getUuid()) == null) return;
+
 		// HK: WeaponShootEvent fired once per trigger pull, before ammo is consumed below - cancelling costs
 		// the caller nothing, matching the "fire before consumption" contract used across the other custom-path
 		// actions.
@@ -63,6 +68,7 @@ public class BiologicalAction {
 
 		if (!weapon.consumeShot()) return;
 		weaponService.persistHeldWeapon(weapon, player);
+		applyDurabilityOnShot(player);
 
 		BiologicalData data = weapon.getBiologicalData();
 
@@ -90,6 +96,24 @@ public class BiologicalAction {
 		}
 
 		ActionBarManager.send(player, "&aReleased at charge level " + level);
+	}
+
+	/**
+	 * BZ-FA-06: {@code Durability_On_Shot}, ignored until now for biological weapons — mirrors GunAction/
+	 * IncendiaryAction's own {@code On_Shot} handling ({@link WeaponService#persistHeldWeapon} doesn't cover
+	 * durability). Package-private so a unit test can pin this without the rest of {@link #fire}'s real-effect
+	 * tail ({@code effectsForLevel}/{@code fireRay}/{@code ActionBarManager}), which needs a live Bukkit
+	 * potion/sound registry a plain unit test can't serve.
+	 */
+	void applyDurabilityOnShot(Player player) {
+		short onShot = weapon.getDurabilityData().getOnShot();
+		if (onShot <= 0) return;
+
+		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(player, weapon);
+		if (heldWeapon == null) return;
+
+		weapon.decreaseDurability(heldWeapon, onShot);
+		weaponService.replaceHeldWeapon(player, weapon, heldWeapon.build());
 	}
 
 	/**

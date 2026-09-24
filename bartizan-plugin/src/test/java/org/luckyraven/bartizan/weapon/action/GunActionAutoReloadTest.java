@@ -53,7 +53,7 @@ class GunActionAutoReloadTest {
 
 		action.weaponShoot(shooter);
 
-		verify(weaponService, never()).getHeldWeaponItem(any());
+		verify(weaponService, never()).getHeldWeaponItem(any(), any());
 		assertTrue(weapon.isMagazineFull(), "no shot should have been attempted");
 	}
 
@@ -67,7 +67,7 @@ class GunActionAutoReloadTest {
 		JavaPlugin    plugin        = mock(JavaPlugin.class);
 		Player        shooter       = mock(Player.class);
 
-		when(weaponService.getHeldWeaponItem(shooter)).thenReturn(mock(ItemBuilder.class));
+		when(weaponService.getHeldWeaponItem(shooter, weapon)).thenReturn(mock(ItemBuilder.class));
 		when(weaponService.tryReload(plugin, shooter, weapon)).thenReturn(true);
 
 		GunAction action = new GunAction(plugin, weaponService, weapon, mock(WeaponRaytracer.class),

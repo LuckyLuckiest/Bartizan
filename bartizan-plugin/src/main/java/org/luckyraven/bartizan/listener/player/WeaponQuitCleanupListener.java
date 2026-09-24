@@ -69,7 +69,7 @@ public class WeaponQuitCleanupListener implements Listener {
 		// here (see WeaponInteract#get()), so this can be null if it somehow never got constructed.
 		WeaponInteract interact = WeaponInteract.get();
 		if (interact != null) {
-			interact.clearWeaponState(weapon);
+			interact.clearWeaponState(player, weapon);
 		}
 	}
 
