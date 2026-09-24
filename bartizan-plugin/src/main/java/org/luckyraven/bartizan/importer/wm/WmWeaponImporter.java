@@ -511,7 +511,13 @@ public final class WmWeaponImporter {
 
 		String startMode = shoot.getString("Selective_Fire.Default", "");
 		if (startMode.isEmpty()) {
-			startMode = hasAuto ? "auto" : (hasBurst ? "burst" : "single");
+			// Selective_Fire.Default isn't a real WM key - Shoot.Selective_Fire (when present at all) describes the
+			// mode-switch TRIGGER, not a starting mode (see FN_FAL.yml: Trigger/Mechanics, no Default). A missing
+			// selective-fire NBT tag reads as 0 = SINGLE in WM, so a Selective_Fire section with no Default present
+			// starts single too - only a weapon with NO Selective_Fire section at all (so WM fires in its one
+			// configured mode) falls back to whichever of auto/burst/single that one mode is.
+			startMode = shoot.isConfigurationSection("Selective_Fire") ? "single"
+			                                                          : (hasAuto ? "auto" : (hasBurst ? "burst" : "single"));
 		}
 		String normalized = startMode.toLowerCase(Locale.ROOT);
 		if (!allowed.contains(normalized)) allowed.add(normalized);
