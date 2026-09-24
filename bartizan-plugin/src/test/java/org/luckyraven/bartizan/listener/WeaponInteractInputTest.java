@@ -8,6 +8,7 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -36,6 +37,7 @@ import org.luckyraven.bartizan.weapon.action.IncendiaryAction;
 import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
 import org.luckyraven.bartizan.weapon.action.MeleeAction;
 import org.luckyraven.bartizan.api.weapon.dto.DurabilityData;
+import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
 import org.luckyraven.bartizan.weapon.action.GunAction;
 import org.luckyraven.bartizan.weapon.action.GunFireDispatcher;
@@ -46,6 +48,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -241,6 +245,35 @@ class WeaponInteractInputTest {
 
 			verify(sprays.constructed().get(0)).fireOnce(player);
 		}
+	}
+
+	// BZ-EV-15
+
+	@Test
+	@DisplayName("swapping a gun into the main hand seeds its Equip_Delay and runs ON_EQUIP")
+	void swapIntoMainHand_seedsEquipDelay() {
+		GunWeapon gun      = gun(HandlingData.Trigger.RIGHT_CLICK);
+		gun.getHandlingData().setEquipDelay(100);
+
+		listener.onSwapHands(new PlayerSwapHandItemsEvent(player, item, null));
+
+		verify(effectRunner).run(eq(gun), eq(EffectHook.ON_EQUIP), any());
+		try (MockedConstruction<GunAction> shots = mockConstruction(GunAction.class)) {
+			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
+
+			assertTrue(shots.constructed().isEmpty(), "the swapped-in gun fired inside its Equip_Delay");
+		}
+	}
+
+	@Test
+	@DisplayName("swapping a gun out of the main hand holsters it")
+	void swapOutOfMainHand_holsters() {
+		GunWeapon gun = gun(HandlingData.Trigger.RIGHT_CLICK);
+
+		listener.onSwapHands(new PlayerSwapHandItemsEvent(player, null, item));
+
+		verify(effectRunner).run(eq(gun), eq(EffectHook.ON_HOLSTER), any());
+		verify(effectRunner, never()).run(eq(gun), eq(EffectHook.ON_EQUIP), any());
 	}
 
 }

@@ -14,6 +14,7 @@ import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -99,7 +100,7 @@ public class WeaponInteract implements Listener {
 
 	private final Map<UUID, AtomicReference<WeaponData>> continuousFire;
 	/**
-	 * {@code Information.Equip_Delay} gate — dedicated map, seeded in {@link #onWeaponHeld} and cleared on weapon
+	 * {@code Information.Equip_Delay} gate — dedicated map, seeded in {@link #equip} and cleared on weapon
 	 * swap. Kept separate from {@link GunFireDispatcher}'s shared fire-rate map: that map also carries the per-shot
 	 * fire cooldown, rewritten on every shot by {@link #engagePressHoldWatchdog(UUID, long)}, so sharing it here
 	 * would refuse the scope toggle for the whole fire-rate window after every shot, not just after an equip.
@@ -384,59 +385,87 @@ public class WeaponInteract implements Listener {
 		ItemStack previousItem   = player.getInventory().getItem(event.getPreviousSlot());
 		Weapon    previousWeapon = weaponService.validateAndGetWeapon(player, previousItem);
 
-		if (previousWeapon != null) {
-			UUID weaponUuid = previousWeapon.getUuid();
-
-			// unscoped and reset recoil for any weapon type
-			previousWeapon.unScope(player, true);
-			previousWeapon.getRecoil().resetRecoilPattern();
-
-			// drop the SINGLE/BURST press lock, equip-delay gate and held-trigger gate so the new selection starts
-			// on a clean trigger (applies to both gun and incendiary weapons, all of which share these maps)
-			GunFireDispatcher.unlock(weaponUuid);
-			equipDelayUntil.remove(weaponUuid);
-			pressHoldState.remove(weaponUuid);
-
-			// drop the melee dedup timestamp so swapping weapons doesn't carry stale gating across selections
-			lastMeleeSwingMs.remove(weaponUuid);
-
-			if (previousWeapon instanceof GunWeapon) {
-				// cancel any active auto fire
-				FullAutoTask autoTask = autoTasks.get(weaponUuid);
-				if (autoTask != null) {
-					autoTask.stop();
-				}
-			}
-
-			// cancel active incendiary / biological tasks
-			RepeatingTimer activeTask = activeTasks.remove(weaponUuid);
-			if (activeTask != null) {
-				activeTask.stop();
-			}
-
-			// drop any pending biological release callback so the charge dies with the swap
-			releaseCallbacks.remove(weaponUuid);
-			continuousFire.remove(weaponUuid);
-
-			EffectContext holsterCtx = EffectContext.builder().weapon(previousWeapon).source(player).build();
-			effectRunner.run(previousWeapon, EffectHook.ON_HOLSTER, holsterCtx);
-		}
+		if (previousWeapon != null) holster(player, previousWeapon);
 
 		// new slot: ON_EQUIP when it holds a weapon
 		ItemStack newItem   = player.getInventory().getItem(event.getNewSlot());
 		Weapon    newWeapon = weaponService.validateAndGetWeapon(player, newItem);
 
-		if (newWeapon != null) {
-			EffectContext equipCtx = EffectContext.builder().weapon(newWeapon).source(player).build();
-			effectRunner.run(newWeapon, EffectHook.ON_EQUIP, equipCtx);
+		if (newWeapon != null) equip(player, newWeapon);
+	}
 
-			// Information.Equip_Delay: seed the dedicated gate — isPressGated (firing) and the scope-toggle branch
-			// in onPlayerInteract both consult it via isEquipDelayActive.
-			HandlingData handling = newWeapon.getHandlingData();
-			if (handling != null && handling.getEquipDelay() > 0) {
-				equipDelayUntil.put(newWeapon.getUuid(),
-				                   System.currentTimeMillis() + handling.getEquipDelay() * MILLIS_PER_TICK);
+	/**
+	 * The F key moves a weapon into or out of the main hand without a {@link PlayerItemHeldEvent}, so it gets the
+	 * same holster/equip handling here - without it an F swap skipped {@code Information.Equip_Delay} (BZ-EV-15).
+	 * MONITOR + ignoreCancelled: a swap that {@code WeaponSelectiveFireChangeListener} cancels (selective-fire
+	 * change, spyglass fire, {@code Cancel.Swap_Hands}) moves nothing.
+	 */
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onSwapHands(PlayerSwapHandItemsEvent event) {
+		Player player = event.getPlayer();
+
+		// getOffHandItem() is the item leaving the main hand, getMainHandItem() the one entering it
+		Weapon outgoing = weaponService.validateAndGetWeapon(player, event.getOffHandItem());
+		if (outgoing != null) holster(player, outgoing);
+
+		Weapon incoming = weaponService.validateAndGetWeapon(player, event.getMainHandItem());
+		if (incoming != null) equip(player, incoming);
+	}
+
+	/**
+	 * A weapon left the main hand: cleanup + ON_HOLSTER.
+	 */
+	private void holster(Player player, Weapon previousWeapon) {
+		UUID weaponUuid = previousWeapon.getUuid();
+
+		// unscoped and reset recoil for any weapon type
+		previousWeapon.unScope(player, true);
+		previousWeapon.getRecoil().resetRecoilPattern();
+
+		// drop the SINGLE/BURST press lock, equip-delay gate and held-trigger gate so the new selection starts
+		// on a clean trigger (applies to both gun and incendiary weapons, all of which share these maps)
+		GunFireDispatcher.unlock(weaponUuid);
+		equipDelayUntil.remove(weaponUuid);
+		pressHoldState.remove(weaponUuid);
+
+		// drop the melee dedup timestamp so swapping weapons doesn't carry stale gating across selections
+		lastMeleeSwingMs.remove(weaponUuid);
+
+		if (previousWeapon instanceof GunWeapon) {
+			// cancel any active auto fire
+			FullAutoTask autoTask = autoTasks.get(weaponUuid);
+			if (autoTask != null) {
+				autoTask.stop();
 			}
+		}
+
+		// cancel active incendiary / biological tasks
+		RepeatingTimer activeTask = activeTasks.remove(weaponUuid);
+		if (activeTask != null) {
+			activeTask.stop();
+		}
+
+		// drop any pending biological release callback so the charge dies with the swap
+		releaseCallbacks.remove(weaponUuid);
+		continuousFire.remove(weaponUuid);
+
+		EffectContext holsterCtx = EffectContext.builder().weapon(previousWeapon).source(player).build();
+		effectRunner.run(previousWeapon, EffectHook.ON_HOLSTER, holsterCtx);
+	}
+
+	/**
+	 * A weapon entered the main hand: ON_EQUIP + the {@code Information.Equip_Delay} gate.
+	 */
+	private void equip(Player player, Weapon newWeapon) {
+		EffectContext equipCtx = EffectContext.builder().weapon(newWeapon).source(player).build();
+		effectRunner.run(newWeapon, EffectHook.ON_EQUIP, equipCtx);
+
+		// Information.Equip_Delay: seed the dedicated gate — isPressGated (firing) and the scope-toggle branch
+		// in onPlayerInteract both consult it via isEquipDelayActive.
+		HandlingData handling = newWeapon.getHandlingData();
+		if (handling != null && handling.getEquipDelay() > 0) {
+			equipDelayUntil.put(newWeapon.getUuid(),
+			                   System.currentTimeMillis() + handling.getEquipDelay() * MILLIS_PER_TICK);
 		}
 	}
 
@@ -697,7 +726,7 @@ public class WeaponInteract implements Listener {
 
 	/**
 	 * {@code Information.Equip_Delay}: {@code true} while a recently-equipped weapon's delay window (seeded in
-	 * {@link #onWeaponHeld}) hasn't elapsed yet. Read-only — unlike {@link #isPressGated(UUID)} this never mutates
+	 * {@link #equip}) hasn't elapsed yet. Read-only — unlike {@link #isPressGated(UUID)} this never mutates
 	 * {@link #pressHoldState}, so it is safe to call from the scope-toggle branch without side effects. Backed by
 	 * its own {@link #equipDelayUntil} map, not {@link GunFireDispatcher}'s shared fire-rate gate — see that field's
 	 * javadoc.
