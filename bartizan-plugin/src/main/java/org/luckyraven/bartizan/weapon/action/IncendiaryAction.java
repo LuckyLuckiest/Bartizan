@@ -69,6 +69,10 @@ public class IncendiaryAction {
 	 * magazine empties.
 	 */
 	public boolean fireOnce(Player player) {
+		// the flamethrower left both hands (dropped, moved into a container): no spray, and false stops the AUTO
+		// loop instead of letting it run on until the release watchdog notices (BZ-EV-13)
+		if (weaponService.getHeldHand(player, weapon.getUuid()) == null) return false;
+
 		if (weapon.isBroken()) {
 			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 			return false;

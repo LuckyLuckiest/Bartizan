@@ -108,6 +108,10 @@ public class BeamAction {
 	public void fire(Player player, int level) {
 		if (level <= 0) return;
 
+		// the release watchdog (or Auto_Fire_At_Max) can land after the weapon left both hands - dropped or moved
+		// into a container mid-charge: no shot then, and nothing to consume (BZ-EV-13)
+		if (weaponService.getHeldHand(player, weapon.getUuid()) == null) return;
+
 		BeamData beamData     = weapon.getBeam();
 		int      ammoPerLevel = beamData.getAmmoPerLevel();
 		boolean  tracksAmmo   = weapon.getReloadData() != null;
