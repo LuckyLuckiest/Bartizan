@@ -1,5 +1,7 @@
 package org.luckyraven.bartizan.fire;
 
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -69,8 +71,28 @@ public class PluginFireRegistry implements BeanLifecycle {
 		return false;
 	}
 
+	/**
+	 * Reverts every still-{@code Material.FIRE} tracked block to {@code AIR} before clearing the bookkeeping (bug
+	 * docket BZ-FA-04). Fire blocks are reverted by their own per-block scheduled tasks, which are cancelled along
+	 * with everything else when the plugin disables - without this, any fire still burning at server stop or
+	 * {@code /reload} was left in the world as a real block, and clearing {@link #tracked} without reverting it
+	 * first meant {@code PluginFireProtectionListener} could no longer recognise it as plugin-placed on the next
+	 * start, so it behaved as vanilla fire and could spread and burn player structures.
+	 */
 	@Override
 	public void onShutdown() {
+		for (Map.Entry<UUID, Set<BlockVector>> entry : tracked.entrySet()) {
+			World world = Bukkit.getWorld(entry.getKey());
+			if (world == null) continue;
+
+			for (BlockVector vector : entry.getValue()) {
+				Block block = world.getBlockAt(vector.getBlockX(), vector.getBlockY(), vector.getBlockZ());
+				if (block.getType() == Material.FIRE) {
+					block.setType(Material.AIR);
+				}
+			}
+		}
+
 		tracked.clear();
 	}
 

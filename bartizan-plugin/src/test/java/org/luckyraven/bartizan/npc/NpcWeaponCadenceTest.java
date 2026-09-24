@@ -172,6 +172,28 @@ class NpcWeaponCadenceTest {
 		assertTrue(controller.tryFire(target), "must be able to fire again once the cooldown has cleared");
 	}
 
+	@Test
+	void isShooterGone_reflectsShooterValidity_notJustCachedAtScheduling() {
+		// bug docket BZ-NU-04: performBurstFire schedules perShot rounds over several ticks via a SequenceTimer;
+		// Keystone's AbstractNpc.destroy() calls onDestroy() then despawns/destroys the entity in the SAME call,
+		// before any pending interval elapses, so a still-running round must notice a dead/removed shooter itself.
+		// isShooterGone() is the extracted decision scheduleBurst's per-round task checks — kept here (rather than
+		// exercising the real SequenceTimer scheduling) for the same reason RecordingController stubs
+		// scheduleBurst entirely: no live Bukkit scheduler in this test (bartizan.md B20 watch-out).
+		JavaPlugin   plugin  = mock(JavaPlugin.class);
+		LivingEntity shooter = mock(LivingEntity.class);
+		GunWeapon    gun     = mockGun(SelectiveFire.BURST, 3, 4);
+		RecordingController controller =
+				new RecordingController(plugin, shooter, gun, NO_RATE_SCALING, 15.0, mock(EffectRunner.class));
+
+		when(shooter.isValid()).thenReturn(true);
+		assertFalse(controller.isShooterGone(), "a live shooter must not stop an in-flight burst");
+
+		when(shooter.isValid()).thenReturn(false);
+		assertTrue(controller.isShooterGone(),
+		          "isValid() false (dead, despawned, or destroy()'d) must stop the remaining burst rounds");
+	}
+
 	// ---------------------------------------------------------------------------------------------------------------
 
 	private static RecordingController newController(GunWeapon gun, double fireRateMultiplier) {

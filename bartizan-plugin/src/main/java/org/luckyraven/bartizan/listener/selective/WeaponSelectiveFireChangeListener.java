@@ -3,6 +3,7 @@ package org.luckyraven.bartizan.listener.selective;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.ItemStack;
@@ -105,6 +106,30 @@ public class WeaponSelectiveFireChangeListener implements Listener {
 
 		ActionBarManager.send(player, "&6Selective Fire > &e" +
 		                              ChatUtil.capitalize(weapon.getCurrentSelectiveFire().name().toLowerCase()));
+	}
+
+	/**
+	 * Unscopes whatever weapon is about to leave the main hand on every path through {@link #onSwapHand} that lets
+	 * the swap proceed uncancelled - not sneaking, no {@code Selective_Fire} configured, or a cancelled
+	 * {@link WeaponChangeSelectiveFireEvent} (bug docket BZ-EV-09). Without this, a {@code Scope.Type: SLOWNESS}
+	 * weapon (the default - any gun with no {@code Scope.Type: spyglass} key, e.g. the shipped {@code awp.yml})
+	 * left the player permanently slowed and the weapon stuck "scoped" once it moved off-hand, with no cleanup
+	 * path until they manually re-selected it. Registered at {@link EventPriority#MONITOR} and keyed off
+	 * {@code event.isCancelled()} directly, so it covers every current AND future uncancelled exit with one guard
+	 * instead of one patched into each. {@code Weapon#unScope} is a no-op unless the weapon is actually scoped, so
+	 * this never affects an unscoped weapon or the {@code Cancel.Swap_Hands}/spyglass-fire paths that cancel the
+	 * event themselves (the weapon never actually leaves the main hand on those).
+	 */
+	@EventHandler(priority = EventPriority.MONITOR)
+	public void onSwapHandScopeCleanup(PlayerSwapHandItemsEvent event) {
+		if (event.isCancelled()) return;
+
+		Player player = event.getPlayer();
+		Weapon weapon = weaponService.validateAndGetWeapon(player, player.getInventory().getItemInMainHand());
+
+		if (weapon != null) {
+			weapon.unScope(player, false);
+		}
 	}
 
 	private boolean cancelsSwapHands(Weapon weapon) {
