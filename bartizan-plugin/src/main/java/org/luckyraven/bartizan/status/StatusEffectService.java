@@ -240,7 +240,11 @@ public class StatusEffectService implements BeanLifecycle {
 		Entity       entity = Bukkit.getEntity(status.getVictimId());
 		LivingEntity victim = entity instanceof LivingEntity living ? living : null;
 
-		EffectContext ctx = EffectContext.builder().weapon(status.getWeapon()).victim(victim)
+		// Resolved by entity, not Bukkit#getPlayer, so a mob shooter is found too; an offline shooter stays null.
+		Entity       shooterEntity = status.getShooterId() != null ? Bukkit.getEntity(status.getShooterId()) : null;
+		LivingEntity shooter       = shooterEntity instanceof LivingEntity living ? living : null;
+
+		EffectContext ctx = EffectContext.builder().weapon(status.getWeapon()).source(shooter).victim(victim)
 		                                .level(status.getLevel()).build();
 		effectRunner.run(status.getWeapon(), EffectHook.ON_STATUS_EXPIRE, ctx);
 

@@ -20,6 +20,7 @@ import org.luckyraven.bartizan.api.weapon.dto.BiologicalData;
 import org.luckyraven.bartizan.api.weapon.dto.ChargeData;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.StatusData;
+import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.file.BartizanSettings;
 import org.luckyraven.bartizan.wearable.WearableService;
@@ -222,6 +223,29 @@ class StatusEffectServiceTest {
 
 		verify(effectRunner, org.mockito.Mockito.times(1)).run(any(), eq(EffectHook.ON_STATUS_EXPIRE), any());
 		assertTrue(service.activeOn(victim.getUniqueId()).isEmpty());
+	}
+
+	@Test
+	@DisplayName("On_Status_Expire's context carries the online shooter as its source (BZ-EF-01)")
+	void expire_contextSourceIsShooter() {
+		StatusEffectService service = service();
+		Player               victim  = player();
+		Player               shooter = player();
+
+		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
+			service.apply(victim, shooter, weapon(StatusData.Stacking.REFRESH, 200, 3), 1);
+		}
+
+		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
+			bukkit.when(() -> Bukkit.getEntity(victim.getUniqueId())).thenReturn(victim);
+			bukkit.when(() -> Bukkit.getEntity(shooter.getUniqueId())).thenReturn(shooter);
+
+			service.cure(victim.getUniqueId(), Reason.CURED);
+		}
+
+		ArgumentCaptor<EffectContext> captor = ArgumentCaptor.forClass(EffectContext.class);
+		verify(effectRunner).run(any(), eq(EffectHook.ON_STATUS_EXPIRE), captor.capture());
+		assertEquals(shooter, captor.getValue().getSource());
 	}
 
 	@Test
