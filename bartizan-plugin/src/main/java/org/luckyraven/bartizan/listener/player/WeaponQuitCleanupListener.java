@@ -66,6 +66,15 @@ public class WeaponQuitCleanupListener implements Listener {
 		weapon.unScope(player, true);
 	}
 
+	/**
+	 * Evicts the quitter's weapons from the registry (BZ-WM-04). MONITOR, so it runs after {@link #onPlayerQuit} has
+	 * stopped the reload and unscoped on the live instance - evicting first would make that lookup mint a fresh one.
+	 */
+	@EventHandler(priority = EventPriority.MONITOR)
+	public void forgetWeaponsOnQuit(PlayerQuitEvent event) {
+		weaponManager.forgetWeapons(event.getPlayer());
+	}
+
 	@EventHandler(priority = EventPriority.HIGHEST)
 	public void onPlayerDeath(PlayerDeathEvent event) {
 		Player player = event.getEntity();

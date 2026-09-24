@@ -294,6 +294,40 @@ class WeaponServiceTest {
 		            "the registry is read off the main thread, so it must be a concurrent map");
 	}
 
+	/**
+	 * BZ-WM-04: the registry only ever shrank on a full {@code /bartizan reload}, so every weapon a player used stayed
+	 * pinned for the whole uptime after they left. Quitting now forgets the quitter's weapons; the shared per-type
+	 * throwable entry stays for whoever else holds that type.
+	 */
+	@Test
+	@DisplayName("forgetWeapons drops the quitter's weapons from the registry but keeps shared throwables (BZ-WM-04)")
+	void forgetWeapons_dropsInventoryWeapons_keepsThrowables() {
+		Weapon gun     = service.getWeapon(null, null, "test_gun", true);
+		Weapon other   = service.getWeapon(null, null, "test_gun", true);
+		Weapon grenade = service.getWeapon(null, null, "test_grenade", true);
+		assertNotNull(gun);
+		assertNotNull(other);
+		assertNotNull(grenade);
+
+		ItemStack       gunItem     = weaponItem();
+		ItemStack       grenadeItem = weaponItem();
+		PlayerInventory inventory   = mock(PlayerInventory.class);
+		when(inventory.getContents()).thenReturn(new ItemStack[]{gunItem, null, grenadeItem});
+		Player player = mock(Player.class);
+		when(player.getInventory()).thenReturn(inventory);
+
+		try (MockedConstruction<ItemBuilder> ignored = mockConstruction(ItemBuilder.class, (builder, ctx) -> {
+			UUID uuid = ctx.arguments().get(0) == gunItem ? gun.getUuid() : grenade.getUuid();
+			when(builder.getStringTagData("uuid")).thenReturn(uuid.toString());
+		})) {
+			service.forgetWeapons(player);
+		}
+
+		assertNull(service.getWeapons().get(gun.getUuid()));
+		assertSame(other, service.getWeapons().get(other.getUuid()), "another item's weapon must stay registered");
+		assertSame(grenade, service.getWeapons().get(grenade.getUuid()));
+	}
+
 	private static MockedConstruction<ItemBuilder> weaponNbt(UUID uuid, int ammoLeft) {
 		return mockConstruction(ItemBuilder.class, (builder, ctx) -> {
 			when(builder.getStringTagData("uuid")).thenReturn(uuid.toString());

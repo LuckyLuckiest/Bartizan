@@ -38,8 +38,8 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	 * ({@code uuid}, {@code weapon}, {@code ammo-left}, {@code selective-fire}, durability) are the source of truth,
 	 * and {@link #validateAndGetWeapon} rebuilds a missing entry from them on first use after every boot or reload.
 	 */
-	// ponytail: unbounded per-session cache (one entry per distinct item used since boot/reload); evict on player
-	// quit if memory ever matters.
+	// ponytail: evicted per player on quit (forgetWeapons); items dropped or stored and never picked up again stay
+	// until the next reload.
 	@Getter
 	private final Map<UUID, Weapon> weapons;
 
@@ -354,6 +354,22 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		Weapon snapshot = template.copyWithUUID(uuid);
 		setWeaponData(snapshot, new ItemBuilder(item));
 		return snapshot;
+	}
+
+	/**
+	 * Drops the registry entry of every weapon item in {@code player}'s inventory, so a player who left stops pinning
+	 * their weapons for the rest of the uptime (BZ-WM-04); a rejoin rebuilds each from its NBT on first use. Called
+	 * on quit after the quit cleanup has stopped the held weapon's reload and unscoped it. A throwable's entry is
+	 * kept: its uuid is shared per type by every holder (see {@link #mintUuid}), so it is bounded anyway.
+	 */
+	public void forgetWeapons(Player player) {
+		for (ItemStack item : player.getInventory().getContents()) {
+			UUID uuid = getWeaponUUID(item);
+			if (uuid == null) continue;
+
+			weapons.computeIfPresent(uuid,
+			                         (key, weapon) -> weapon.getCategory() == WeaponType.THROWABLE ? weapon : null);
+		}
 	}
 
 	public void clear() {
