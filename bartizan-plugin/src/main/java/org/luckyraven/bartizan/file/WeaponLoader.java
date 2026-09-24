@@ -71,7 +71,7 @@ public class WeaponLoader extends FolderLoader {
 			try {
 				weaponAddon.registerWeapon(ammunitionManager, fileHandler);
 			} catch (InvalidConfigurationException exception) {
-				log.info("There was a problem loading the weapon: {}", exception.getMessage());
+				log.error("There was a problem loading the weapon: {}", exception.getMessage());
 			}
 		}, fileManager);
 	}
