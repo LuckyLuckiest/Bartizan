@@ -23,9 +23,10 @@ import org.luckyraven.keystone.bean.listener.ListenerPriority;
  * {@code WearableEffectsService}'s worn-key snapshot for them (gate {@code HL}) so a rejoin diffs against nothing
  * instead of stale gear from the last session.
  *
- * <p>Also unscopes on {@link PlayerDeathEvent} (gate {@code HH}): vanilla potion effects vanish on death, but
- * {@code ScopeData.scoped} does not track that on its own - without this, a player who dies while scoped keeps
- * {@code scoped} stuck {@code true} until they manually toggle it again.
+ * <p>Also unscopes and stops reloading on {@link PlayerDeathEvent} (gate {@code HH}; reload-stop added for bug
+ * docket BZ-EV-10): vanilla potion effects vanish on death, but {@code ScopeData.scoped} does not track that on
+ * its own - without this, a player who dies while scoped keeps {@code scoped} stuck {@code true} until they
+ * manually toggle it again, and a player who dies mid-reload keeps {@code isReloading()} stuck {@code true}.
  */
 @ListenerHandler(priority = ListenerPriority.LOW)
 public class WeaponQuitCleanupListener implements Listener {
@@ -56,13 +57,7 @@ public class WeaponQuitCleanupListener implements Listener {
 
 		if (weapon == null) return;
 
-		if (weapon.isReloading()) {
-			weapon.stopReloading();
-
-			EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).build();
-			effectRunner.run(weapon, EffectHook.ON_RELOAD_CANCEL, ctx);
-		}
-
+		stopReloadingIfActive(weapon, player);
 		weapon.unScope(player, true);
 	}
 
@@ -73,7 +68,22 @@ public class WeaponQuitCleanupListener implements Listener {
 
 		if (weapon == null) return;
 
+		stopReloadingIfActive(weapon, player);
 		weapon.unScope(player, true);
+	}
+
+	/**
+	 * Shared by both handlers (bug docket BZ-EV-10) - without this on {@code onPlayerDeath}, a player who died
+	 * mid-reload kept {@code isReloading()} stuck {@code true} (blocking both fire and scope) until the reload's
+	 * own per-stage {@code isDead()} check happened to notice, up to a full reload stage after respawn.
+	 */
+	private void stopReloadingIfActive(Weapon weapon, Player player) {
+		if (!weapon.isReloading()) return;
+
+		weapon.stopReloading();
+
+		EffectContext ctx = EffectContext.builder().weapon(weapon).source(player).build();
+		effectRunner.run(weapon, EffectHook.ON_RELOAD_CANCEL, ctx);
 	}
 
 }
