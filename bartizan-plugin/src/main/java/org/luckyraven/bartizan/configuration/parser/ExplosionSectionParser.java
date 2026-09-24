@@ -95,7 +95,9 @@ public final class ExplosionSectionParser {
 		if (section == null) return null;
 
 		NodeReader cluster = NodeReader.of(section, report);
-		int    count      = cluster.get("Count").asInt().min(1).orDefault(3);
+		// BZ-CF-17: no ceiling let a Count of e.g. 5000 fan out into 5000 concurrent SteppedProjectileTasks per
+		// detonation - each its own scheduler task, entity and potential nested explosion/block-damage scan.
+		int    count      = cluster.get("Count").asInt().min(1).max(32).orDefault(3);
 		double speed      = cluster.get("Speed").asDouble().min(0).orDefault(1.0);
 		int    delayTicks = cluster.get("Delay_Ticks").asInt().min(0).orDefault(0);
 		return new Cluster(count, speed, delayTicks);
@@ -107,7 +109,8 @@ public final class ExplosionSectionParser {
 		if (section == null) return null;
 
 		NodeReader airstrike = NodeReader.of(section, report);
-		int    count      = airstrike.get("Count").asInt().min(1).orDefault(3);
+		// BZ-CF-17: same unbounded-fan-out risk as Cluster.Count above.
+		int    count      = airstrike.get("Count").asInt().min(1).max(32).orDefault(3);
 		double height     = airstrike.get("Height").asDouble().min(0).orDefault(10.0);
 		double radius     = airstrike.get("Radius").asDouble().min(0).orDefault(explosionRadius);
 		int    delayTicks = airstrike.get("Delay_Ticks").asInt().min(0).orDefault(0);
