@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.util;
 
+import com.cryptomorin.xseries.XMaterial;
 import org.bukkit.Material;
 
 import java.util.*;
@@ -78,13 +79,11 @@ public final class BlockGroupResolver {
 			return new HashSet<>(BLOCK_GROUPS.get(upperName));
 		}
 
-		// Try to match single material
-		try {
-			Material material = Material.valueOf(upperName);
-			return Set.of(material);
-		} catch (IllegalArgumentException e) {
-			return Collections.emptySet();
-		}
+		// Try to match single material — through XMaterial (BZ-RT-09), not a raw valueOf, so a material renamed
+		// between Minecraft versions (e.g. the pre-1.13 flat name STAINED_CLAY) still resolves instead of silently
+		// dropping the whole block group.
+		return XMaterial.matchXMaterial(upperName).map(XMaterial::parseMaterial).map(Set::of)
+		                .orElse(Collections.emptySet());
 	}
 
 	/**

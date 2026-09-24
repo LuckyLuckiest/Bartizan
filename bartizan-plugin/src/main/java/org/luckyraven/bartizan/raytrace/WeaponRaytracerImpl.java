@@ -178,11 +178,14 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 	 * Removes every still-flying cosmetic visual on plugin disable / server stop (HI-b review #5) — otherwise a
 	 * visual type that never self-expires on its own (an {@code ARMOR_STAND} or a {@code PRIMED_TNT} with its fuse
 	 * held at {@code Integer.MAX_VALUE}) is orphaned in the world once its driving {@code SteppedProjectileTask}
-	 * stops ticking.
+	 * stops ticking. Also restores any block still mid-{@code RESTORE} (BZ-RT-15) — Bukkit cancels the pending
+	 * {@code runTaskLater} restore task on disable, so without this a block hit into {@code AIR} just before a
+	 * stop/reload would otherwise stay {@code AIR} for good.
 	 */
 	@Override
 	public void onShutdown() {
 		visualSpawner.removeAll();
+		blockDamageManager.clearAll();
 	}
 
 	// ------------------------------------------------------------------
@@ -401,8 +404,11 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 			BlockFace face = blockHit.getHitBlockFace();
 			if (face == null) return false;
 
-			applyBlockBreak(block, request.getWeapon());
-			handleBlockImpact(impactPt, block, face, ctx);
+			// handleBlockImpact fires WeaponRaytraceImpactEvent first — cancelling it must suppress the
+			// Break_Blocks damage too, not just run after the block has already been cracked/broken (BZ-RT-14).
+			if (handleBlockImpact(impactPt, block, face, ctx)) {
+				applyBlockBreak(block, request.getWeapon(), request.getShooter());
+			}
 			ctx.getTracerSegments().add(impactPt);
 
 			// Penetration before ricochet — matches existing precedence
@@ -660,17 +666,23 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 	/**
 	 * Fires a block-only impact event so listeners can react to "weapon X struck block Y" without an entity being
 	 * involved. Unlike entity impacts, this never applies damage by itself — block damage is handled separately by
-	 * {@link #applyBlockBreak} via {@link BlockDamageManager}. Also spawns the cosmetic block-crack particle and
-	 * fires {@link EffectHook#ON_BLOCK_HIT} for every un-cancelled block hit, gun or not.
+	 * the caller, which only calls {@link #applyBlockBreak} via {@link BlockDamageManager} when this method returns
+	 * {@code true} (BZ-RT-14) — so cancelling the event suppresses the Break_Blocks crack/destroy too, not just the
+	 * cosmetic particle and {@link EffectHook#ON_BLOCK_HIT} below. Also spawns the cosmetic block-crack particle and
+	 * fires {@code ON_BLOCK_HIT} for every un-cancelled block hit, gun or not.
+	 *
+	 * @return {@code true} if the event went through (not cancelled), {@code false} if a listener cancelled it
 	 */
-	private void handleBlockImpact(Location impactPt, Block block, BlockFace face, RaytraceContext ctx) {
+	// Package-visible (not private) so WeaponRaytracerBlockImpactTest can pin the cancel/return contract directly —
+	// advanceRay's own World/RayTraceResult plumbing has no mock harness yet (see the GRAVITY_STEP javadoc above).
+	boolean handleBlockImpact(Location impactPt, Block block, BlockFace face, RaytraceContext ctx) {
 		WeaponRaytraceImpactEvent event = new WeaponRaytraceImpactEvent(
 				ctx.getRequest().getWeapon(),
 				ctx.getRequest().getShooter(),
 				null, block, face, impactPt, 0.0, ctx.getState());
 		Bukkit.getPluginManager().callEvent(event);
 		if (event.isCancelled()) {
-			return;
+			return false;
 		}
 
 		spawnBlockCrackParticles(impactPt, block);
@@ -687,6 +699,8 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 		if (ctx.getRequest().getImpactHandler() != null) {
 			ctx.getRequest().getImpactHandler().accept(event);
 		}
+
+		return true;
 	}
 
 	/**
@@ -787,12 +801,13 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 		return point.distance(closest);
 	}
 
-	private void applyBlockBreak(Block block, Weapon weapon) {
+	private void applyBlockBreak(Block block, Weapon weapon, @Nullable LivingEntity shooter) {
+		Player player = shooter instanceof Player p ? p : null;
 		for (BlockBreakModifier mod : weapon.getModifiersData().getBreakBlocks()) {
 			if (!mod.appliesTo(block.getType())) {
 				continue;
 			}
-			blockDamageManager.applyDamage(block, mod);
+			blockDamageManager.applyDamage(block, mod, player);
 			break;
 		}
 	}
