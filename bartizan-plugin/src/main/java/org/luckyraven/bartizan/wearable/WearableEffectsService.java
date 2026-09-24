@@ -73,12 +73,16 @@ public class WearableEffectsService implements BeanLifecycle {
 	private final Map<UUID, Set<String>> lastWornKeys = new HashMap<>();
 
 	/**
-	 * Last tick's granted {@code Effects_While_Worn} potion types per player (gate {@code HL} review, §4) — diffed
+	 * Last tick's granted {@code Effects_While_Worn} potion types per player, mapped to the highest Bukkit
+	 * amplifier granted for that type (gate {@code HL} review, §4; amplifier tracking added BZ-WE-10) — diffed
 	 * every tick (not just every {@link #WORN_EFFECTS_EVERY_N_TICKS}th one) in {@link #removeDroppedWornEffects} so
 	 * a type that's no longer granted (its piece removed, or its Set tier lost/downgraded) is stripped immediately
-	 * instead of lingering for up to {@link #WORN_EFFECT_DURATION_TICKS} ticks.
+	 * instead of lingering for up to {@link #WORN_EFFECT_DURATION_TICKS} ticks. The granted amplifier is kept so
+	 * {@link #removeDroppedWornEffects} only strips the wearable's OWN instance of that effect, never an
+	 * independently-acquired one from another source (BZ-WE-10) — {@code Player.removePotionEffect(type)} has no
+	 * concept of "whose" effect it's clearing.
 	 */
-	private final Map<UUID, Set<PotionEffectType>> lastWornEffectTypes = new HashMap<>();
+	private final Map<UUID, Map<PotionEffectType, Integer>> lastWornEffectGrants = new HashMap<>();
 
 	private long tickCount = 0;
 
@@ -109,7 +113,7 @@ public class WearableEffectsService implements BeanLifecycle {
 	 */
 	public void remove(UUID playerId) {
 		lastWornKeys.remove(playerId);
-		lastWornEffectTypes.remove(playerId);
+		lastWornEffectGrants.remove(playerId);
 	}
 
 	/**
@@ -159,19 +163,31 @@ public class WearableEffectsService implements BeanLifecycle {
 	 * scope-out can still briefly drop a worn Night Vision grant until the next {@link #WORN_EFFECTS_EVERY_N_TICKS}
 	 * re-apply — that's an unrelated seam (scope-out removes ALL Night Vision, including this one) and isn't fixed
 	 * here.
+	 *
+	 * <p>BZ-WE-10: {@code Player.removePotionEffect(type)} clears whatever effect of that type is currently active,
+	 * regardless of source, so a type that drops out is only actually removed when the player's live effect still
+	 * looks like the wearable's own grant ({@link #isStillTheWornGrant}) — otherwise it's a stronger/longer effect
+	 * an unrelated source applied on top, and is left alone.
 	 */
 	private void removeDroppedWornEffects(Player player, Map<EquipmentSlot, Wearable> worn) {
-		Set<PotionEffectType> currentTypes = new HashSet<>();
+		Map<PotionEffectType, Integer> currentGrants = new HashMap<>();
 		for (String token : wornEffectTokens(player, worn)) {
 			PotionEffect effect = parseWornEffectToken(token);
-			if (effect != null) currentTypes.add(effect.getType());
+			if (effect != null) currentGrants.merge(effect.getType(), effect.getAmplifier(), Integer::max);
 		}
 
-		Set<PotionEffectType> previousTypes = lastWornEffectTypes.getOrDefault(player.getUniqueId(), Set.of());
-		for (PotionEffectType type : previousTypes) {
-			if (!currentTypes.contains(type)) player.removePotionEffect(type);
+		Map<PotionEffectType, Integer> previousGrants = lastWornEffectGrants.getOrDefault(player.getUniqueId(),
+		                                                                                 Map.of());
+		for (Map.Entry<PotionEffectType, Integer> entry : previousGrants.entrySet()) {
+			PotionEffectType type = entry.getKey();
+			if (currentGrants.containsKey(type)) continue;
+
+			PotionEffect current = player.getPotionEffect(type);
+			if (current != null && isStillTheWornGrant(current.getAmplifier(), current.getDuration(), entry.getValue())) {
+				player.removePotionEffect(type);
+			}
 		}
-		lastWornEffectTypes.put(player.getUniqueId(), currentTypes);
+		lastWornEffectGrants.put(player.getUniqueId(), currentGrants);
 	}
 
 	private void fireEquipHook(Player player, String wearableKey, EffectHook hook) {
@@ -247,6 +263,25 @@ public class WearableEffectsService implements BeanLifecycle {
 	}
 
 	/**
+	 * BZ-WE-10: whether a player's currently active potion effect of a dropped-grant type is still, itself, the
+	 * wearable's own instance (so it's safe to strip) rather than an independently-acquired effect from another
+	 * source sitting on top. Extracted as pure arithmetic — same reason as {@link #isSkipSentinel} — because
+	 * exercising this through a live {@link PotionEffect} needs a real {@code PotionEffectType} registry this test
+	 * environment doesn't have (see {@code WearableEffectsServiceTest}'s class javadoc).
+	 *
+	 * <p>Matches on amplifier and on the effect's remaining duration still being inside the worn re-apply window
+	 * ({@link #WORN_EFFECT_DURATION_TICKS}): a genuinely infinite or just much longer effect from another source
+	 * already fails that duration bound, so no separate infinite-duration check is needed (and Spigot's 1.16.5
+	 * compile floor has no {@code PotionEffect.isInfinite()} to make one with).
+	 *
+	 * @return {@code true} only when {@code currentAmplifier == grantedAmplifier} and
+	 *         {@code currentDuration <= WORN_EFFECT_DURATION_TICKS}
+	 */
+	static boolean isStillTheWornGrant(int currentAmplifier, int currentDuration, int grantedAmplifier) {
+		return currentAmplifier == grantedAmplifier && currentDuration <= WORN_EFFECT_DURATION_TICKS;
+	}
+
+	/**
 	 * Parses one {@code Effects_While_Worn} token: the configured duration is always replaced by
 	 * {@link #WORN_EFFECT_DURATION_TICKS}; a raw amplifier of {@code -1} skips the token entirely (checked via
 	 * {@link #isSkipSentinel}, against the token's raw text, before {@link PotionEffectParser} 1-indexes/clamps it
@@ -264,7 +299,7 @@ public class WearableEffectsService implements BeanLifecycle {
 	@Override
 	public void onShutdown() {
 		lastWornKeys.clear();
-		lastWornEffectTypes.clear();
+		lastWornEffectGrants.clear();
 
 		if (timer != null) {
 			timer.stop();

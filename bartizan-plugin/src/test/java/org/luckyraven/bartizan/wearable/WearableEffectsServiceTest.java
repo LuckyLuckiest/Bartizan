@@ -241,6 +241,24 @@ class WearableEffectsServiceTest {
 	}
 
 	@Test
+	@DisplayName("BZ-WE-10: a dropped grant's currently active effect is 'still the worn grant' only when amplifier "
+			+ "matches and duration is still inside the re-apply window")
+	void isStillTheWornGrant_matchesAmplifierAndDurationWindow() {
+		// The wearable's own instance, freshly re-applied or partway through its 220-tick window: removable.
+		assertEquals(true, WearableEffectsService.isStillTheWornGrant(1, 220, 1));
+		assertEquals(true, WearableEffectsService.isStillTheWornGrant(1, 1, 1));
+
+		// A stronger effect of the same type from an unrelated source (BZ-WE-10's own scenario: hazmat_chest
+		// grants SLOWNESS 1, a splash potion or BiologicalAction hit lands SLOWNESS 2 on top) - must be left alone.
+		assertEquals(false, WearableEffectsService.isStillTheWornGrant(2, 220, 1));
+
+		// A much longer (or effectively infinite) effect of the SAME amplifier from another source outlives the
+		// worn re-apply window on its own, so the duration bound alone tells them apart without needing
+		// PotionEffect.isInfinite() (unavailable on the 1.16.5 compile floor).
+		assertEquals(false, WearableEffectsService.isStillTheWornGrant(1, 1200, 1));
+	}
+
+	@Test
 	@DisplayName("an amplifier of -1 skips that Effects_While_Worn token entirely")
 	void tick_negativeOneAmplifier_skipsToken() {
 		FakeWearableService    service        = new FakeWearableService();
