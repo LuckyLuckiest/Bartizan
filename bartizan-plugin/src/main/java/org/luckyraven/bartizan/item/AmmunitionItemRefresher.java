@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.item;
 
+import lombok.CustomLog;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -18,6 +19,7 @@ import java.util.Objects;
  * the same pipeline used by the lootchest drop path. Always builds with {@code player = null} so shop-delivered ammo
  * stacks byte-identically with lootchest-dropped ammo.
  */
+@CustomLog
 @RequiredArgsConstructor
 public class AmmunitionItemRefresher implements ItemRefresher {
 
@@ -46,6 +48,13 @@ public class AmmunitionItemRefresher implements ItemRefresher {
 			if (name != null && !name.isEmpty()) {
 				Ammunition tagged = ammunitionManager.getAmmunition(name);
 				if (tagged != null) return tagged;
+
+				// Tagged with an ammo id that no longer exists in ammunition.yml (renamed/removed) - fail safe
+				// rather than risking a Material+display-name heuristic match onto an unrelated ammo type. The
+				// heuristic below is only for a stack with no ammo tag at all.
+				log.warn("Ammunition item tagged '{}' has no matching ammunition.yml entry (renamed/removed?) — "
+				         + "leaving it unrefreshed", name);
+				return null;
 			}
 		}
 
