@@ -57,7 +57,8 @@ class BartizanExpansion extends PlaceholderExpansion {
 		if (player == null) return "";
 
 		ItemStack item   = player.getInventory().getItemInMainHand();
-		Weapon    weapon = weaponService.validateAndGetWeapon(player, item);
+		// PlaceholderAPI may call this off the main thread - read-only lookup only (BZ-HU-03)
+		Weapon    weapon = weaponService.peekWeapon(item);
 		if (weapon == null) return "";
 
 		return switch (params.toLowerCase(Locale.ROOT)) {

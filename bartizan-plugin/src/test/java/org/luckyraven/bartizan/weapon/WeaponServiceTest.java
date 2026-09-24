@@ -13,6 +13,8 @@ import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.keystone.item.ItemBuilder;
+import org.mockito.MockedConstruction;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -20,14 +22,17 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -139,6 +144,34 @@ class WeaponServiceTest {
 	}
 
 	/**
+	 * BZ-WM-06: a throwable's uuid is deterministic per type, so minting one for a second player used to overwrite
+	 * the instance the first player's items already resolve to.
+	 */
+	@Test
+	@DisplayName("minting a throwable type that is already registered keeps the registered instance (BZ-WM-06)")
+	void getWeapon_throwableAlreadyRegistered_isNotOverwritten() {
+		Weapon first  = service.getWeapon(null, null, "test_grenade", true);
+		Weapon second = service.getWeapon(null, null, "test_grenade", true);
+
+		assertNotNull(first);
+		assertSame(first, second);
+		assertSame(first, service.getWeapons().get(first.getUuid()));
+	}
+
+	/**
+	 * BZ-WM-05: {@code getWeapon(String)} and {@code getWeapon(Player, String)} looked like read-only lookups but
+	 * forwarded a null uuid into the minting overload, registering a fresh instance per call. They are gone; the
+	 * read-only callers use {@code getWeaponTemplate}/{@code createTransientWeapon}.
+	 */
+	@Test
+	@DisplayName("no read-only-looking getWeapon overload that mints and registers survives (BZ-WM-05)")
+	void getWeapon_readOnlyOverloads_removed() {
+		assertThrows(NoSuchMethodException.class, () -> WeaponService.class.getMethod("getWeapon", String.class));
+		assertThrows(NoSuchMethodException.class,
+		             () -> WeaponService.class.getMethod("getWeapon", Player.class, String.class));
+	}
+
+	/**
 	 * The main-then-off-hand probe shared by {@code BartizanApiImpl#getHeldWeapon} and
 	 * {@code WeaponQuitCleanupListener}'s death/quit handlers (weapons-roadmap.md gate {@code HH} review fix).
 	 */
@@ -196,6 +229,119 @@ class WeaponServiceTest {
 
 		verify(inventory).setItemInOffHand(offHandItem);
 		verify(inventory, never()).setItem(anyInt(), any(ItemStack.class));
+	}
+
+	/**
+	 * BZ-EV-04: a hand-edited or corrupted {@code uuid} tag threw {@link IllegalArgumentException} out of
+	 * {@code UUID.fromString}, and so out of every listener that routes through {@code validateAndGetWeapon} - on
+	 * every interaction, since the item stays in the inventory.
+	 */
+	@Test
+	@DisplayName("a malformed uuid tag reads as no uuid instead of throwing out of every listener (BZ-EV-04)")
+	void getWeaponUUID_malformedTag_returnsNull() {
+		ItemStack item = weaponItem();
+
+		try (MockedConstruction<ItemBuilder> ignored = mockConstruction(ItemBuilder.class, (builder, ctx) -> {
+			when(builder.getStringTagData("uuid")).thenReturn("not-a-uuid");
+			when(builder.getStringTagData("weapon")).thenReturn("test_gun");
+		})) {
+			assertNull(WeaponService.getWeaponUUID(item));
+			assertNull(service.validateAndGetWeapon(mock(Player.class), item));
+			assertTrue(service.getWeapons().isEmpty());
+		}
+	}
+
+	/**
+	 * BZ-HU-03: PlaceholderAPI resolves {@code %bartizan_*%} off the main thread (async chat formats, TAB and
+	 * scoreboard refreshers). Through {@code validateAndGetWeapon} that overwrote the live instance's magazine from
+	 * the item's not-yet-persisted NBT mid-shot (a refunded round) and raced {@code weapons.put}. {@code peekWeapon}
+	 * must read the live instance as-is.
+	 */
+	@Test
+	@DisplayName("peekWeapon returns the live instance without syncing it from item NBT (BZ-HU-03)")
+	void peekWeapon_registered_doesNotOverwriteLiveState() {
+		Weapon live = service.getWeapon(null, null, "test_gun", true);
+		assertNotNull(live);
+		live.setCurrentMagCapacity(29); // a shot consumed in memory, not yet written back to the item
+
+		ItemStack item = weaponItem();
+		try (MockedConstruction<ItemBuilder> ignored = weaponNbt(live.getUuid(), 30)) {
+			assertSame(live, service.peekWeapon(item));
+		}
+
+		assertEquals(29, live.getCurrentMagCapacity());
+		assertEquals(1, service.getWeapons().size());
+	}
+
+	@Test
+	@DisplayName("peekWeapon on a never-used item reads its NBT into a snapshot and registers nothing (BZ-HU-03)")
+	void peekWeapon_unregistered_snapshotsWithoutRegistering() {
+		ItemStack item = weaponItem();
+		UUID      uuid = UUID.randomUUID();
+
+		Weapon peeked;
+		try (MockedConstruction<ItemBuilder> ignored = weaponNbt(uuid, 12)) {
+			peeked = service.peekWeapon(item);
+		}
+
+		assertNotNull(peeked);
+		assertNotSame(gunTemplate, peeked);
+		assertEquals(uuid, peeked.getUuid());
+		assertEquals(12, peeked.getCurrentMagCapacity());
+		assertEquals(30, gunTemplate.getCurrentMagCapacity(), "the shared template must not be mutated");
+		assertTrue(service.getWeapons().isEmpty(), "a placeholder read must never grow the registry");
+		assertFalse(service.getWeapons() instanceof java.util.HashMap,
+		            "the registry is read off the main thread, so it must be a concurrent map");
+	}
+
+	/**
+	 * BZ-WM-04: the registry only ever shrank on a full {@code /bartizan reload}, so every weapon a player used stayed
+	 * pinned for the whole uptime after they left. Quitting now forgets the quitter's weapons; the shared per-type
+	 * throwable entry stays for whoever else holds that type.
+	 */
+	@Test
+	@DisplayName("forgetWeapons drops the quitter's weapons from the registry but keeps shared throwables (BZ-WM-04)")
+	void forgetWeapons_dropsInventoryWeapons_keepsThrowables() {
+		Weapon gun     = service.getWeapon(null, null, "test_gun", true);
+		Weapon other   = service.getWeapon(null, null, "test_gun", true);
+		Weapon grenade = service.getWeapon(null, null, "test_grenade", true);
+		assertNotNull(gun);
+		assertNotNull(other);
+		assertNotNull(grenade);
+
+		ItemStack       gunItem     = weaponItem();
+		ItemStack       grenadeItem = weaponItem();
+		PlayerInventory inventory   = mock(PlayerInventory.class);
+		when(inventory.getContents()).thenReturn(new ItemStack[]{gunItem, null, grenadeItem});
+		Player player = mock(Player.class);
+		when(player.getInventory()).thenReturn(inventory);
+
+		try (MockedConstruction<ItemBuilder> ignored = mockConstruction(ItemBuilder.class, (builder, ctx) -> {
+			UUID uuid = ctx.arguments().get(0) == gunItem ? gun.getUuid() : grenade.getUuid();
+			when(builder.getStringTagData("uuid")).thenReturn(uuid.toString());
+		})) {
+			service.forgetWeapons(player);
+		}
+
+		assertNull(service.getWeapons().get(gun.getUuid()));
+		assertSame(other, service.getWeapons().get(other.getUuid()), "another item's weapon must stay registered");
+		assertSame(grenade, service.getWeapons().get(grenade.getUuid()));
+	}
+
+	private static MockedConstruction<ItemBuilder> weaponNbt(UUID uuid, int ammoLeft) {
+		return mockConstruction(ItemBuilder.class, (builder, ctx) -> {
+			when(builder.getStringTagData("uuid")).thenReturn(uuid.toString());
+			when(builder.getStringTagData("weapon")).thenReturn("test_gun");
+			when(builder.getIntegerTagData("ammo-left")).thenReturn(ammoLeft);
+			when(builder.getStringTagData("selective-fire")).thenReturn("single");
+		});
+	}
+
+	private static ItemStack weaponItem() {
+		ItemStack item = mock(ItemStack.class);
+		when(item.getType()).thenReturn(Material.IRON_HOE);
+		when(item.getAmount()).thenReturn(1);
+		return item;
 	}
 
 }

@@ -215,7 +215,7 @@ public class WeaponInteract implements Listener {
 		boolean   validateScope = scopeData == null || scopeData.getLevel() > 0 || spyglassScope;
 
 		if (scopeClick && !player.isSneaking() && validateScope && !weapon.isReloading() &&
-		    !isEquipDelayActive(weapon.getUuid())) {
+		    !isEquipDelayActive(pressKey(weapon, player))) {
 			event.setUseInteractedBlock(Event.Result.DENY);
 			// Type: spyglass lets the vanilla use through instead of swallowing it - the client drives its own
 			// zoom/raised-arm/movement-slowdown/scope-overlay off that use, no packets or NMS involved (weapons-
@@ -418,7 +418,7 @@ public class WeaponInteract implements Listener {
 			// in onPlayerInteract both consult it via isEquipDelayActive.
 			HandlingData handling = newWeapon.getHandlingData();
 			if (handling != null && handling.getEquipDelay() > 0) {
-				equipDelayUntil.put(newWeapon.getUuid(),
+				equipDelayUntil.put(pressKey(newWeapon, player),
 				                   System.currentTimeMillis() + handling.getEquipDelay() * MILLIS_PER_TICK);
 			}
 		}
@@ -614,7 +614,7 @@ public class WeaponInteract implements Listener {
 	 * resends a held-RMB PlayerInteractEvent.
 	 */
 	private void handleThrowablePress(ThrowableWeapon weapon, Player player) {
-		UUID weaponUuid = weapon.getUuid();
+		UUID weaponUuid = pressKey(weapon, player);
 
 		if (isPressGated(weaponUuid)) return;
 
@@ -733,6 +733,20 @@ public class WeaponInteract implements Listener {
 	private boolean isLockActive(Map<UUID, Long> lockMap, UUID weaponUuid) {
 		Long lockedUntil = lockMap.get(weaponUuid);
 		return lockedUntil != null && System.currentTimeMillis() < lockedUntil;
+	}
+
+	/**
+	 * Key for the per-weapon press/equip gates. Every throwable of a type carries one deterministic uuid across all
+	 * players (WeaponService#mintUuid, so the items stack) - keyed by that alone, one player's throw would press-lock
+	 * every other player holding that type (BZ-WM-06), so a throwable's key also folds in the player.
+	 */
+	private static UUID pressKey(Weapon weapon, Player player) {
+		UUID weaponUuid = weapon.getUuid();
+		if (!(weapon instanceof ThrowableWeapon)) return weaponUuid;
+
+		UUID playerUuid = player.getUniqueId();
+		return new UUID(weaponUuid.getMostSignificantBits() ^ playerUuid.getMostSignificantBits(),
+		                weaponUuid.getLeastSignificantBits() ^ playerUuid.getLeastSignificantBits());
 	}
 
 	private boolean isLeftClickTrigger(Weapon weapon) {

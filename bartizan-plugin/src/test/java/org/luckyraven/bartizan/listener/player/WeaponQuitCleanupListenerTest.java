@@ -168,4 +168,22 @@ class WeaponQuitCleanupListenerTest {
 		           + "weapon, or a mid-AUTO-fire/charge task keeps running against an offline Player");
 	}
 
+	/**
+	 * BZ-WM-04: nothing pruned the weapon registry per player - a quit now forgets the quitter's weapons, in a MONITOR
+	 * handler so it runs after the HIGHEST quit cleanup has stopped the reload/unscoped on the live instance.
+	 */
+	@Test
+	@DisplayName("a quitting player's weapons are dropped from the registry (BZ-WM-04)")
+	void onQuit_forgetsQuittersWeapons() {
+		WeaponManager weaponManager = mock(WeaponManager.class);
+		WeaponQuitCleanupListener listener = new WeaponQuitCleanupListener(weaponManager, mock(EffectRunner.class),
+		                                                                   mock(HudService.class),
+		                                                                   mock(WearableEffectsService.class));
+		Player player = mock(Player.class);
+
+		listener.forgetWeaponsOnQuit(new PlayerQuitEvent(player, "left"));
+
+		verify(weaponManager).forgetWeapons(player);
+	}
+
 }

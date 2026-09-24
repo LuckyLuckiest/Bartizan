@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.weapon;
 
+import lombok.CustomLog;
 import lombok.Getter;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
@@ -22,11 +23,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
+@CustomLog
 public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog {
 
 	private final WeaponAddon weaponAddon;
@@ -36,14 +38,14 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	 * ({@code uuid}, {@code weapon}, {@code ammo-left}, {@code selective-fire}, durability) are the source of truth,
 	 * and {@link #validateAndGetWeapon} rebuilds a missing entry from them on first use after every boot or reload.
 	 */
-	// ponytail: unbounded per-session cache (one entry per distinct item used since boot/reload); evict on player
-	// quit if memory ever matters.
+	// ponytail: evicted per player on quit (forgetWeapons); items dropped or stored and never picked up again stay
+	// until the next reload.
 	@Getter
 	private final Map<UUID, Weapon> weapons;
 
 	public WeaponService(WeaponAddon weaponAddon) {
 		this.weaponAddon = weaponAddon;
-		this.weapons     = new HashMap<>();
+		this.weapons     = new ConcurrentHashMap<>(); // read off the main thread by peekWeapon/isWeapon
 	}
 
 	@Nullable
@@ -58,7 +60,13 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		UUID   uuid          = null;
 
 		if (!(value == null || value.equals("null") || value.isEmpty())) {
-			uuid = UUID.fromString(value);
+			try {
+				uuid = UUID.fromString(value);
+			} catch (IllegalArgumentException exception) {
+				// a hand-edited/corrupted tag must read as "not a weapon", not throw out of every listener
+				log.warn("Ignoring weapon item " + item.getType() + " with a malformed '" + tagProperName + "' tag: " +
+				         value);
+			}
 		}
 
 		return uuid;
@@ -185,7 +193,7 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	/**
 	 * The shared, read-only catalogue entry for {@code type} exactly as it was parsed from its YAML file.
 	 * <p/>
-	 * Unlike {@link #getWeapon(String)} this never mints a uuid and never registers anything, so it is the correct
+	 * Unlike {@link #getWeapon(Player, UUID, String, boolean)} this never mints a uuid and never registers anything, so it is the correct
 	 * lookup for every read-only caller (display names, death messages, sign validation). The returned instance is
 	 * shared — never hand it to a player and never mutate it; use {@link #createTransientWeapon(String)} for that.
 	 *
@@ -229,16 +237,6 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		if (template == null) return null;
 
 		return template.copyWithUUID(mintUuid(template, type, null));
-	}
-
-	@Nullable
-	public Weapon getWeapon(@Nullable String type) {
-		return getWeapon(null, null, type);
-	}
-
-	@Nullable
-	public Weapon getWeapon(Player player, @Nullable String type) {
-		return getWeapon(player, null, type);
 	}
 
 	@Nullable
@@ -286,7 +284,10 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		// Register the weapon first so isWeapon() can find it when setWeaponData
 		// calls getHeldWeaponItem — otherwise the map lookup returns null and the
 		// NBT ammo/durability data is never applied (weapon stays at max capacity).
-		weapons.put(finalUuid, finalWeapon);
+		// putIfAbsent: a throwable's deterministic per-type uuid may already be registered by another holder - keep
+		// that instance instead of overwriting it (BZ-WM-06); also settles two threads minting the same uuid at once.
+		Weapon registered = weapons.putIfAbsent(finalUuid, finalWeapon);
+		if (registered != null) finalWeapon = registered;
 
 		// check if the weapon is new or not
 		// if it was new, then no need to set the data of the uuid since it is not even created/built
@@ -329,6 +330,46 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		setWeaponData(weapon, new ItemBuilder(heldItem));
 
 		return weapon;
+	}
+
+	/**
+	 * Read-only lookup for callers that may run off the main thread (PlaceholderAPI resolves placeholders from async
+	 * chat, TAB and scoreboard threads): the live instance for {@code item}'s uuid exactly as the main thread left it,
+	 * or, when the item was never used since boot/reload, an unregistered snapshot of its template carrying the item's
+	 * NBT. Unlike {@link #validateAndGetWeapon} it never registers anything and never writes the live instance - a
+	 * write from another thread could land between a shot's in-memory ammo use and its NBT write-back and refund the
+	 * round (BZ-HU-03).
+	 */
+	@Nullable
+	public Weapon peekWeapon(@Nullable ItemStack item) {
+		UUID uuid = getWeaponUUID(item);
+		if (uuid == null) return null;
+
+		Weapon live = weapons.get(uuid);
+		if (live != null) return live;
+
+		Weapon template = getWeaponTemplate(getHeldWeaponName(item));
+		if (template == null) return null;
+
+		Weapon snapshot = template.copyWithUUID(uuid);
+		setWeaponData(snapshot, new ItemBuilder(item));
+		return snapshot;
+	}
+
+	/**
+	 * Drops the registry entry of every weapon item in {@code player}'s inventory, so a player who left stops pinning
+	 * their weapons for the rest of the uptime (BZ-WM-04); a rejoin rebuilds each from its NBT on first use. Called
+	 * on quit after the quit cleanup has stopped the held weapon's reload and unscoped it. A throwable's entry is
+	 * kept: its uuid is shared per type by every holder (see {@link #mintUuid}), so it is bounded anyway.
+	 */
+	public void forgetWeapons(Player player) {
+		for (ItemStack item : player.getInventory().getContents()) {
+			UUID uuid = getWeaponUUID(item);
+			if (uuid == null) continue;
+
+			weapons.computeIfPresent(uuid,
+			                         (key, weapon) -> weapon.getCategory() == WeaponType.THROWABLE ? weapon : null);
+		}
 	}
 
 	public void clear() {
