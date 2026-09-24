@@ -22,6 +22,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -233,6 +234,58 @@ class WeaponServiceTest {
 			assertNull(service.validateAndGetWeapon(mock(Player.class), item));
 			assertTrue(service.getWeapons().isEmpty());
 		}
+	}
+
+	/**
+	 * BZ-HU-03: PlaceholderAPI resolves {@code %bartizan_*%} off the main thread (async chat formats, TAB and
+	 * scoreboard refreshers). Through {@code validateAndGetWeapon} that overwrote the live instance's magazine from
+	 * the item's not-yet-persisted NBT mid-shot (a refunded round) and raced {@code weapons.put}. {@code peekWeapon}
+	 * must read the live instance as-is.
+	 */
+	@Test
+	@DisplayName("peekWeapon returns the live instance without syncing it from item NBT (BZ-HU-03)")
+	void peekWeapon_registered_doesNotOverwriteLiveState() {
+		Weapon live = service.getWeapon(null, null, "test_gun", true);
+		assertNotNull(live);
+		live.setCurrentMagCapacity(29); // a shot consumed in memory, not yet written back to the item
+
+		ItemStack item = weaponItem();
+		try (MockedConstruction<ItemBuilder> ignored = weaponNbt(live.getUuid(), 30)) {
+			assertSame(live, service.peekWeapon(item));
+		}
+
+		assertEquals(29, live.getCurrentMagCapacity());
+		assertEquals(1, service.getWeapons().size());
+	}
+
+	@Test
+	@DisplayName("peekWeapon on a never-used item reads its NBT into a snapshot and registers nothing (BZ-HU-03)")
+	void peekWeapon_unregistered_snapshotsWithoutRegistering() {
+		ItemStack item = weaponItem();
+		UUID      uuid = UUID.randomUUID();
+
+		Weapon peeked;
+		try (MockedConstruction<ItemBuilder> ignored = weaponNbt(uuid, 12)) {
+			peeked = service.peekWeapon(item);
+		}
+
+		assertNotNull(peeked);
+		assertNotSame(gunTemplate, peeked);
+		assertEquals(uuid, peeked.getUuid());
+		assertEquals(12, peeked.getCurrentMagCapacity());
+		assertEquals(30, gunTemplate.getCurrentMagCapacity(), "the shared template must not be mutated");
+		assertTrue(service.getWeapons().isEmpty(), "a placeholder read must never grow the registry");
+		assertFalse(service.getWeapons() instanceof java.util.HashMap,
+		            "the registry is read off the main thread, so it must be a concurrent map");
+	}
+
+	private static MockedConstruction<ItemBuilder> weaponNbt(UUID uuid, int ammoLeft) {
+		return mockConstruction(ItemBuilder.class, (builder, ctx) -> {
+			when(builder.getStringTagData("uuid")).thenReturn(uuid.toString());
+			when(builder.getStringTagData("weapon")).thenReturn("test_gun");
+			when(builder.getIntegerTagData("ammo-left")).thenReturn(ammoLeft);
+			when(builder.getStringTagData("selective-fire")).thenReturn("single");
+		});
 	}
 
 	private static ItemStack weaponItem() {

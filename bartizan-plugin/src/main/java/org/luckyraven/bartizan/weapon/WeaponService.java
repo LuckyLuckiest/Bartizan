@@ -23,10 +23,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @CustomLog
 public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog {
@@ -45,7 +45,7 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 
 	public WeaponService(WeaponAddon weaponAddon) {
 		this.weaponAddon = weaponAddon;
-		this.weapons     = new HashMap<>();
+		this.weapons     = new ConcurrentHashMap<>(); // read off the main thread by peekWeapon/isWeapon
 	}
 
 	@Nullable
@@ -327,6 +327,30 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		setWeaponData(weapon, new ItemBuilder(heldItem));
 
 		return weapon;
+	}
+
+	/**
+	 * Read-only lookup for callers that may run off the main thread (PlaceholderAPI resolves placeholders from async
+	 * chat, TAB and scoreboard threads): the live instance for {@code item}'s uuid exactly as the main thread left it,
+	 * or, when the item was never used since boot/reload, an unregistered snapshot of its template carrying the item's
+	 * NBT. Unlike {@link #validateAndGetWeapon} it never registers anything and never writes the live instance - a
+	 * write from another thread could land between a shot's in-memory ammo use and its NBT write-back and refund the
+	 * round (BZ-HU-03).
+	 */
+	@Nullable
+	public Weapon peekWeapon(@Nullable ItemStack item) {
+		UUID uuid = getWeaponUUID(item);
+		if (uuid == null) return null;
+
+		Weapon live = weapons.get(uuid);
+		if (live != null) return live;
+
+		Weapon template = getWeaponTemplate(getHeldWeaponName(item));
+		if (template == null) return null;
+
+		Weapon snapshot = template.copyWithUUID(uuid);
+		setWeaponData(snapshot, new ItemBuilder(item));
+		return snapshot;
 	}
 
 	public void clear() {
