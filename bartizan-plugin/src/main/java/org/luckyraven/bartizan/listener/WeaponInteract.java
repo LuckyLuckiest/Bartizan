@@ -550,6 +550,9 @@ public class WeaponInteract implements Listener {
 			return;
 		}
 
+		// Information.Equip_Delay gates a charge start like every other first press (BZ-EV-17)
+		if (isEquipDelayActive(weaponUuid)) return;
+
 		if (!start.getAsBoolean()) return;
 
 		WeaponData freshWeaponData = new WeaponData();
@@ -633,8 +636,8 @@ public class WeaponInteract implements Listener {
 
 		// The first spray fires inside the event that pulled the trigger; the loop below (a RepeatingTimer skips
 		// its first scheduled run) continues the cadence from the next tick-rate boundary. Empty or broken: nothing
-		// to loop over.
-		if (!action.fireOnce(player)) return;
+		// to loop over. Information.Equip_Delay gates the first spray like every other first press (BZ-EV-17).
+		if (isEquipDelayActive(weaponUuid) || !action.fireOnce(player)) return;
 
 		WeaponData freshWeaponData = new WeaponData();
 		freshWeaponData.shooting = true;

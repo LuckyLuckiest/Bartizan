@@ -7,6 +7,7 @@ import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -27,6 +28,11 @@ import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.api.weapon.IncendiaryWeapon;
+import org.luckyraven.bartizan.api.weapon.SelectiveFire;
+import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.weapon.action.ChargeController;
+import org.luckyraven.bartizan.weapon.action.IncendiaryAction;
 import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
 import org.luckyraven.bartizan.weapon.action.MeleeAction;
 import org.luckyraven.bartizan.api.weapon.dto.DurabilityData;
@@ -42,6 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -167,6 +174,72 @@ class WeaponInteractInputTest {
 
 			assertEquals(1, swings.constructed().size());
 			verify(swings.constructed().get(0)).activate(player);
+		}
+	}
+
+	// BZ-EV-17
+
+	/** Selects {@code weapon} in hotbar slot 1, which seeds its Equip_Delay when it has one. */
+	private void equipByHotbar(Weapon weapon, int equipDelayTicks) {
+		HandlingData handling = new HandlingData();
+		handling.setEquipDelay(equipDelayTicks);
+		weapon.setHandlingData(handling);
+		weapon.setCurrentMagCapacity(weapon.getAmmunitionData().getMaxMagCapacity());
+		when(weaponService.validateAndGetWeapon(player, item)).thenReturn(weapon);
+		when(inventory.getItem(1)).thenReturn(item);
+
+		listener.onWeaponHeld(new PlayerItemHeldEvent(player, 0, 1));
+	}
+
+	@Test
+	@DisplayName("a biological charge does not start inside its Equip_Delay")
+	void biologicalCharge_blockedByEquipDelay() {
+		equipByHotbar(WeaponFixtures.biologicalWeapon(10), 100);
+
+		try (MockedConstruction<ChargeController> charges = mockConstruction(ChargeController.class)) {
+			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
+
+			verify(charges.constructed().get(0), never()).start(player);
+		}
+	}
+
+	@Test
+	@DisplayName("a biological charge starts once there is no Equip_Delay")
+	void biologicalCharge_startsWithoutEquipDelay() {
+		equipByHotbar(WeaponFixtures.biologicalWeapon(10), 0);
+
+		try (MockedConstruction<ChargeController> charges = mockConstruction(ChargeController.class)) {
+			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
+
+			verify(charges.constructed().get(0)).start(player);
+		}
+	}
+
+	@Test
+	@DisplayName("an AUTO flamethrower does not spray inside its Equip_Delay")
+	void incendiaryAuto_blockedByEquipDelay() {
+		IncendiaryWeapon flamer = WeaponFixtures.incendiaryWeapon(10, 1);
+		flamer.setCurrentSelectiveFire(SelectiveFire.AUTO);
+		equipByHotbar(flamer, 100);
+
+		try (MockedConstruction<IncendiaryAction> sprays = mockConstruction(IncendiaryAction.class)) {
+			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
+
+			verify(sprays.constructed().get(0), never()).fireOnce(player);
+		}
+	}
+
+	@Test
+	@DisplayName("an AUTO flamethrower sprays once there is no Equip_Delay")
+	void incendiaryAuto_spraysWithoutEquipDelay() {
+		IncendiaryWeapon flamer = WeaponFixtures.incendiaryWeapon(10, 1);
+		flamer.setCurrentSelectiveFire(SelectiveFire.AUTO);
+		equipByHotbar(flamer, 0);
+
+		try (MockedConstruction<IncendiaryAction> sprays = mockConstruction(IncendiaryAction.class)) {
+			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
+
+			verify(sprays.constructed().get(0)).fireOnce(player);
 		}
 	}
 
