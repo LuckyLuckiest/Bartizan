@@ -103,10 +103,20 @@ public class BlockDamageManager {
 		if (currentHits >= hitsRequired) {
 			switch (modifier.mode()) {
 				case DESTROY -> {
-					return destroyBlock(block, location, player);
+					if (destroyBlock(block, location, player)) {
+						return true;
+					}
+					// A listener cancelled the BlockBreakEvent: fall back to regeneration instead of leaving a
+					// permanent max-stage crack overlay and a leaked damagedBlocks entry (BZ-RT-01 follow-up).
+					scheduleRegeneration(location, state);
+					return false;
 				}
 				case RESTORE -> {
-					return breakAndScheduleRestore(block, location, state, hitsRequired, player);
+					if (breakAndScheduleRestore(block, location, state, hitsRequired, player)) {
+						return true;
+					}
+					scheduleRegeneration(location, state);
+					return false;
 				}
 				case CRACK_ONLY -> {
 					// Block reached max damage but should not break.
@@ -129,15 +139,18 @@ public class BlockDamageManager {
 	 */
 	public void clearAll() {
 		for (Map.Entry<Location, BlockDamageState> entry : damagedBlocks.entrySet()) {
-			BlockDamageState state = entry.getValue();
+			BlockDamageState state    = entry.getValue();
+			Location         location = entry.getKey();
 			state.cancelRegeneration();
-			if (state.isBroken()) {
-				Block block = entry.getKey().getBlock();
+			// BZ-RT-06: location.getWorld() throws once the world's weak reference is cleared (Spigot 1.16.5+),
+			// it does not return null - isWorldLoaded() is the only safe check before touching the block.
+			if (state.isBroken() && location.isWorldLoaded()) {
+				Block block = location.getBlock();
 				if (block.getType() == Material.AIR) {
 					block.setBlockData(state.getOriginalData());
 				}
 			}
-			clearBlockDamage(entry.getKey(), state.getEntityId());
+			clearBlockDamage(location, state.getEntityId());
 		}
 		damagedBlocks.clear();
 	}
@@ -145,13 +158,15 @@ public class BlockDamageManager {
 	/**
 	 * Sends block damage animation to all players within render distance. A no-op if {@code location}'s world has
 	 * been unloaded (BZ-RT-06) — a delayed/repeating regeneration or restore task can still fire after that, and
-	 * must not throw inside the Bukkit scheduler callback.
+	 * must not throw inside the Bukkit scheduler callback. {@code location.getWorld()} throws once the world's weak
+	 * reference is cleared (Spigot 1.16.5+ {@code Location.getWorld()}); it never returns {@code null}, so
+	 * {@link Location#isWorldLoaded()} is the only safe check.
 	 */
 	private void sendBlockDamage(Location location, int stage, int entityId) {
-		World world = location.getWorld();
-		if (world == null) {
+		if (!location.isWorldLoaded()) {
 			return;
 		}
+		World world = location.getWorld();
 
 		float progress = Math.max(0.0f, Math.min(stage / (float) MAX_DAMAGE_STAGE, 1.0f));
 		for (Player player : world.getPlayers()) {
@@ -165,10 +180,10 @@ public class BlockDamageManager {
 	 * (BZ-RT-06) — see {@link #sendBlockDamage(Location, int, int)}.
 	 */
 	private void clearBlockDamage(Location location, int entityId) {
-		World world = location.getWorld();
-		if (world == null) {
+		if (!location.isWorldLoaded()) {
 			return;
 		}
+		World world = location.getWorld();
 		for (Player player : world.getPlayers()) {
 			if (player.getLocation().distanceSquared(location) > 64 * 64) continue;
 			sendBlockDamage(player, location, 0.0f, entityId);
@@ -222,6 +237,14 @@ public class BlockDamageManager {
 	private void startSmoothRegeneration(Location location, BlockDamageState state) {
 		// Create a repeating task that reduces damage stage one step at a time
 		BukkitTask regenTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+			// BZ-RT-06: the world unloaded mid-regeneration — abandon cleanly instead of ticking a repeating task
+			// against a block that can no longer be looked up.
+			if (!location.isWorldLoaded()) {
+				state.cancelRegeneration();
+				damagedBlocks.remove(location);
+				return;
+			}
+
 			int currentStage = state.getCurrentStage();
 
 			if (currentStage <= 0) {
@@ -297,6 +320,12 @@ public class BlockDamageManager {
 				damagedBlocks.remove(location);
 				return;
 			}
+			// BZ-RT-06: the world unloaded while this block sat mid-restore — abandon cleanly instead of writing
+			// block data back into (and starting a regeneration timer against) a location that's gone.
+			if (!location.isWorldLoaded()) {
+				damagedBlocks.remove(location);
+				return;
+			}
 
 			block.setBlockData(state.getOriginalData());
 			state.setBroken(false);
@@ -311,10 +340,12 @@ public class BlockDamageManager {
 	}
 
 	/**
-	 * Fires a cancellable vanilla {@link BlockBreakEvent} for a weapon-caused break, so a protection plugin can veto
-	 * it the same way it vetoes a hand-mined block. {@code player} is {@code null} when no player is attributable to
-	 * the hit (an NPC shooter, an explosion) — there is nothing to fire the event as, so the break proceeds
-	 * unchecked, matching the pre-existing behaviour for those paths.
+	 * Fires a cancellable vanilla {@link BlockBreakEvent} (a {@link WeaponBlockBreakEvent}, BZ-RT-01) for a
+	 * weapon-caused break, so a protection plugin can veto it the same way it vetoes a hand-mined block.
+	 * {@code player} is {@code null} when no player is attributable to the hit (an NPC shooter, an explosion) —
+	 * there is nothing to fire the event as, so the break proceeds unchecked, matching the pre-existing behaviour
+	 * for those paths. No items are dropped by this synthetic break (Bartizan handles the removal itself), so
+	 * {@link BlockBreakEvent#setDropItems} is set {@code false}.
 	 *
 	 * @return false if a listener cancelled the break
 	 */
@@ -323,7 +354,8 @@ public class BlockDamageManager {
 			return true;
 		}
 
-		BlockBreakEvent event = new BlockBreakEvent(block, player);
+		BlockBreakEvent event = new WeaponBlockBreakEvent(block, player);
+		event.setDropItems(false);
 		Bukkit.getPluginManager().callEvent(event);
 		return !event.isCancelled();
 	}

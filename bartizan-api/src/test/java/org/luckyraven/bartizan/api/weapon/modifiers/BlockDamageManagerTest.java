@@ -71,6 +71,7 @@ class BlockDamageManagerTest {
 		when(block.getBlockData()).thenReturn(blockData);
 		when(blockData.clone()).thenReturn(blockData);
 		when(location.getWorld()).thenReturn(world);
+		when(location.isWorldLoaded()).thenReturn(true);
 		when(block.getWorld()).thenReturn(world);
 		when(location.clone()).thenReturn(location);
 		when(location.add(org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble(),
@@ -81,7 +82,7 @@ class BlockDamageManagerTest {
 	}
 
 	@Test
-	@DisplayName("DESTROY: a cancelled BlockBreakEvent leaves the block unbroken")
+	@DisplayName("DESTROY: a cancelled BlockBreakEvent leaves the block unbroken and falls back to regeneration")
 	void destroyMode_cancelledEvent_blockNotBroken() {
 		BlockDamageManager manager  = manager();
 		Block              block    = block(Material.GLASS);
@@ -96,16 +97,23 @@ class BlockDamageManagerTest {
 				event.setCancelled(true);
 				return null;
 			}).when(pluginManager).callEvent(any());
+			BukkitScheduler scheduler = mock(BukkitScheduler.class);
+			bukkit.when(org.bukkit.Bukkit::getScheduler).thenReturn(scheduler);
+			when(scheduler.runTaskLater(any(), any(Runnable.class), anyLong())).thenReturn(mock(BukkitTask.class));
 
 			boolean broken = manager.applyDamage(block, modifier, shooter);
 
 			assertFalse(broken, "a cancelled BlockBreakEvent must not report the block as broken");
 			verify(block, never()).setType(any());
+			// BZ-RT-01 follow-up: the cancelled path must not leave a permanent max-stage crack / leaked
+			// damagedBlocks entry - it falls back to scheduleRegeneration just like the uncancelled below-threshold
+			// path does.
+			verify(scheduler).runTaskLater(any(), any(Runnable.class), anyLong());
 		}
 	}
 
 	@Test
-	@DisplayName("RESTORE: a cancelled BlockBreakEvent leaves the block unbroken and never touches the scheduler")
+	@DisplayName("RESTORE: a cancelled BlockBreakEvent leaves the block unbroken and falls back to regeneration")
 	void restoreMode_cancelledEvent_blockNotBroken() {
 		BlockDamageManager manager  = manager();
 		Block              block    = block(Material.ICE);
@@ -120,13 +128,17 @@ class BlockDamageManagerTest {
 				event.setCancelled(true);
 				return null;
 			}).when(pluginManager).callEvent(any());
+			BukkitScheduler scheduler = mock(BukkitScheduler.class);
+			bukkit.when(org.bukkit.Bukkit::getScheduler).thenReturn(scheduler);
+			when(scheduler.runTaskLater(any(), any(Runnable.class), anyLong())).thenReturn(mock(BukkitTask.class));
 
 			boolean broken = manager.applyDamage(block, modifier, shooter);
 
 			assertFalse(broken, "a cancelled BlockBreakEvent must not report the block as broken");
 			verify(block, never()).setType(any());
-			// breakAndScheduleRestore never reaches Bukkit.getScheduler() once the event is cancelled.
-			bukkit.verify(org.bukkit.Bukkit::getScheduler, never());
+			// breakAndScheduleRestore's own restore-task scheduling never runs once the event is cancelled - the
+			// only scheduler call must be applyDamage's regeneration fallback (BZ-RT-01 follow-up).
+			verify(scheduler).runTaskLater(any(), any(Runnable.class), anyLong());
 		}
 	}
 
@@ -151,6 +163,11 @@ class BlockDamageManagerTest {
 			verify(pluginManager).callEvent(captor.capture());
 			assertTrue(captor.getValue().getPlayer() == shooter);
 			assertTrue(captor.getValue().getBlock() == block);
+			// BZ-RT-01: must be the WeaponBlockBreakEvent marker subclass, not a plain BlockBreakEvent, so
+			// Bartizan's own WeaponInteract.onBlockBreak can recognize and skip its own synthetic event instead of
+			// cancelling every weapon-caused break against itself.
+			assertTrue(captor.getValue() instanceof WeaponBlockBreakEvent);
+			assertFalse(captor.getValue().isDropItems(), "the synthetic break doesn't drop items itself");
 		}
 	}
 
@@ -179,7 +196,11 @@ class BlockDamageManagerTest {
 		when(block.getType()).thenReturn(Material.GLASS);
 		when(block.getBlockData()).thenReturn(blockData);
 		when(blockData.clone()).thenReturn(blockData);
-		when(location.getWorld()).thenReturn(null); // world unloaded between the hit and this callback
+		// A real Location never returns null from getWorld() - on Spigot 1.16.5+ it throws
+		// IllegalArgumentException("World unloaded") once the world's weak reference is cleared. isWorldLoaded()
+		// is the only safe pre-check, so the mock pins that the guarded code never calls getWorld() at all here.
+		when(location.isWorldLoaded()).thenReturn(false);
+		when(location.getWorld()).thenThrow(new IllegalArgumentException("World unloaded"));
 
 		// hitsRequired 5, one hit: stays below the threshold, so the only paths exercised are
 		// sendBlockDamage (BZ-RT-06) and scheduleRegeneration — not destroyBlock/breakAndScheduleRestore.
@@ -191,6 +212,33 @@ class BlockDamageManagerTest {
 			when(scheduler.runTaskLater(any(), any(Runnable.class), anyLong())).thenReturn(mock(BukkitTask.class));
 
 			assertDoesNotThrow(() -> manager.applyDamage(block, modifier, null));
+		}
+	}
+
+	@Test
+	@DisplayName("BZ-RT-06: clearAll skips the block lookup for an entry whose world is unloaded")
+	void clearAll_unloadedWorld_skipsBlockLookup() {
+		BlockDamageManager manager  = manager();
+		Block              block    = block(Material.ICE);
+		Player             shooter  = mock(Player.class);
+		BlockBreakModifier modifier = new BlockBreakModifier(Set.of(Material.ICE), 1, BreakMode.RESTORE);
+		Location           location = block.getLocation();
+
+		try (MockedStatic<org.bukkit.Bukkit> bukkit = mockStatic(org.bukkit.Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(org.bukkit.Bukkit::getPluginManager).thenReturn(pluginManager);
+			BukkitScheduler scheduler = mock(BukkitScheduler.class);
+			bukkit.when(org.bukkit.Bukkit::getScheduler).thenReturn(scheduler);
+			when(scheduler.runTaskLater(any(), any(Runnable.class), anyLong())).thenReturn(mock(BukkitTask.class));
+
+			// RESTORE, uncancelled: block is now AIR and mid-restore (damagedBlocks entry has broken = true).
+			assertTrue(manager.applyDamage(block, modifier, shooter));
+
+			// World unloads before the pending restore task (and before this clearAll) ever runs.
+			when(location.isWorldLoaded()).thenReturn(false);
+
+			assertDoesNotThrow(manager::clearAll);
+			verify(location, never()).getBlock();
 		}
 	}
 

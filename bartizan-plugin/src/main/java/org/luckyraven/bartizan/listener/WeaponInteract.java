@@ -38,6 +38,7 @@ import org.luckyraven.bartizan.scope.SpyglassScopeTask;
 import org.luckyraven.bartizan.weapon.action.BeamAction;
 import org.luckyraven.bartizan.api.weapon.BeamWeapon;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
+import org.luckyraven.bartizan.api.weapon.modifiers.WeaponBlockBreakEvent;
 import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.action.BiologicalAction;
 import org.luckyraven.bartizan.weapon.action.ChargeController;
@@ -258,6 +259,12 @@ public class WeaponInteract implements Listener {
 
 	@EventHandler
 	public void onBlockBreak(BlockBreakEvent event) {
+		// BZ-RT-01: a WeaponBlockBreakEvent is Bartizan's own synthetic event for a weapon-caused break, fired so a
+		// *third-party* protection plugin can veto it - the shooter is always holding the weapon that fired it, so
+		// this anti-mining listener must not veto it against itself (Information.Cancel.Break_Blocks defaults to
+		// true and no shipped weapon turns it off, which would otherwise cancel every weapon-caused block break).
+		if (event instanceof WeaponBlockBreakEvent) return;
+
 		if (!cancelsBreakBlocks(event.getPlayer())) return;
 
 		event.setCancelled(true);
