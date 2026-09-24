@@ -8,6 +8,7 @@ import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.EffectSpec;
 import org.luckyraven.bartizan.api.weapon.dto.EffectsData;
+import org.luckyraven.bartizan.effect.impl.BossBarHookEffect;
 import org.luckyraven.bartizan.file.BartizanSettings;
 
 import java.lang.reflect.Field;
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -117,6 +119,19 @@ class EffectRunnerTest {
 
 		assertDoesNotThrow(() -> runner.run(weapon, EffectHook.ON_SHOOT, ctx));
 		assertTrue(invocations.isEmpty());
+	}
+
+	@Test
+	@DisplayName("onShutdown forwards to every lifecycle-managed effect (BZ-EF-02)")
+	void onShutdown_forwardsToLifecycleEffects() {
+		BossBarHookEffect bossBar = mock(BossBarHookEffect.class);
+		Map<String, Effect> registry = new HashMap<>();
+		registry.put("boss_bar", bossBar);
+		registry.put("sound", countingEffect());
+
+		new EffectRunner(registry).onShutdown();
+
+		verify(bossBar).onShutdown();
 	}
 
 	private EffectRunner newRunner(Effect soundEffect) {
