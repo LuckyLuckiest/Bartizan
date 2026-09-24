@@ -179,10 +179,18 @@ public class StatsService implements BeanLifecycle {
 		markDirty(victim);
 	}
 
+	/**
+	 * BZ-HU-01: {@link #save} is only trusted to drop the in-memory copy when it actually succeeded — a disk
+	 * hiccup (stats directory deleted by an external backup job, permission issue, full disk, file locked by
+	 * AV/backup software) at the exact moment a player disconnects must not discard that session's stats. On
+	 * failure, {@code loaded}/{@code dirty} are left alone: {@link #stats(Player)} keeps serving the in-memory
+	 * copy (newer than whatever is on disk) if they rejoin, and the autosave timer / {@link #onShutdown} retry the
+	 * write.
+	 */
 	public void onQuit(UUID playerId) {
-		save(playerId);
-		loaded.remove(playerId);
-		dirty.remove(playerId);
+		if (save(playerId)) {
+			loaded.remove(playerId);
+		}
 	}
 
 	@Override
@@ -229,23 +237,42 @@ public class StatsService implements BeanLifecycle {
 		dirty.add(player.getUniqueId());
 	}
 
+	/**
+	 * BZ-HU-01: a successful save also evicts an offline player's cache entry — {@code save(UUID)} no longer does
+	 * this itself (it must not evict a still-online player, who has no other path back into {@link #loaded}), so
+	 * without this an id that keeps failing to fully leave (retried here every cycle) would otherwise stay in
+	 * {@link #loaded} forever once it starts succeeding again.
+	 */
 	private void autosave() {
 		for (UUID id : Set.copyOf(dirty)) {
-			save(id);
+			if (save(id) && Bukkit.getPlayer(id) == null) {
+				loaded.remove(id);
+			}
 		}
 	}
 
 	// ponytail: main-thread synchronous write, one small JSON file per dirty player on quit/autosave/shutdown -
 	// fine at this scale; move to an async write if stats file I/O ever shows up in /timings.
-	private void save(UUID playerId) {
-		if (!dirty.remove(playerId)) return;
+	/**
+	 * BZ-HU-01: returns whether {@code playerId} ends this call with nothing left to save — {@code true} when
+	 * there was nothing dirty, or a dirty entry was written successfully; {@code false} only when a write was
+	 * attempted and failed, in which case the dirty flag is deliberately left set for a later retry. Callers use
+	 * this to decide whether it is safe to drop the in-memory copy.
+	 */
+	private boolean save(UUID playerId) {
+		if (!dirty.contains(playerId)) return true;
 
 		PlayerStats stats = loaded.get(playerId);
-		if (stats == null) return;
+		if (stats == null) {
+			// Dirty but nothing loaded to persist (shouldn't happen in practice - markDirty always follows a
+			// stats() call) - nothing to retry either, so clear the stale flag and treat as success.
+			dirty.remove(playerId);
+			return true;
+		}
 
 		if (!statsDir.exists() && !statsDir.mkdirs()) {
 			log.warn("could not create stats directory " + statsDir);
-			return;
+			return false;
 		}
 
 		File file = new File(statsDir, playerId + ".json");
@@ -253,7 +280,11 @@ public class StatsService implements BeanLifecycle {
 			gson.toJson(stats, writer);
 		} catch (IOException exception) {
 			log.warn("failed to save stats for " + playerId + ": " + exception.getMessage());
+			return false;
 		}
+
+		dirty.remove(playerId);
+		return true;
 	}
 
 	@Nullable

@@ -21,6 +21,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -364,6 +365,56 @@ class StatsServiceTest {
 		assertNull(result);
 		assertFalse(corrupt.exists(), "the corrupt file is renamed away, not left in place");
 		assertTrue(new File(statsDir, playerId + ".json.broken").isFile());
+	}
+
+	@Test
+	@DisplayName("BZ-HU-01: a failed save at quit time (the 'stats' path is blocked by a colliding file) keeps the "
+			+ "in-memory stats reachable and leaves the dirty flag set, instead of silently discarding the session")
+	void onQuit_saveFails_keepsInMemoryStatsAndDirtyFlag(@TempDir File dataFolder) throws Exception {
+		// Block statsDir entirely: a plain file sits where the "stats" directory needs to be created.
+		Files.writeString(new File(dataFolder, "stats").toPath(), "not a directory", StandardCharsets.UTF_8);
+
+		StatsService service = service(dataFolder);
+		Player       shooter = player();
+
+		service.recordShot(shooter, "rifle");
+		service.onQuit(shooter.getUniqueId());
+
+		// The in-memory copy survives the failed save — lookup() prefers the (still accurate) cached entry over
+		// disk, and it is only removed from the cache once a save actually succeeds.
+		PlayerStats stats = service.lookup(shooter.getUniqueId());
+		assertEquals(1, stats.weapon("rifle").shots);
+
+		Field dirtyField = StatsService.class.getDeclaredField("dirty");
+		dirtyField.setAccessible(true);
+		Set<?> dirty = (Set<?>) dirtyField.get(service);
+		assertTrue(dirty.contains(shooter.getUniqueId()), "still dirty so a later autosave/shutdown retries the write");
+	}
+
+	@Test
+	@DisplayName("BZ-HU-01: autosave (driven here via onShutdown) evicts a now-offline player's cache entry after "
+			+ "a successful save, but keeps an online player's entry cached")
+	void onShutdown_autosave_evictsOfflinePlayerKeepsOnlinePlayer(@TempDir File dataFolder) throws Exception {
+		StatsService service        = service(dataFolder);
+		Player       offlineShooter = player();
+		Player       onlineShooter  = player();
+
+		service.recordShot(offlineShooter, "rifle");
+		service.recordShot(onlineShooter, "pistol");
+
+		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
+			bukkit.when(() -> Bukkit.getPlayer(offlineShooter.getUniqueId())).thenReturn(null);
+			bukkit.when(() -> Bukkit.getPlayer(onlineShooter.getUniqueId())).thenReturn(onlineShooter);
+
+			service.onShutdown();
+		}
+
+		Field loadedField = StatsService.class.getDeclaredField("loaded");
+		loadedField.setAccessible(true);
+		Map<?, ?> loaded = (Map<?, ?>) loadedField.get(service);
+
+		assertFalse(loaded.containsKey(offlineShooter.getUniqueId()), "offline after a successful save - evicted");
+		assertTrue(loaded.containsKey(onlineShooter.getUniqueId()), "online - stays cached for gameplay reads");
 	}
 
 	private MockedStatic<Bukkit> mockBukkit() {
