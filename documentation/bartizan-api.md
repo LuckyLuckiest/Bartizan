@@ -241,6 +241,24 @@ explosions). The hit-zone classification itself (a `back` flag plus which zone �
 (neither referenced by an api type, so neither moved) it could not stay plugin-only. `HitZone`'s own `zone()`
 accessor now returns `BodyZone` rather than a plugin-local enum.
 
+### Block-break veto (`weapon.modifiers.WeaponBlockBreakEvent`, `BlockDamageManager.applyDamage`, `BZ-RT-01`)
+
+`BlockDamageManager` gained an additive 3-arg overload, `applyDamage(Block, BlockBreakModifier, @Nullable Player)`
+— the existing 2-arg overload is unchanged and still fires no event (equivalent to passing `player = null`). When
+`player` is non-null and the hit reaches its `DESTROY`/`RESTORE` threshold, it now fires a cancellable vanilla
+`org.bukkit.event.block.BlockBreakEvent`, as the new `WeaponBlockBreakEvent` subclass, *before* breaking the block
+— the same veto chance a protection plugin (WorldGuard, GriefPrevention, …) already gets for a hand-mined block.
+Cancelling it leaves the block's crack state alone and schedules its regeneration instead of leaving a permanent
+crack overlay. `player` is `null` (no event fired, matching the pre-existing behaviour) when no player is
+attributable to the break — an NPC shooter, or an explosion with no attributable source.
+
+`WeaponBlockBreakEvent` is a marker subclass of `BlockBreakEvent` so a listener can tell a synthetic weapon break
+apart from a real player punch with `event instanceof WeaponBlockBreakEvent` — Bartizan's own
+`WeaponInteract.onBlockBreak` (which cancels every `BlockBreakEvent` from a player holding a
+`Cancel.Break_Blocks: true` weapon) checks this to skip its own synthetic event rather than vetoing it against
+itself. The synthetic event always has `dropItems = false` — Bartizan removes the block itself
+(`block.setType(Material.AIR)`), no items are ever dropped through this path.
+
 ### Explosion parity (`weapon.dto.ExplosionData`, `weapon.modifiers.ExplosionMath`, gate `HI-a`)
 
 Unifies the two explosion paths guns (rockets) and throwables (grenades) used to run independently into one
@@ -364,6 +382,10 @@ weapons-roadmap.md §3.2's description of an event that "carries level and the o
 streams hits one at a time through `RaytraceRequest`'s impact handler rather than pre-computing a target list
 before firing, so there is no target list to carry — only `level`, `origin` and `direction` at fire time.
 
+`WeaponChangeSelectiveFireEvent.getHandlerList()` is now `public` (0.5.1, `BZ-EV-08`) — it was `private`, unlike
+every sibling event class in this package, which meant Bukkit's reflection-based listener registration could never
+actually find it; a consumer can now genuinely register a listener for this event for the first time.
+
 `WeaponReloadCompleteEvent#isInterrupted()` (new at gate `HA`) is `true` when the completion was raised by a
 swap-cancelled reload (`Reload#endReloading(Player, boolean)`) rather than a normal reload finishing — Bartizan's
 own `WeaponReloadListener` skips `ON_RELOAD_END` in that case, since `ON_RELOAD_CANCEL` is the feedback hook for it.
@@ -454,6 +476,23 @@ This resolution is **soft-dependency ordered**: if a server removes Bartizan, an
 item definition elsewhere on that server silently resolves to nothing (not an error — a supported configuration).
 Bartizan logs one INFO line naming the vocabulary namespace it published at boot so an administrator can confirm
 it is present.
+
+## Other 0.5.1 API deltas
+
+A handful of smaller signature/contract changes from the docket fix wave, otherwise additive-only or
+internal-only; see `documentation/migration.md` §14 for the consumer-facing summary and
+`documentation/docket-fix-wave-0.5.1.md` for the full fix-by-fix detail:
+
+- `weapon.reload.ReloadType.createInstance(Weapon, Ammunition)` gained a required third `int amount` parameter,
+  and `getAmount()`/`setAmount()` were removed from the enum — the per-weapon reload amount moved to the new
+  `weapon.dto.ReloadData#getAmount()` field (default `1`) so it stops being shared mutable state across every
+  weapon of the same `ReloadType` (`BZ-WM-03`).
+- `wearable.Wearable.NBT_TRAIT_PREFIX`/`NBT_BASE_REDUCE` constants were removed, and `buildItem()` no longer
+  stamps those tags — dead, write-only data no consumer ever read back (`BZ-WE-05`).
+- `weapon.recoil.RecoilManager`'s public `clone()` override (always threw; no `Cloneable`) was deleted outright,
+  not reimplemented (`BZ-WM-08`).
+- `Weapon#getModifiersData()` now always returns a non-null `ModifiersData` instead of sometimes `null` for a
+  weapon YAML with no `Modifiers:` section (`BZ-WM-01`).
 
 ## What Bartizan does *not* use
 

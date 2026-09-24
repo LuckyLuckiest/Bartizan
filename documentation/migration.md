@@ -312,3 +312,73 @@ deploying.
   Prefer `Shoot.Trigger: left_click` on such weapons so the client does not predict a crossbow shot.
 - Not yet play-tested on a real server: the spyglass skin rewrite keeping the vanilla use on 1.17 and 1.21, and
   the new instant-reload stage timing. Both are flagged in the roadmap's §9/§10 *As built* notes.
+
+## 14. 0.5.0 → 0.5.1 — the docket fix wave
+
+No `.yml` file has to change and no weapon/ammo/wearable definition needs an edit — every default-preserving fix
+in this wave only closes a failure mode reachable by a hand-authored or future config, or by play that hit a bug.
+Full detail, the per-system breakdown and every behaviour change is in
+[`documentation/docket-fix-wave-0.5.1.md`](docket-fix-wave-0.5.1.md); this section is the condensed admin/consumer
+checklist.
+
+### Behaviour to re-check before/after upgrading
+
+- **Off-hand weapon uses are inert** until gate HN's `Dual_Wield` lands — a right-click with the off hand no
+  longer fires, throws, charges or sprays anything on any weapon type. A server that relied on off-hand guns,
+  throwables or charge weapons (the off-hand path used to duplicate items and hand out unlimited grenades) loses
+  that until HN.
+- **A protection plugin now sees weapon-caused block breaks.** A vanilla `BlockBreakEvent` (as a
+  `WeaponBlockBreakEvent`, see below) fires for every player-attributed weapon block break — raytrace hits and
+  rocket/grenade explosion block damage alike — so WorldGuard/GriefPrevention/etc. can veto it exactly like a
+  hand-mined block. A claim that previously "protected" against everything except weapons now also blocks weapon
+  fire from breaking blocks inside it, if the region plugin's own rules say so.
+- **`Armor_Piercing` values changed twice this wave** (first under-delivering, then over-correcting on toughness
+  armor, now toughness-aware) — re-check any `Armor_Piercing` tuning against diamond/netherite-armored targets.
+- **`CombatEligibility` is now enforced for the victim**, not just the shooter, on every weapon damage path (guns,
+  beams, incendiary, melee, biological, explosions). A consumer already registering `CombatEligibility` for
+  downed-player gating gets it enforced for free with no code change; nothing to do unless you relied on the
+  previous gap.
+- **`PlaceholderAPI` placeholders are now read-only** — `%bartizan_*%` never registers a weapon or mutates its
+  ammo/durability/fire mode as a side effect of being read from PAPI's own thread.
+- **A give command amount above the target material's max stack size now mints one uuid per physical item**,
+  instead of one uuid shared across a whole stack — a shop/kit integration that gives large stacks through
+  Bartizan's give path should expect N separate items back, not one N-sized stack.
+- **`/weapon` no longer dispatches.** The `/bartizan` `weapon` alias was removed (it shadowed `WeaponCommand`'s
+  own `weapon` subcommand); use `/bartizan weapon …` or `/btz weapon …`.
+- **Wearable permission enforcement is now complete.** Hotbar-swap and plain right-click equip now go through
+  `bartizan.wearables.<key>` the same as drag/shift-click always did — a server relying on the gap to let
+  ungranted players wear a restricted wearable via those paths no longer can.
+- **`Bartizan.onDisable`/`/reload` no longer resets Keystone's shared `PacketBridge`.** Disabling or reloading
+  Bartizan no longer silently downgrades recoil/packet handling to a no-op for other Keystone-powered plugins
+  still running on the same server.
+
+### `bartizan-api` deltas
+
+- **New: `weapon.modifiers.WeaponBlockBreakEvent extends org.bukkit.event.block.BlockBreakEvent`.** Fired by
+  `BlockDamageManager.applyDamage(Block, BlockBreakModifier, Player)` (a new 3-arg overload; the existing 2-arg
+  overload is unchanged and fires no event) for a weapon-caused block break with an attributable player. A
+  consumer that needs to tell a synthetic weapon break apart from a real player punch checks
+  `event instanceof WeaponBlockBreakEvent`, the same way Bartizan's own `WeaponInteract.onBlockBreak` does.
+- **`event.WeaponChangeSelectiveFireEvent.getHandlerList()` is now `public`** (was `private`, unlike every other
+  sibling event class) — Bukkit's reflection-based listener registration could never actually find this event
+  before, so a consumer plugin can now genuinely listen for it for the first time.
+- **`weapon.reload.ReloadType.createInstance(Weapon, Ammunition)` gained a required third `int amount` parameter**,
+  and `ReloadType.getAmount()`/`setAmount()` were removed. The per-weapon reload amount used to live as mutable
+  state on the shared `ReloadType` enum constant, so every weapon of the same `ReloadType` silently collided on
+  whichever was parsed last; it now lives on `weapon.dto.ReloadData#getAmount()` (new field, default `1`). Only
+  `Weapon`'s own constructor called `createInstance` in this codebase — a consumer that called it or the removed
+  accessors directly needs to update the call site.
+- **`wearable.Wearable.NBT_TRAIT_PREFIX` (`"wt_"`) and `NBT_BASE_REDUCE` (`"wr_base"`) constants were removed**,
+  and `buildItem()` no longer stamps those tags — they were write-only, nothing in Bartizan or Gangland ever read
+  them back (every consumer already resolves traits/base reduction live from the registry by
+  `Wearable.NBT_KEY` alone). Any external tooling reading those raw NBT keys off a wearable item needs to stop.
+- **`weapon.recoil.RecoilManager`'s public `clone()` override was removed.** It always threw
+  (`RecoilManager` never implemented `Cloneable`) and a repo-wide grep found no caller; a future caller wanting a
+  real shallow copy needs to add `Cloneable` back itself.
+- **`Weapon#getModifiersData()` now always returns a non-null `ModifiersData`** for a weapon YAML with no
+  `Modifiers:` section, instead of sometimes returning `null`. A caller that null-checked before reading it can
+  drop the check.
+
+See `documentation/docket-fix-wave-0.5.1.md` §3 for the full numbered behaviour-change list (config parser
+warnings, importer changes, kill-credit fixes, stats/HUD fixes, and more) and §4 for what was deliberately left
+deferred or out of scope.

@@ -40,7 +40,12 @@ See [`documentation/bartizan-api.md`](documentation/bartizan-api.md) for the ser
 example, and [`documentation/migration.md`](documentation/migration.md) for what server owners moving off an older
 Gangland Warfare weapon module need to do.
 
-## Package map (as-built, 0.5.0)
+0.5.1 is the "docket fix wave": 108 rows from the LuckyRaven cross-project bug docket, 107 fixed and 1 partial. See
+[`documentation/docket-fix-wave-0.5.1.md`](documentation/docket-fix-wave-0.5.1.md) for the per-system breakdown and
+every behaviour change an admin or consumer plugin should know about, and `documentation/migration.md` §14 for the
+condensed upgrade checklist.
+
+## Package map (as-built, 0.5.1)
 
 ```
 bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
@@ -68,7 +73,7 @@ bartizan-api   org.luckyraven.bartizan.api                    BartizanApi
                                                                 HandlingData (incl. AttributeEntry), MuzzleOffsetData,
                                                                 SkinsData, ReloadStagesData (gate HO), ScopeType (gate HP), ...)
                                        .weapon.durability        DurabilityCalculator
-                                       .weapon.modifiers          BlockDamageManager, DamageMath, ExplosionMath + action/*
+                                       .weapon.modifiers          BlockDamageManager, DamageMath, ExplosionMath, WeaponBlockBreakEvent (BZ-RT-01) + action/*
                                        .weapon.recoil            RecoilManager
                                        .weapon.reload            Reload, ReloadType, InstantReload, NumberedReload
                                        .weapon.spread            SpreadManager
@@ -94,12 +99,13 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                        .item                   converters, serializers, refreshers, WeaponItemApiImpl, BartizanItemVocabulary
                                        .listener(.*)           WeaponInteract, ScopeJumpListener, WeaponCraftingListener,
                                                                 WeaponSprintListener,
-                                                                death/fire/player/projectile/reload/selective/wearable
+                                                                death/fire/player/projectile (gains CosmeticTag,
+                                                                BZ-RT-18/FA-13)/reload/selective/wearable
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl
                                        .scope                  SpyglassScopeTask (gate HP: 2-tick isHandRaised poll, unscope-only, owns the scoped-F auto task)
                                        .raytrace               WeaponRaytracerImpl, WeaponShooting, WeaponMuzzle, SteppedProjectileTask,
                                                                 ExplosionHandler (gate HI-a, unified AOE explosions), ProjectileMotion,
-                                                                BeamRenderer, HitZone
+                                                                BeamRenderer, HitZone, FatalDamageAttribution (BZ-EV-19)
                                        .stats                  StatsService, StatsListener, PlayerStats, WeaponStat
                                        .status                 StatusEffectService, ActiveStatus, StatusListener
                                        .util                   BartizanChatUtil, BlockGroupResolver, EmptyMagSoundGate, PotionEffectParser
