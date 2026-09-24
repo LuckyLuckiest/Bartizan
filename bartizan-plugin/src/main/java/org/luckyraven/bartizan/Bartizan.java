@@ -4,13 +4,10 @@ import lombok.CustomLog;
 import lombok.Getter;
 import org.bstats.bukkit.Metrics;
 import org.bstats.charts.SingleLineChart;
-import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.bootstrap.BartizanContext;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
 import org.luckyraven.bartizan.hud.PlaceholderApiSupport;
-import org.luckyraven.keystone.nms.PacketBridge;
 
 @Getter
 @CustomLog
@@ -33,7 +30,6 @@ public final class Bartizan extends JavaPlugin {
 			this.context = new BartizanContext(this);
 			context.bootstrap();
 
-			dependencyHandler();
 			bStats();
 		} catch (Throwable t) {
 			log.error("Bartizan failed to enable", t);
@@ -45,8 +41,16 @@ public final class Bartizan extends JavaPlugin {
 	public void onDisable() {
 		// Symmetric teardown (gate-GG review B2): the WeaponRaytracer, BartizanApi and ItemVocabulary providers are
 		// registered at bean construction, so a disable/enable cycle must not leave dead providers behind.
+		//
+		// Deliberately does NOT call PacketBridge.reset() (BZ-NU-01): on the documented deployment floor
+		// (Keystone 1.9.0, pom.xml keystone.version - README.md/migration.md tell admins to deploy
+		// Keystone-1.9.0.jar) PacketBridge.reset() is `adapter = NoOpAdapter.INSTANCE`, a single server-global
+		// field shared by every Keystone-powered plugin on the shared classloader - Bartizan disabling/reloading
+		// would silently downgrade recoil and packet handling to a no-op for every OTHER plugin still running.
+		// The adapter itself is stateless reflection (KernelConfig.packetAdapter()), so leaving Bartizan's install
+		// live after disable is harmless. (A newer Keystone scopes reset() to the caller's own install, but
+		// Bartizan cannot rely on that against the version it compiles/ships against.)
 		getServer().getServicesManager().unregisterAll(this);
-		PacketBridge.reset();
 		PlaceholderApiSupport.unregisterIfPresent();
 
 		if (context == null) return;
@@ -73,42 +77,6 @@ public final class Bartizan extends JavaPlugin {
 		                                               WeaponAddon addon = context == null ? null : context.get(WeaponAddon.class);
 		                                               return addon == null ? 0 : addon.size();
 		                                           }));
-	}
-
-	/**
-	 * Checks for soft dependencies. Bartizan has no required dependency beyond Keystone (declared in plugin.yml
-	 * {@code depend:}, enforced by Bukkit's own plugin loader before {@code onEnable} runs).
-	 */
-	private void dependencyHandler() {
-		Dependency viaVersion = new Dependency("ViaVersion");
-		viaVersion.validate(null);
-
-		Dependency placeholderApi = new Dependency("PlaceholderAPI");
-		placeholderApi.validate(null);
-
-		Dependency nbtApi = new Dependency("NBTAPI");
-		nbtApi.validate(null);
-	}
-
-	/**
-	 * A thin soft-dependency link/log helper, ported in shape from {@code Gangland.java}'s inner {@code Dependency}
-	 * class (bartizan.md §2 B8) — Bartizan only has soft dependencies, so the {@code REQUIRED} branch is dropped.
-	 */
-	private final class Dependency {
-
-		private final String name;
-
-		private Dependency(String name) {
-			this.name = name;
-		}
-
-		private void validate(@Nullable Runnable runnable) {
-			if (Bukkit.getPluginManager().getPlugin(name) == null) return;
-
-			log.info("Found {}, linking...", name);
-			if (runnable != null) runnable.run();
-			log.info("Linked {}", name);
-		}
 	}
 
 }

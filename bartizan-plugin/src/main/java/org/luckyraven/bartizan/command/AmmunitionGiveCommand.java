@@ -20,6 +20,10 @@ import java.util.Map;
 
 class AmmunitionGiveCommand extends SubArgument {
 
+	// ponytail: same cap as WeaponGiveHelper.MAX_AMOUNT (36 slots * 64) - an unbounded amount lets
+	// `ammo give <name> 2000000000` allocate an ItemStack[] large enough to OOM the server.
+	private static final int MAX_AMOUNT = 2304;
+
 	private final Bartizan          bartizan;
 	private final Tree<Argument>    tree;
 	private final AmmunitionManager ammunitionManager;
@@ -95,6 +99,8 @@ class AmmunitionGiveCommand extends SubArgument {
 		Ammunition ammunition = ammunitionManager.getAmmunition(name);
 
 		if (ammunition == null) return false;
+
+		amount = Math.max(1, Math.min(amount, MAX_AMOUNT));
 
 		ItemStack       sampleItem   = ammunition.buildItem(player);
 		int             maxStackSize = sampleItem.getMaxStackSize();

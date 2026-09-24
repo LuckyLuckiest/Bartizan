@@ -18,8 +18,10 @@ import org.mockito.MockedStatic;
 
 import java.lang.reflect.Method;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -32,6 +34,12 @@ import static org.mockito.Mockito.when;
  * {@code /bartizan weapon give <player> <weapon> [amount]} must offer live values at every position through the
  * server-side {@link CommandTabCompleter} — the path every Brigadier free-text node routes back to (Keystone
  * KS-CM-15). Guards the argument-tree shape (sub-arguments attached bottom-up) against the framework's traversal.
+ *
+ * <p>BZ-CM-03: {@code weapon give}'s name completion must come from {@link WeaponAddon#getWeaponKeys()} (only
+ * successfully-parsed weapons), not {@code WeaponLoader.getFiles()} (every {@code .yml} physically present in the
+ * weapon folder) — {@code brokenweapon} below stands in for a weapon file that failed to parse: it is still on
+ * disk (offered by {@code WeaponLoader}) but never registered (absent from {@code WeaponAddon}), so picking it
+ * from tab-completion must not be possible.
  */
 class WeaponCommandTabCompletionTest {
 
@@ -40,13 +48,19 @@ class WeaponCommandTabCompletionTest {
 		InformationManager informationManager = mock(InformationManager.class);
 		when(informationManager.getCommands()).thenReturn(Map.of());
 
-		FileHandler ak47 = mock(FileHandler.class);
-		FileHandler m4a1 = mock(FileHandler.class);
+		FileHandler ak47         = mock(FileHandler.class);
+		FileHandler m4a1         = mock(FileHandler.class);
+		FileHandler brokenWeapon = mock(FileHandler.class);
 		when(ak47.getName()).thenReturn("ak47");
 		when(m4a1.getName()).thenReturn("m4a1");
+		when(brokenWeapon.getName()).thenReturn("brokenweapon");
 
 		WeaponLoader weaponLoader = mock(WeaponLoader.class);
-		doReturn(List.of(ak47, m4a1)).when(weaponLoader).getFiles();
+		doReturn(List.of(ak47, m4a1, brokenWeapon)).when(weaponLoader).getFiles();
+
+		WeaponAddon weaponAddon = mock(WeaponAddon.class);
+		Set<String> weaponKeys  = new LinkedHashSet<>(List.of("ak47", "m4a1"));
+		when(weaponAddon.getWeaponKeys()).thenReturn(weaponKeys);
 
 		Player steve = mock(Player.class);
 		when(steve.getName()).thenReturn("Steve");
@@ -66,7 +80,7 @@ class WeaponCommandTabCompletionTest {
 			bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(steve));
 
 			WeaponCommand weapon = new WeaponCommand(mock(Bartizan.class), informationManager,
-			                                         mock(WeaponManager.class), mock(WeaponAddon.class), weaponLoader);
+			                                         mock(WeaponManager.class), weaponAddon, weaponLoader);
 
 			// Protected on Keystone's Command; the dispatcher calls it once the subclass constructor has returned.
 			Method initializeArguments = Command.class.getDeclaredMethod("initializeArguments");
