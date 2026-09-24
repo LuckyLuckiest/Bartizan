@@ -128,7 +128,12 @@ public class BartizanSettings implements FileInitializer {
 		debugEnabled = bool(debug, "Enable", false);
 
 		languagePicked = str(root, "Language", "en");
-		moneySymbol    = str(root, "Money_Symbol", "$").substring(0, 1);
+
+		// str()'s default only substitutes for an ABSENT key, so an explicit `Money_Symbol: ""` must be guarded
+		// separately - substring(0, 1) on the empty string throws and would otherwise abort this FILE-phase bean's
+		// whole init() (BZ-CF-08).
+		String rawMoneySymbol = str(root, "Money_Symbol", "$");
+		moneySymbol = rawMoneySymbol.isEmpty() ? "$" : rawMoneySymbol.substring(0, 1);
 
 		NodeReader blockRegeneration = section(root, "Block_Regeneration", report);
 		blockRestoreDelayTicks      = intVal(blockRegeneration, "Restore_Delay_Ticks", 100);
