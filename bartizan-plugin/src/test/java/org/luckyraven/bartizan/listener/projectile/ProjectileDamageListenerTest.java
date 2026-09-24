@@ -1,11 +1,13 @@
 package org.luckyraven.bartizan.listener.projectile;
 
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Fireball;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -74,6 +76,26 @@ class ProjectileDamageListenerTest {
 		listener.onProjectileEntityDamage(event);
 
 		assertTrue(event.isCancelled(), "an effect-only firework must not hurt the shooter or bystanders");
+	}
+
+	@Test
+	@DisplayName("projectile hit: a cosmetic visual's hit is cancelled and it stays cosmetic for that hit's damage event")
+	void projectileHit_cosmeticVisual_cancelledAndStillGuardsDamage() {
+		Fireball fireball = mock(Fireball.class);
+		when(fireball.getEntityId()).thenReturn(21);
+		when(fireball.getPersistentDataContainer()).thenReturn(mock(PersistentDataContainer.class));
+		visualSpawner.registerCosmetic(21);
+		Player                    victim = mock(Player.class);
+		ProjectileHitEvent        hit    = new ProjectileHitEvent(fireball, victim);
+		EntityDamageByEntityEvent damage = new EntityDamageByEntityEvent(fireball, victim,
+		                                                                 DamageCause.PROJECTILE, 6.0);
+
+		listener.onProjectileHit(hit);
+		listener.onProjectileEntityDamage(damage);
+
+		assertTrue(hit.isCancelled(), "vanilla must not resolve a hit on a cosmetic visual");
+		assertTrue(visualSpawner.isCosmetic(21), "only SteppedProjectileTask.terminate() may unregister the visual");
+		assertTrue(damage.isCancelled(), "the same collision's vanilla damage must still be cancelled");
 	}
 
 	@Test

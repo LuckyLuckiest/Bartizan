@@ -51,12 +51,15 @@ public class ProjectileDamageListener implements Listener {
 		}
 	}
 
+	/**
+	 * Cancels vanilla's own collision on a cosmetic visual. The id stays registered: this hit's
+	 * {@code EntityDamageByEntityEvent} fires after this one and still needs the {@code isCosmetic} guard above, and
+	 * {@code SteppedProjectileTask.terminate()} is what unregisters the visual.
+	 */
 	@EventHandler(priority = EventPriority.LOWEST)
 	public void onProjectileHit(ProjectileHitEvent event) {
-		int projectileId = event.getEntity().getEntityId();
-
-		if (visualSpawner.isCosmetic(projectileId)) {
-			visualSpawner.unregisterCosmetic(projectileId);
+		if (visualSpawner.isCosmetic(event.getEntity().getEntityId())) {
+			event.setCancelled(true);
 		}
 	}
 
