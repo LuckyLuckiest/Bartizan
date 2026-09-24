@@ -79,7 +79,11 @@
 #         Pieces_<N>:            - the bonus once at least N pieces naming Set: <name> are worn
 #            Traits:              - REINFORCED/BULLETPROOF/REACTIVE here become their own separate per-piece-style
 #                                   discount (see Traits: above); every other trait still merges into the
-#                                   body-wide sum, added on top of every worn piece's own level (same cap applies)
+#                                   body-wide sum, added on top of every worn piece's own level (same cap applies) -
+#                                   EXCEPT SWIFT, which is stamped as a MOVEMENT_SPEED attribute directly onto a
+#                                   wearable's own item at build time (see Traits: above), has no runtime-read
+#                                   level a Set could contribute to, and is rejected with a warning if configured
+#                                   here
 #            Effects_While_Worn:  - added on top of every worn piece's own list, same token grammar as above
 #
 # Note: the HH scope's own Night Vision removal on scope-out can briefly drop a worn Night Vision grant from

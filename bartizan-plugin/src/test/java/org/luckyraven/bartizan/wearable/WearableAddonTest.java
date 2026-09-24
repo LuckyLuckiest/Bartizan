@@ -222,6 +222,45 @@ class WearableAddonTest {
 		assertEquals(0, tier.traits().getOrDefault("reinforce", 0));
 	}
 
+	@Test
+	@DisplayName("BZ-WE-09: SWIFT under a Set tier's Traits warns and is dropped - it's a build-time item "
+			+ "attribute stamp (appendSwiftAttribute), not a runtime-read trait level, so a Set can't grant it")
+	void swiftUnderSetTier_warnsAndDropped() throws Exception {
+		JavaPlugin  plugin      = PluginMocks.plugin(tempDir);
+		FileManager fileManager = new FileManager(plugin);
+
+		writeWearablesFile("""
+				swift_vest:
+				   Material: IRON_CHESTPLATE
+				   Name: "&7Swift Vest"
+				   Set: swift_set
+
+				Sets:
+				   swift_set:
+				      Pieces_1:
+				         Traits:
+				            SWIFT: 2
+				            SEALED: 1
+				""");
+		fileManager.addFile(new FileHandler(plugin, tempDir.resolve("items/wearables.yml").toFile()), false);
+
+		WearableAddon addon  = new WearableAddon(ignored -> {
+		}, fileManager, null);
+		ConfigReport  report = addon.load();
+
+		assertFalse(report.hasErrors(), reportIssues(report));
+		assertEquals(1, report.issues().size(), reportIssues(report));
+		ConfigIssue issue = report.issues().get(0);
+		assertEquals(Severity.WARNING, issue.severity());
+		assertEquals("wearable.inert_set_trait", issue.code(), reportIssues(report));
+
+		WearableService.SetTier tier = setsField(addon).get("swift_set").get(1);
+		assertNotNull(tier, "Sets.swift_set.Pieces_1 should still be registered");
+		assertEquals(0, tier.traits().getOrDefault("swift", 0), "SWIFT must be dropped from the Set tier");
+		assertEquals(Integer.valueOf(1), tier.traits().get("sealed"),
+		            "an unrelated trait key in the same Traits block must be unaffected");
+	}
+
 	@SuppressWarnings("unchecked")
 	private static Map<String, NavigableMap<Integer, WearableService.SetTier>> setsField(WearableAddon addon)
 			throws Exception {

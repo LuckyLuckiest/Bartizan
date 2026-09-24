@@ -166,6 +166,14 @@ public class WearableAddon extends WearableService implements FileInitializer {
 	}
 
 	/**
+	 * Trait keys that are stamped directly onto a wearable's own built item ({@code buildItem}/
+	 * {@code appendSwiftAttribute}) rather than read back out of {@link WearableService#resolveTraitLevels}'s
+	 * body-wide sum. A Set tier has no item of its own to stamp one onto, so granting one of these under
+	 * {@code Sets.*.Traits} would silently do nothing (BZ-WE-09) - {@link #loadSets} rejects them instead.
+	 */
+	private static final Set<String> SET_ONLY_INERT_TRAITS = Set.of("swift");
+
+	/**
 	 * Parses the top-level {@code Sets:} section (weapons-roadmap.md gate {@code HL}, §4) into
 	 * {@link WearableService#registerSet}. An unrecognised tier key (not matching {@code Pieces_N}) is a
 	 * {@link Severity#WARNING} and that one tier is skipped; the rest of the set keeps loading.
@@ -198,12 +206,29 @@ public class WearableAddon extends WearableService implements FileInitializer {
 
 				NodeReader   tier             = NodeReader.of(tierMapping, report);
 				Map<String, Integer> traits   = readTraits(tier, report, "set '" + setName + "'");
+				rejectSetOnlyInertTraits(traits, tierMapping, report, setName);
 				List<String> effectsWhileWorn = tier.get("Effects_While_Worn").asList().ofStrings().orEmpty();
 
 				tiers.put(Integer.parseInt(matcher.group(1)), new SetTier(traits, effectsWhileWorn));
 			}
 
 			if (!tiers.isEmpty()) registerSet(setName, tiers);
+		}
+	}
+
+	/**
+	 * Warns and drops any {@link #SET_ONLY_INERT_TRAITS} key from a Set tier's {@code Traits} (BZ-WE-09) - mutates
+	 * {@code traits} in place since it's the same mutable map {@link SetTier} is about to be built from.
+	 */
+	private void rejectSetOnlyInertTraits(Map<String, Integer> traits, MappingNode tierMapping, ConfigReport report,
+	                                      String setName) {
+		for (String inert : SET_ONLY_INERT_TRAITS) {
+			if (traits.remove(inert) == null) continue;
+
+			report.add(Severity.WARNING, tierMapping.location(), joinPath(tierMapping.path(), "Traits"),
+			           "set '" + setName + "' Traits has '" + inert.toUpperCase(Locale.ROOT) + "', which is " +
+			           "stamped on an item's own attributes at build time and has no effect when granted by a " +
+			           "Set - dropped", "wearable.inert_set_trait");
 		}
 	}
 
