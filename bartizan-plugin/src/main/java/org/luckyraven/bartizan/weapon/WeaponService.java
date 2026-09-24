@@ -193,7 +193,7 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	/**
 	 * The shared, read-only catalogue entry for {@code type} exactly as it was parsed from its YAML file.
 	 * <p/>
-	 * Unlike {@link #getWeapon(String)} this never mints a uuid and never registers anything, so it is the correct
+	 * Unlike {@link #getWeapon(Player, UUID, String, boolean)} this never mints a uuid and never registers anything, so it is the correct
 	 * lookup for every read-only caller (display names, death messages, sign validation). The returned instance is
 	 * shared — never hand it to a player and never mutate it; use {@link #createTransientWeapon(String)} for that.
 	 *
@@ -237,16 +237,6 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		if (template == null) return null;
 
 		return template.copyWithUUID(mintUuid(template, type, null));
-	}
-
-	@Nullable
-	public Weapon getWeapon(@Nullable String type) {
-		return getWeapon(null, null, type);
-	}
-
-	@Nullable
-	public Weapon getWeapon(Player player, @Nullable String type) {
-		return getWeapon(player, null, type);
 	}
 
 	@Nullable

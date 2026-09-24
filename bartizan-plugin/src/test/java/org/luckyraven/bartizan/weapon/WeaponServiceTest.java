@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -139,6 +140,19 @@ class WeaponServiceTest {
 		assertNotNull(given);
 		assertEquals(1, service.getWeapons().size());
 		assertSame(given, service.getWeapons().get(given.getUuid()));
+	}
+
+	/**
+	 * BZ-WM-05: {@code getWeapon(String)} and {@code getWeapon(Player, String)} looked like read-only lookups but
+	 * forwarded a null uuid into the minting overload, registering a fresh instance per call. They are gone; the
+	 * read-only callers use {@code getWeaponTemplate}/{@code createTransientWeapon}.
+	 */
+	@Test
+	@DisplayName("no read-only-looking getWeapon overload that mints and registers survives (BZ-WM-05)")
+	void getWeapon_readOnlyOverloads_removed() {
+		assertThrows(NoSuchMethodException.class, () -> WeaponService.class.getMethod("getWeapon", String.class));
+		assertThrows(NoSuchMethodException.class,
+		             () -> WeaponService.class.getMethod("getWeapon", Player.class, String.class));
 	}
 
 	/**
