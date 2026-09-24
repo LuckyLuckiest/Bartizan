@@ -19,13 +19,11 @@ import org.luckyraven.bartizan.wearable.WearableService;
 import org.luckyraven.bartizan.api.wearable.Wearable;
 
 /**
- * Handles wearable armor equip/drop validation.
+ * Handles wearable armor equip validation.
  *
  * <p>On equip (direct drag to armor slot, shift-click auto-equip, hotbar-number-key swap, or plain right-click):
  * if the armor piece is a registered {@link Wearable} with a permission node, the equip is blocked for players
  * that lack that permission.
- *
- * <p>On drop: if the wearable is marked as non-droppable the drop event is cancelled.
  *
  * <p>bartizan.md §1.1 (group H PKG+): drops the deleted {@code WearableEquipService} indirection (T-14 is dissolved,
  * not ported — that seam existed only because the weapon module lived apart from {@code gangland-item}'s core
