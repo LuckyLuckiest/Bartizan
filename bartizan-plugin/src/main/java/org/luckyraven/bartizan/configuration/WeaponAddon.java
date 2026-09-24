@@ -49,6 +49,15 @@ public class WeaponAddon {
 	private final Map<String, Weapon> weapons;
 
 	/**
+	 * BZ-EV-18: {@code Material} -> the first weapon file name that turned on {@code HUD.Reload_Item_Cooldown} for
+	 * it — {@code Player#setCooldown(Material, ticks)} is a per-Material client overlay, not per-weapon, so two
+	 * weapons sharing a base Material (e.g. {@code scout.yml}/{@code arc_lance.yml} both {@code SPYGLASS}) would
+	 * blank each other's HUD overlay the moment both opt in. Reset in {@link #clear()}, same lifecycle as
+	 * {@link #weapons}.
+	 */
+	private final Map<Material, String> reloadCooldownMaterials;
+
+	/**
 	 * Placeholder resolver handed over by the plugin bootstrap at init time. Each parsed {@link Weapon} has this
 	 * injected after construction so its {@code buildItem} / {@code updateWeaponData} calls resolve configured
 	 * PlaceholderAPI tokens in the display name and lore.
@@ -57,8 +66,9 @@ public class WeaponAddon {
 	private final Placeholder placeholder;
 
 	public WeaponAddon(@Nullable Placeholder placeholder) {
-		this.weapons     = new HashMap<>();
-		this.placeholder = placeholder;
+		this.weapons                 = new HashMap<>();
+		this.placeholder             = placeholder;
+		this.reloadCooldownMaterials = new HashMap<>();
 	}
 
 	public ConfigReport registerWeapon(AmmunitionManager ammunitionManager, FileHandler fileHandler) throws
@@ -194,6 +204,7 @@ public class WeaponAddon {
 
 	public void clear() {
 		weapons.clear();
+		reloadCooldownMaterials.clear();
 	}
 
 	public int size() {
@@ -451,7 +462,29 @@ public class WeaponAddon {
 		MappingNode hudSection = root.get("HUD").asMapping().orNull();
 		NodeReader  hud        = hudSection != null ? NodeReader.of(hudSection, report) : null;
 
-		weapon.setHudData(HudSectionParser.parse(hud, report));
+		HudData hudData = HudSectionParser.parse(hud, report);
+		weapon.setHudData(hudData);
+
+		warnReloadCooldownMaterialCollision(weapon, hudData, hudSection, report);
+	}
+
+	/**
+	 * BZ-EV-18: {@code Player#setCooldown(Material, ticks)} is a per-Material client overlay, not per-weapon —
+	 * Bukkit has no CustomModelData-scoped cooldown API. Warns (never fails the load) naming both files the first
+	 * time a second weapon turns on {@code HUD.Reload_Item_Cooldown} for a Material another already claimed, so an
+	 * admin finds out before shipping it rather than debugging a flickering hotbar icon on a live server.
+	 */
+	private void warnReloadCooldownMaterialCollision(Weapon weapon, @Nullable HudData hudData,
+	                                                 @Nullable MappingNode hudSection, ConfigReport report) {
+		if (hudData == null || !hudData.isReloadItemCooldown()) return;
+
+		String previous = reloadCooldownMaterials.putIfAbsent(weapon.getMaterial(), weapon.getName());
+		if (previous == null || previous.equals(weapon.getName())) return;
+
+		report.add(Severity.WARNING, hudSection != null ? hudSection.location() : null, "HUD.Reload_Item_Cooldown",
+		           "weapon '" + weapon.getName() + "' shares Material " + weapon.getMaterial() + " with '" +
+		           previous + "', which also has HUD.Reload_Item_Cooldown: true - reloading either one will blank " +
+		           "the other's hotbar overlay", "hud.reload_item_cooldown_material_collision");
 	}
 
 	/**

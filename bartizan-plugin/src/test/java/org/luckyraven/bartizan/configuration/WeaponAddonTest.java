@@ -177,6 +177,54 @@ class WeaponAddonTest {
 		             () -> weaponAddon.registerWeapon(ammunitionManager, handler));
 	}
 
+	/**
+	 * BZ-EV-18: {@code Player#setCooldown(Material, ticks)} is a per-Material client overlay, not per-weapon — two
+	 * weapons sharing a base Material (the shipped {@code scout.yml}/{@code arc_lance.yml} both {@code SPYGLASS})
+	 * would blank each other's HUD overlay the moment both turn on {@code HUD.Reload_Item_Cooldown}.
+	 */
+	@Test
+	@DisplayName("registerWeapon: two weapons sharing a Material with HUD.Reload_Item_Cooldown both true warns "
+			+ "naming both files, but does not block either weapon's registration")
+	void registerWeapon_reloadItemCooldownMaterialCollision_warnsButStillRegistersBoth() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+		WeaponAddon       weaponAddon       = new WeaponAddon(null);
+
+		String yaml = """
+				Information:
+				   Name: "&7Test&r"
+				   Category: melee
+				   Material: SPYGLASS
+				   Durability:
+				      Base: 100
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+
+				HUD:
+				   Reload_Item_Cooldown: true
+				""";
+		File first  = writeWeaponFile("first_spyglass.yml", yaml);
+		File second = writeWeaponFile("second_spyglass.yml", yaml);
+
+		ConfigReport firstReport  = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, first));
+		ConfigReport secondReport = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, second));
+
+		assertFalse(firstReport.issues().stream().anyMatch(
+				           issue -> issue.code().equals("hud.reload_item_cooldown_material_collision")),
+		            "the first weapon to claim SPYGLASS is never the one warned about");
+		assertTrue(secondReport.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.WARNING
+				                    && issue.code().equals("hud.reload_item_cooldown_material_collision")
+				                    && issue.message().contains("first_spyglass")),
+		           "expected a WARNING on the second file naming the first:\n" +
+		           secondReport.issues().stream().map(ConfigIssue::render).collect(Collectors.joining("\n")));
+
+		assertNotNull(weaponAddon.getWeapon("first_spyglass"), "the collision must not block either weapon's load");
+		assertNotNull(weaponAddon.getWeapon("second_spyglass"), "the collision must not block either weapon's load");
+	}
+
 	private File writeWeaponFile(String name, String yaml) throws IOException {
 		File file = tempDir.resolve("weapon/" + name).toFile();
 		Files.createDirectories(file.getParentFile().toPath());
