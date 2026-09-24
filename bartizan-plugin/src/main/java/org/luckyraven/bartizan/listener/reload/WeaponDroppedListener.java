@@ -4,6 +4,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.inventory.ItemStack;
@@ -84,6 +85,28 @@ public class WeaponDroppedListener implements Listener {
 
 		// don't drop the weapon — a reload just started
 		event.setCancelled(true);
+	}
+
+	/**
+	 * Unscopes whatever weapon is about to leave the player's hand on every path through {@link #onPlayerDrop}
+	 * that lets the drop proceed uncancelled - a plain Q drop leaks the same way the off-hand swap does (bug
+	 * docket BZ-EV-09): without this, a scoped weapon dropped normally (not sneaking, no {@code Cancel.Drop_Item})
+	 * left the player permanently slowed with no cleanup path. Registered at {@link EventPriority#MONITOR} and
+	 * keyed off {@code event.isCancelled()} directly, mirroring
+	 * {@code WeaponSelectiveFireChangeListener#onSwapHandScopeCleanup} - one guard for every current and future
+	 * uncancelled exit instead of one patched into each. {@code Weapon#unScope} is a no-op unless the weapon is
+	 * actually scoped.
+	 */
+	@EventHandler(priority = EventPriority.MONITOR)
+	public void onPlayerDropScopeCleanup(PlayerDropItemEvent event) {
+		if (event.isCancelled()) return;
+
+		Player player = event.getPlayer();
+		Weapon weapon = weaponService.validateAndGetWeapon(player, event.getItemDrop().getItemStack());
+
+		if (weapon != null) {
+			weapon.unScope(player, false);
+		}
 	}
 
 	private boolean cancelsDropItem(Weapon weapon) {
