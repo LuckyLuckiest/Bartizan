@@ -10,10 +10,9 @@ import org.luckyraven.keystone.command.argument.types.OptionalArgument;
 import org.luckyraven.keystone.util.TriConsumer;
 import org.luckyraven.keystone.datastructure.Tree;
 import org.luckyraven.bartizan.file.BartizanMessages;
-import org.luckyraven.bartizan.file.WeaponLoader;
-import org.luckyraven.keystone.persistence.FileHandler;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
 import org.luckyraven.bartizan.weapon.WeaponManager;
+import org.luckyraven.bartizan.configuration.WeaponAddon;
 
 import java.util.List;
 
@@ -29,17 +28,17 @@ class WeaponGiveCommand extends SubArgument {
 	private final Bartizan       bartizan;
 	private final Tree<Argument> tree;
 	private final WeaponManager  weaponManager;
-	private final WeaponLoader   weaponLoader;
+	private final WeaponAddon    weaponAddon;
 
 	protected WeaponGiveCommand(Bartizan bartizan, Tree<Argument> tree, Argument parent,
 	                            WeaponManager weaponManager,
-	                            WeaponLoader weaponLoader) {
+	                            WeaponAddon weaponAddon) {
 		super(bartizan, "give", tree, parent);
 
 		this.bartizan      = bartizan;
 		this.tree          = tree;
 		this.weaponManager = weaponManager;
-		this.weaponLoader  = weaponLoader;
+		this.weaponAddon   = weaponAddon;
 
 		weaponGive();
 	}
@@ -57,7 +56,7 @@ class WeaponGiveCommand extends SubArgument {
 
 		OptionalArgument weapon = new OptionalArgument(bartizan, tree, (argument, sender, args) ->
 				handleGive(sender, args[2], args[3], 1),
-				sender -> weaponLoader.getFiles().stream().map(FileHandler::getName).toList());
+				sender -> weaponAddon.getWeaponKeys().stream().toList());
 
 		OptionalArgument amount = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			int giveAmount;

@@ -67,7 +67,7 @@ public final class WeaponCommand extends Command {
 
 	@Override
 	protected void initializeArguments() {
-		Argument give = new WeaponGiveCommand(bartizan, getArgumentTree(), getArgument(), weaponManager, weaponLoader);
+		Argument give = new WeaponGiveCommand(bartizan, getArgumentTree(), getArgument(), weaponManager, weaponAddon);
 		Argument get  = new WeaponGetCommand(bartizan, getArgumentTree(), getArgument(), weaponManager, weaponLoader);
 		Argument info = new WeaponInfoCommand(bartizan, getArgumentTree(), getArgument(), weaponManager, weaponAddon);
 		Argument list = new WeaponListCommand(bartizan, getArgumentTree(), getArgument(), weaponAddon);
