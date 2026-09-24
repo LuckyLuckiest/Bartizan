@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.item;
 
+import lombok.CustomLog;
 import lombok.RequiredArgsConstructor;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -13,6 +14,7 @@ import org.luckyraven.bartizan.wearable.WearableService;
  * Rebuilds a wearable (vest / helmet / jetpack, etc.) into a factory-fresh copy with full durability and the
  * originally-defined stat block. Keyed by the {@link Wearable#NBT_KEY} tag.
  */
+@CustomLog
 @RequiredArgsConstructor
 public class WearableRefresher implements ItemRefresher {
 
@@ -21,10 +23,19 @@ public class WearableRefresher implements ItemRefresher {
 	@Override
 	public boolean canRefresh(ItemStack source) {
 		if (source == null || !new ItemBuilder(source).hasNBTTag(Wearable.NBT_KEY)) return false;
-		Wearable wearable = wearableService.getWearable(new ItemBuilder(source).getStringTagData(Wearable.NBT_KEY));
-		// null (unregistered/foreign tag) still claims - refresh() below no-ops safely; only an external
-		// (WS7-D4) entry is excluded, since Wearable#buildItem() throws on its incomplete Material.
-		return wearable == null || !wearable.isExternal();
+
+		String   key      = new ItemBuilder(source).getStringTagData(Wearable.NBT_KEY);
+		Wearable wearable = wearableService.getWearable(key);
+		if (wearable == null) {
+			// An unregistered/foreign tag (removed from wearables.yml, or another plugin's own "wearable" tag) -
+			// fail safe rather than silently falling through to a bare ItemStack#clone() downstream with no
+			// diagnostic (BZ-WE-06).
+			log.warn("Wearable item tagged '{}' has no matching wearables.yml entry (removed from config?) — "
+			         + "leaving it unrefreshed", key);
+			return false;
+		}
+		// only an external (WS7-D4) entry is excluded, since Wearable#buildItem() throws on its incomplete Material.
+		return !wearable.isExternal();
 	}
 
 	@Override
