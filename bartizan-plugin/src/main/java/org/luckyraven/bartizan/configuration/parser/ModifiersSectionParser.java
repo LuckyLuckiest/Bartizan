@@ -49,7 +49,7 @@ public final class ModifiersSectionParser {
 
 		weapon.setModifiersData(new ModifiersData());
 
-		applyBreakBlocks(modifiers, weapon);
+		applyBreakBlocks(modifiers, weapon, report);
 		applyPenetration(modifiers, weapon, report);
 		applyRicochet(modifiers, weapon, report);
 		applyTracer(modifiers, weapon, report);
@@ -70,7 +70,7 @@ public final class ModifiersSectionParser {
 		           "modifiers." + key.toLowerCase(Locale.ROOT) + ".malformed");
 	}
 
-	private static void applyBreakBlocks(NodeReader modifiers, Weapon weapon) {
+	private static void applyBreakBlocks(NodeReader modifiers, Weapon weapon, ConfigReport report) {
 		for (String entry : modifiers.get("Break_Blocks").asList().ofStrings().orEmpty()) {
 			String[] parts = entry.split("-");
 			if (parts.length != 2 && parts.length != 3) continue;
@@ -78,7 +78,14 @@ public final class ModifiersSectionParser {
 				Set<Material> materials = BlockGroupResolver.resolve(parts[0].trim());
 				if (materials.isEmpty()) continue;
 
-				int       hits = Integer.parseInt(parts[1].trim());
+				int hits = Integer.parseInt(parts[1].trim());
+				// BZ-RT-13: BlockBreakModifier's compact constructor already clamps hits to at least 1 as
+				// defense-in-depth (BlockDamageManager.applyDamage divides by it on every hit), but a config-level
+				// WARNING here is what actually tells the admin their "breaks in one hit" typo got silently
+				// reinterpreted, instead of them just noticing the block-break feature quietly stopped working.
+				if (hits < 1) {
+					warnMalformed(modifiers, report, "Break_Blocks", entry);
+				}
 				BreakMode mode = BreakMode.RESTORE;
 				if (parts.length == 3) {
 					String token = parts[2].trim().toUpperCase(Locale.ROOT);
