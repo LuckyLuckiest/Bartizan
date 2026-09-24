@@ -52,8 +52,10 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	private final boolean                dropHologram;
 	@Setter(AccessLevel.NONE)
 	private final List<String>           deathMessages;
-	// Runtime state
-	private final Map<WeaponTag, Object> tags;
+	// Runtime state — not final so initClone can assign a fresh TreeMap instead of clearing the one still shared
+	// with the clone's source/siblings (BZ-WM-07); no public setter, same as deathMessages/uuid above.
+	@Setter(AccessLevel.NONE)
+	private       Map<WeaponTag, Object> tags;
 	// Reload configuration (immutable — set at construction)
 	@Nullable
 	private final ReloadData             reloadData;
@@ -66,7 +68,12 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	private       DurabilityData         durabilityData;
 	private       SoundData              soundData;
 	private       ReloadActionBarData    reloadActionBarData;
-	private       ModifiersData          modifiersData;
+	// Defaults to an empty (all-null/empty-list) instance so a weapon YAML with no `Modifiers:` section still
+	// gives every hasXxx()/getXxx() caller a safe, non-null object instead of an NPE (BZ-WM-01).
+	private       ModifiersData          modifiersData = new ModifiersData();
+	// null when the weapon YAML has no Shoot.Recoil: section (BZ-WM-11) — every caller (applyPush,
+	// RecoilManager.applyRecoil) must guard it, same as reloadData/ammunitionData/muzzleOffsetData above.
+	@Nullable
 	private       RecoilData             recoilData;
 	private       ScopeData              scopeData;
 	private       SpreadData             spreadData;
@@ -701,6 +708,12 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	}
 
 	public void applyPush(Player player) {
+		// recoilData is unset for a weapon with no Shoot.Recoil: section configured (BZ-WM-11) — checked first,
+		// matching RecoilManager.applyRecoil's own guard, before touching the player at all.
+		if (recoilData == null) {
+			return;
+		}
+
 		// Never apply push if player is not on solid ground
 		if (!isPlayerGrounded(player)) {
 			return;
@@ -799,7 +812,9 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	 * their own {@code clone()} implementations.
 	 */
 	protected void initClone(Weapon source) {
-		this.tags.clear();
+		// A fresh map, not this.tags.clear() — Object.clone() copied only the reference, so clear() would wipe
+		// the exact TreeMap the source (and every sibling clone) still points at (BZ-WM-07).
+		this.tags = new TreeMap<>();
 		this.durabilityData      = source.durabilityData != null ? source.durabilityData.clone() : null;
 		this.soundData           = source.soundData != null ? source.soundData.clone() : null;
 		this.reloadActionBarData = source.reloadActionBarData != null ? source.reloadActionBarData.clone() : null;

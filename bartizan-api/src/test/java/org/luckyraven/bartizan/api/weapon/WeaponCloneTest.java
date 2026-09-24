@@ -28,12 +28,10 @@ import static org.mockito.Mockito.mock;
  * other instance minted from the same template — e.g. one player's spread/recoil state leaking into another
  * player's copy of the same gun. This test proves every mutable DTO is genuinely deep-copied, not aliased.
  *
- * <p><b>New finding beyond the audit's numbered Observations table</b> — {@link #clone_bug_tagsMapIsSharedNotCopied()}:
- * {@code Weapon.tags} is a {@code final} field, so {@code Object.clone()} inside {@link Weapon#clone()} copies only
- * the reference, not the map. {@code initClone}'s {@code this.tags.clear()} therefore clears the one map both the
- * source and the clone point to — cloning a weapon that has already had {@code initializeTags}/{@code buildItem}
- * called on it silently wipes the source's tag cache too. Confirmed in code and pinned here; not previously listed
- * in weapons.md's Observations table.
+ * <p>Pins the BZ-WM-07 fix — {@link #clone_tagsMapIsIndependentOfSource()}: {@code Weapon.tags} is no longer
+ * {@code final}, and {@code initClone} assigns a fresh {@code TreeMap} instead of calling {@code .clear()} on the
+ * map {@code Object.clone()}'s shallow copy still shares with the source. Cloning a weapon that has already had
+ * {@code initializeTags}/{@code buildItem} called on it must not touch the source's tag cache.
  */
 @DisplayName("Weapon.clone / initClone / copyWithUUID — deep copy semantics")
 class WeaponCloneTest {
@@ -48,6 +46,21 @@ class WeaponCloneTest {
 
 		assertEquals(newUuid, copy.getUuid());
 		assertNotSame(original.getUuid(), copy.getUuid());
+	}
+
+	@Test
+	@DisplayName("ThrowableWeapon.copyWithUUID deep-copies explosionData via clone(), not a shared reference (BZ-WM-10)")
+	void copyWithUUID_throwableWeapon_deepCopiesExplosionData() {
+		ThrowableWeapon original = WeaponFixtures.throwableWeapon(1);
+		original.getExplosionData().setDamage(6.0);
+
+		ThrowableWeapon copy = original.copyWithUUID(UUID.randomUUID());
+		copy.getExplosionData().setDamage(999.0);
+
+		assertNotSame(original.getExplosionData(), copy.getExplosionData(),
+		             "copyWithUUID must go through ThrowableWeapon.clone()'s deep copy, not Weapon.clone() directly");
+		assertEquals(6.0, original.getExplosionData().getDamage(),
+		             "mutating the copy's explosionData must not affect the template's");
 	}
 
 	@Test
@@ -139,31 +152,33 @@ class WeaponCloneTest {
 	}
 
 	@Test
-	@DisplayName("BUG: cloning a weapon whose tags were already populated silently wipes the source's tags too")
-	void clone_bug_tagsMapIsSharedNotCopied() {
+	@DisplayName("cloning a weapon whose tags were already populated leaves the source's tags untouched (BZ-WM-07)")
+	void clone_tagsMapIsIndependentOfSource() {
 		GunWeapon original = WeaponFixtures.gunWeapon(30, 1);
 		original.initializeTags(mock(org.luckyraven.keystone.item.ItemBuilder.class));
 
 		assertFalse(original.getTags().isEmpty(), "sanity check: tags were actually populated before cloning");
 
-		original.clone();
+		GunWeapon copy = original.clone();
 
-		// `tags` is `final`, so Object.clone() copied only the reference — initClone()'s `this.tags.clear()` on
-		// the freshly-cloned copy cleared the exact same TreeMap the source still points to.
-		assertTrue(original.getTags().isEmpty(),
-		           "cloning must not mutate the source, but the source's tag cache is now empty");
+		assertFalse(original.getTags().isEmpty(), "cloning must not mutate the source's tag cache");
+		assertNotSame(original.getTags(), copy.getTags(), "the clone must get its own tags map, not share the source's");
 	}
 
 	@Test
-	@DisplayName("a weapon with no ModifiersData/RecoilData/ScopeData/SpreadData configured clones cleanly to all-null")
+	@DisplayName("a weapon with no RecoilData/ScopeData/SpreadData configured clones cleanly to all-null, and ModifiersData clones to its own empty instance (BZ-WM-01)")
 	void clone_allNullOptionalData_staysNull() {
 		GunWeapon original = WeaponFixtures.gunWeapon(30, 1);
 		// WeaponFixtures never sets ModifiersData/RecoilData/ScopeData/SpreadData/SoundData/DurabilityData/
-		// ReloadActionBarData — matches an admin weapon YAML missing every optional section.
+		// ReloadActionBarData — matches an admin weapon YAML missing every optional section. ModifiersData is the
+		// one exception: Weapon.modifiersData defaults to a fresh, empty ModifiersData() (BZ-WM-01) rather than
+		// null, so every hasXxx() check sees a safe object instead of needing a null guard.
+		assertFalse(original.getModifiersData().hasPenetration(), "sanity check: the default is genuinely empty");
 
 		GunWeapon copy = original.clone();
 
-		assertSame(null, copy.getModifiersData());
+		assertNotSame(original.getModifiersData(), copy.getModifiersData(),
+		             "the clone must get its own ModifiersData instance, not share the template's");
 		assertSame(null, copy.getRecoilData());
 		assertSame(null, copy.getScopeData());
 		assertSame(null, copy.getSpreadData());

@@ -17,15 +17,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Pins {@link SpreadManager}'s spread accumulation, bounds clamping and reset behaviour (weapons.md W20 — Recoil
  * and spread).
  *
- * <p>Pins Observation #8 (weapons.md): {@code SpreadData.resetTime} is authored in YAML as {@code Time:} ticks
- * (e.g. {@code Time: 5}), but {@link SpreadManager#applySpread} compares it against a millisecond delta
- * ({@code System.currentTimeMillis()}). A shot fired even a few milliseconds after the previous one — which is
- * every real shot, since 5 ticks = 250 ms is far larger than the sub-millisecond gap between two calls in a test
- * (and larger than any human's real trigger cadence being mistaken for "no reset") — resets to
- * {@code Starting_Spread} instead of accumulating. This test proves the reset fires on back-to-back calls even
- * though 5 <i>ticks</i> have obviously not elapsed.
+ * <p>Pins the BZ-WM-02 fix: {@code SpreadData.resetTime} is authored in YAML as {@code Time:} ticks (e.g.
+ * {@code Time: 5}), and {@link SpreadManager#applySpread} must convert it to a millisecond window (ticks * 50)
+ * before comparing it against {@code System.currentTimeMillis()} deltas — not compare the raw tick count directly
+ * against a millisecond delta, which would reset spread on effectively every real shot.
  */
-@DisplayName("SpreadManager — spread accumulation, bounds, and the ticks-vs-milliseconds reset bug")
+@DisplayName("SpreadManager — spread accumulation, bounds, and the ticks-vs-milliseconds reset conversion")
 class SpreadManagerTest {
 
 	private static SpreadData spreadData(double start, int resetTimeTicks, double changeBase, boolean resetOnBound,
@@ -61,27 +58,23 @@ class SpreadManagerTest {
 	}
 
 	@Test
-	@DisplayName("Observation #8: resetTime authored as 'Time: 5' ticks (250ms) is compared as 5 milliseconds instead")
-	void applySpread_resetTimeInTicks_resetsFarEarlierThanIntended() throws InterruptedException {
+	@DisplayName("BZ-WM-02: resetTime authored as 'Time: 5' ticks (250ms) keeps accumulating well inside that window")
+	void applySpread_resetTimeInTicks_staysWithinTickWindow() throws InterruptedException {
 		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
-		// Time: 5 in YAML is meant as "5 ticks" (250ms at 20 TPS) of no-fire before resetting — but the field is
-		// compared against System.currentTimeMillis() deltas, i.e. as 5 *milliseconds*.
+		// Time: 5 in YAML means "5 ticks" (250ms at 20 TPS) of no-fire before resetting.
 		weapon.setSpreadData(spreadData(0.0, 5, 0.10, false, 0.0, 1.0));
 		SpreadManager manager = new SpreadManager(weapon);
 
 		manager.applySpread(new Vector(0, 0, 1)); // first shot: 0.0 -> updateSpread -> 0.10
 		assertEquals(0.10, manager.getCurrentSpread(), 0.0001);
 
-		// Sleep 50ms: far short of the *intended* 250ms (5-tick) reset window, so correct tick semantics would
-		// still be accumulating — but comfortably past the 5-millisecond threshold the code actually compares
-		// against (and past Windows' coarse System.currentTimeMillis() tick granularity), so the reset fires
-		// anyway.
+		// Sleep 50ms: comfortably inside the 250ms (5-tick) reset window, so spread must keep accumulating
+		// instead of resetting back to Starting_Spread.
 		Thread.sleep(50);
 
 		manager.applySpread(new Vector(0, 0, 1));
-		assertEquals(0.10, manager.getCurrentSpread(), 0.0001,
-		             "spread reset to Starting_Spread + one Change.Base after only ~50ms — nowhere near the "
-		             + "5-tick (250ms) window the YAML author configured — instead of accumulating to 0.20");
+		assertEquals(0.20, manager.getCurrentSpread(), 0.0001,
+		             "spread must accumulate to 0.20 within the 5-tick (250ms) window, not reset to 0.10");
 	}
 
 	@Test

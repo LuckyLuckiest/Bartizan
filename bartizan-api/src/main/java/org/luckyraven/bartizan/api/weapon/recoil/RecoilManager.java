@@ -1,7 +1,6 @@
 package org.luckyraven.bartizan.api.weapon.recoil;
 
 import org.bukkit.entity.Player;
-import org.luckyraven.keystone.exception.PluginException;
 import org.luckyraven.keystone.nms.PacketBridge;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.RecoilData;
@@ -85,15 +84,6 @@ public class RecoilManager {
 		} catch (NumberFormatException | ArrayIndexOutOfBoundsException exception) {
 			// Fallback to default recoil if pattern parsing fails
 			applyDefaultRecoil(player, weapon);
-		}
-	}
-
-	@Override
-	public RecoilManager clone() {
-		try {
-			return (RecoilManager) super.clone();
-		} catch (CloneNotSupportedException exception) {
-			throw new PluginException(exception);
 		}
 	}
 
