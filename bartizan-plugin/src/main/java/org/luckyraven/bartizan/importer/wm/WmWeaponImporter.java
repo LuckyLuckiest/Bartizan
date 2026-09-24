@@ -17,8 +17,15 @@ import java.util.Map;
  */
 public final class WmWeaponImporter {
 
-	/** One resolved physical-ammo reference a weapon's {@code Reload.Ammo} needs appended to {@code ammunition.yml}. */
-	public record AmmoAppend(String id, String material, String name) {
+	/**
+	 * One resolved physical-ammo reference a weapon's {@code Reload.Ammo} needs appended to {@code ammunition.yml}.
+	 *
+	 * @param sourceRef the raw, un-sanitized {@code Reload.Ammo} ref this entry came from - carried through so the
+	 * 		shared append point (only place that sees every weapon's {@code AmmoAppend} together) can tell two
+	 * 		different WM ammo refs that collide after {@link #sanitizeKey} (e.g. {@code "5.56mm"} vs
+	 * 		{@code "5,56mm"}, both {@code wm_5_56mm}) apart from the same ref imported by a second weapon.
+	 */
+	public record AmmoAppend(String id, String material, String name, String sourceRef) {
 	}
 
 	/** The result of importing one WM weapon file. */
@@ -730,7 +737,7 @@ public final class WmWeaponImporter {
 			String material = ammoSection != null ? ammoSection.getString("Item_Ammo.Bullet_Item.Type", "IRON_NUGGET")
 			                                      : "IRON_NUGGET";
 			String rawName  = ammoSection != null ? ammoSection.getString("Item_Ammo.Bullet_Item.Name", ref) : ref;
-			return new AmmoAppend(ammoId, material, WmColorTranslator.translate(rawName));
+			return new AmmoAppend(ammoId, material, WmColorTranslator.translate(rawName), ref);
 		}
 
 		ammunition.put("Ammo_Type", "none");

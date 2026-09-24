@@ -29,9 +29,9 @@ class WmImportCommandAmmoBlockTest {
 	@Test
 	void ammoBlock_withBackslashBeforeQuoteInName_doesNotCorruptASiblingEntry() {
 		WmWeaponImporter.AmmoAppend evil = new WmWeaponImporter.AmmoAppend(
-				"wm_evil", "IRON_NUGGET", "Evil\\\" ammo=BAD"); // Evil\" ammo=BAD
+				"wm_evil", "IRON_NUGGET", "Evil\\\" ammo=BAD", "evil_ref"); // Evil\" ammo=BAD
 		WmWeaponImporter.AmmoAppend sibling = new WmWeaponImporter.AmmoAppend(
-				"wm_other", "COAL", "Other Ammo");
+				"wm_other", "COAL", "Other Ammo", "other_ref");
 
 		String text = WmImportCommand.ammoBlock(evil) + "\n" + WmImportCommand.ammoBlock(sibling);
 
@@ -58,7 +58,7 @@ class WmImportCommandAmmoBlockTest {
 		// Material had NO escaping at all before the fix - a plain quote in a WM source Item_Ammo.Bullet_Item.Type
 		// value (unusual, but the field is a bare, ungoverned string) would have broken parsing on its own.
 		WmWeaponImporter.AmmoAppend ammo = new WmWeaponImporter.AmmoAppend(
-				"wm_quoted_material", "IRON_NUGGET\" #evil", "Plain Name");
+				"wm_quoted_material", "IRON_NUGGET\" #evil", "Plain Name", "quoted_material_ref");
 
 		String text = WmImportCommand.ammoBlock(ammo);
 
