@@ -219,6 +219,43 @@ class WeaponAddonTest {
 		           "expected a WARNING recorded for the unimplemented Config_Version key");
 	}
 
+	/**
+	 * Gate {@code BZ-CF-09}: {@code Durability.Base: 0} used to be accepted and stored as {@code durability = 0}.
+	 * Two independent consumers divide by {@code weapon.getDurability()} with no guard ({@code Weapon.buildItem()}
+	 * and {@code DurabilityCalculator.getWeaponDurability}), producing NaN/Infinity that a narrowing cast silently
+	 * truncates to 0 instead of surfacing the misconfiguration.
+	 */
+	@Test
+	@DisplayName("registerWeapon: Durability.Base of 0 is rejected instead of reaching the weapon as a zero denominator")
+	void registerWeapon_durabilityBaseZero_neverProducesZeroDurability() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		File weaponFile = writeWeaponFile("zero_durability.yml", """
+				Information:
+				   Name: "&7Zero Durability&r"
+				   Category: melee
+				   Material: IRON_HOE
+				   Durability:
+				      Base: 0
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+				""");
+
+		WeaponAddon  weaponAddon = new WeaponAddon(null);
+		ConfigReport report     = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, weaponFile));
+
+		Weapon weapon = weaponAddon.getWeapon("zero_durability");
+		assertNotNull(weapon, "a non-fatal Durability.Base range violation must not block registration");
+		assertTrue(weapon.getDurability() >= 1,
+		           "Durability.Base of 0 must never reach the weapon as 0 - the durability scale divides by it");
+		assertTrue(report.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.ERROR && issue.code().equals("config.range")),
+		           "expected a config.range ERROR for Durability.Base below the minimum");
+	}
+
 	private File writeWeaponFile(String name, String yaml) throws IOException {
 		File file = tempDir.resolve("weapon/" + name).toFile();
 		Files.createDirectories(file.getParentFile().toPath());

@@ -106,7 +106,10 @@ public class WeaponAddon {
 		short       onShotDurability  = 0;
 		if (durabilitySection != null) {
 			NodeReader dur = NodeReader.of(durabilitySection, report);
-			durability = (short) dur.get("Base").asInt().min(0).required().orDefault(0);
+			// min(1)/orDefault(1), not 0: Weapon.buildItem() and DurabilityCalculator.getWeaponDurability both
+			// divide by weapon.getDurability() with no guard, so a 0 here becomes a NaN/Infinity durability scale
+			// that a narrowing cast silently truncates to 0 (BZ-CF-09) instead of surfacing the misconfiguration.
+			durability = (short) dur.get("Base").asInt().min(1).required().orDefault(1);
 
 			MappingNode changeSection = dur.get("Change").asMapping().orNull();
 			if (changeSection != null) {
