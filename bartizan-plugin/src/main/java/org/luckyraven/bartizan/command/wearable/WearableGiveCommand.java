@@ -25,6 +25,10 @@ import java.util.Map;
  */
 class WearableGiveCommand extends SubArgument {
 
+	// ponytail: same cap as WeaponGiveHelper.MAX_AMOUNT (36 slots * 64) - an unbounded amount lets
+	// `wearable give <name> 2000000000` allocate an ItemStack[] large enough to OOM the server.
+	private static final int MAX_AMOUNT = 2304;
+
 	private final Bartizan       bartizan;
 	private final Tree<Argument> tree;
 	private final WearableAddon  wearableAddon;
@@ -102,6 +106,8 @@ class WearableGiveCommand extends SubArgument {
 
 		// An external (WS7-D4) entry was never built through Bartizan - the registrant's own give path handles it.
 		if (wearable == null || wearable.isExternal()) return false;
+
+		amount = Math.max(1, Math.min(amount, MAX_AMOUNT));
 
 		ItemStack       sampleItem   = wearable.buildItem(player);
 		int             maxStackSize = sampleItem.getMaxStackSize();
