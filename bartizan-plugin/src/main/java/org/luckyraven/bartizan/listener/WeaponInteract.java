@@ -201,7 +201,8 @@ public class WeaponInteract implements Listener {
 		ScopeData scopeData     = weapon.getScopeData();
 		boolean   spyglassScope = scopeData != null && scopeData.getType() == ScopeType.SPYGLASS;
 		// Type: spyglass scopes even at Level: 0 - the vanilla use is the point, the extra SLOWNESS is optional.
-		boolean   validateScope = scopeData == null || scopeData.getLevel() > 0 || spyglassScope;
+		// No scope configured: the click falls through to the weapon's own action (BZ-EV-03, a plain melee swing).
+		boolean   validateScope = scopeData != null && (scopeData.getLevel() > 0 || spyglassScope);
 
 		if (scopeClick && !player.isSneaking() && validateScope && !weapon.isReloading() &&
 		    !isEquipDelayActive(weapon.getUuid())) {

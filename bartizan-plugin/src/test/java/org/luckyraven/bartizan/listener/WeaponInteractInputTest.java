@@ -27,6 +27,8 @@ import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
+import org.luckyraven.bartizan.weapon.action.MeleeAction;
 import org.luckyraven.bartizan.api.weapon.dto.DurabilityData;
 import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
 import org.luckyraven.bartizan.weapon.action.GunAction;
@@ -40,6 +42,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -148,6 +151,22 @@ class WeaponInteractInputTest {
 			listener.onPlayerInteractWithEntity(new PlayerInteractEntityEvent(player, mock(Entity.class)));
 
 			assertEquals(1, shots.constructed().size());
+		}
+	}
+
+	// BZ-EV-03
+
+	@Test
+	@DisplayName("a plain left click with a scopeless melee weapon swings it")
+	void scopelessMelee_plainLeftClick_swings() {
+		MeleeWeapon melee = WeaponFixtures.meleeWeapon(1);
+		when(weaponService.validateAndGetWeapon(player, item)).thenReturn(melee);
+
+		try (MockedConstruction<MeleeAction> swings = mockConstruction(MeleeAction.class)) {
+			listener.onPlayerInteract(click(Action.LEFT_CLICK_AIR));
+
+			assertEquals(1, swings.constructed().size());
+			verify(swings.constructed().get(0)).activate(player);
 		}
 	}
 
