@@ -109,28 +109,7 @@ public class ExplosionHandler {
 			double damage = ExplosionMath.damageAt(data.getShape(), radius, data.getDamage(), offset);
 
 			if (damage > 0) {
-				if (shooter instanceof Player playerShooter) {
-					Bukkit.getPluginManager().callEvent(new WeaponEntityDamageEvent(
-							weapon, target, damage, playerShooter, weapon.getName(), DamageKind.EXPLOSION));
-				}
-
-				// Without this flag, WeaponInteract.onEntityDamage cancels the damage whenever the shooter still
-				// holds a weapon — mirrors the raytracer's own entity-impact guard exactly.
-				WeaponRaytracer.setRaytraceDamageInProgress(true);
-				try {
-					target.damage(damage, shooter);
-				} finally {
-					WeaponRaytracer.setRaytraceDamageInProgress(false);
-				}
-
-				applyKnockback(target, offset, data);
-
-				// Gate HI-a review fix: getNearbyEntities(...) above is a bounding box, not the actual blast
-				// shape — gating fire on damage > 0 (which ExplosionMath.damageAt already zeroes outside the
-				// shape) keeps a victim standing just outside a sphere/cube blast from catching fire anyway.
-				if (data.getFireTicks() > 0) {
-					target.setFireTicks(data.getFireTicks());
-				}
+				damageVictim(weapon, data, shooter, target, offset, damage);
 			}
 		}
 
@@ -144,6 +123,51 @@ public class ExplosionHandler {
 		if (depth == 0 && shooter != null) {
 			spawnCluster(weapon, data, centre, shooter);
 			spawnAirstrike(weapon, data, centre, shooter);
+		}
+	}
+
+	/**
+	 * Applies blast damage to one already-eligible victim — damage, {@link WeaponEntityDamageEvent}, knockback and
+	 * fire ticks, all gated on whether the damage actually landed (BZ-RT-19). Package-private (not private) so it's
+	 * directly unit-testable with a mocked target, without the particle burst / block-damage / cluster-spawn side
+	 * effects that surround it in {@link #explode}.
+	 * <p>
+	 * Mirrors {@code WeaponRaytracerImpl.handleEntityImpact}/{@code IncendiaryAction}/{@code BeamAction}: the old
+	 * version fired the event and applied knockback/fire <em>before</em> ever checking whether {@code
+	 * target.damage(...)} actually reduced health, so a blocked/no-op blast (invulnerability, a third-party
+	 * plugin's {@code EntityDamageEvent} listener) still recorded stats and a false kill claim.
+	 * {@code setNoDamageTicks(0)} is likewise new here — without it, a Cluster/Airstrike sub-munition's second
+	 * bomblet could be vanilla-blocked by the i-frames the first bomblet's hit just granted.
+	 */
+	void damageVictim(Weapon weapon, ExplosionData data, @Nullable LivingEntity shooter, LivingEntity target,
+	                  Vector offset, double damage) {
+		target.setNoDamageTicks(0);
+		double healthBefore = target.getHealth();
+
+		// Without this flag, WeaponInteract.onEntityDamage cancels the damage whenever the shooter still holds a
+		// weapon — mirrors the raytracer's own entity-impact guard exactly.
+		WeaponRaytracer.setRaytraceDamageInProgress(true);
+		try {
+			target.damage(damage, shooter);
+		} finally {
+			WeaponRaytracer.setRaytraceDamageInProgress(false);
+		}
+
+		boolean damageBlocked = target.isValid() && !target.isDead() && target.getHealth() >= healthBefore;
+		if (damageBlocked) return;
+
+		if (shooter instanceof Player playerShooter) {
+			Bukkit.getPluginManager().callEvent(new WeaponEntityDamageEvent(
+					weapon, target, damage, playerShooter, weapon.getName(), DamageKind.EXPLOSION));
+		}
+
+		applyKnockback(target, offset, data);
+
+		// Gate HI-a review fix: getNearbyEntities(...) in explode() is a bounding box, not the actual blast shape
+		// — gating fire on damage > 0 (which ExplosionMath.damageAt already zeroes outside the shape) keeps a
+		// victim standing just outside a sphere/cube blast from catching fire anyway.
+		if (data.getFireTicks() > 0) {
+			target.setFireTicks(data.getFireTicks());
 		}
 	}
 
