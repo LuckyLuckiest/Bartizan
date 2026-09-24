@@ -40,6 +40,15 @@ public class BiologicalWeaponParser {
 		boolean      cumulativeLevels = shoot.get("Cumulative_Levels").asBool().orDefault(false);
 		StatusData   status           = StatusSectionParser.parse(shoot, report, base.displayName(), charge.getMaxLevel());
 
+		// BZ-CF-05: a BIOLOGICAL weapon with no Effects_Per_Level used to load clean and then silently apply no
+		// status effect on every shot (BiologicalAction.effectsForLevel returns List.of() for an empty list) —
+		// mirrors ThrowableWeaponParser's Type: STUN + empty Effects guard so an admin who omits the key finds out
+		// at load time instead of shipping an inert weapon.
+		if (effectsPerLevel.isEmpty()) {
+			throw new InvalidConfigurationException(
+					"Biological weapon '" + base.fileName() + "' has an empty or missing Effects_Per_Level");
+		}
+
 		BiologicalData biologicalData = new BiologicalData(charge, effectsPerLevel, range, baseDamage, status,
 		                                                    cumulativeLevels);
 		ParsedAmmo     parsed         = ammoParser.parse(root, report);

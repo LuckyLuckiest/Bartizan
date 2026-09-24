@@ -28,6 +28,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -283,6 +284,41 @@ class BiologicalWeaponParserTest {
 		StatusSectionParser.lowerTracer(readers.shoot(), modifiers);
 
 		assertEquals(explicit, modifiers.getTracer());
+	}
+
+	@Test
+	@DisplayName("BZ-CF-05: missing Effects_Per_Level fails the load instead of shipping a silently inert weapon")
+	void missingEffectsPerLevel_failsLoad() {
+		Readers readers = readersFor("""
+				Information:
+				   Name: "&aSyringe Gun"
+				   Category: biological
+				   Material: GLASS_BOTTLE
+				Shoot:
+				   Range: 30.0
+				   Base_Damage: 4.0
+				""");
+
+		assertThrows(org.bukkit.configuration.InvalidConfigurationException.class,
+		            () -> parse(readers, "&aSyringe Gun"));
+	}
+
+	@Test
+	@DisplayName("BZ-CF-05: empty Effects_Per_Level list fails the load the same as a missing key")
+	void emptyEffectsPerLevel_failsLoad() {
+		Readers readers = readersFor("""
+				Information:
+				   Name: "&aSyringe Gun"
+				   Category: biological
+				   Material: GLASS_BOTTLE
+				Shoot:
+				   Range: 30.0
+				   Base_Damage: 4.0
+				   Effects_Per_Level: []
+				""");
+
+		assertThrows(org.bukkit.configuration.InvalidConfigurationException.class,
+		            () -> parse(readers, "&aSyringe Gun"));
 	}
 
 	private BiologicalWeapon parse(Readers readers, String displayName) throws Exception {
