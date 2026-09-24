@@ -5,6 +5,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.luckyraven.keystone.bean.autowire.AutowireTarget;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
 import org.luckyraven.bartizan.weapon.WeaponService;
@@ -33,17 +34,32 @@ public class ProjectileDamageListener implements Listener {
 		// cops-n-crooks NPC AI) reacts to a purely visual entity hitting something. Checked directly against the
 		// damager's entity id (not narrowed to `instanceof Projectile`) since gate HI part b's Projectile.Visual
 		// can drive a FallingBlock/Item/ArmorStand/TNTPrimed visual too, none of which are a Projectile.
-		if (visualSpawner.isCosmetic(event.getDamager().getEntityId())) {
+		// CosmeticTag covers FireworkHookEffect's effect-only burst, whose vanilla splash damage would otherwise land.
+		if (visualSpawner.isCosmetic(event.getDamager().getEntityId()) || CosmeticTag.isMarked(event.getDamager())) {
 			event.setCancelled(true);
 		}
 	}
 
+	/**
+	 * Hoppers and hopper minecarts ignore an {@code Item}'s pickup delay, so without this a {@code DROPPED_ITEM}
+	 * visual flying over one (or a thrown grenade's display item landing on one) would be collected as a real item.
+	 */
+	@EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+	public void onHopperPickup(InventoryPickupItemEvent event) {
+		if (visualSpawner.isCosmetic(event.getItem().getEntityId()) || CosmeticTag.isMarked(event.getItem())) {
+			event.setCancelled(true);
+		}
+	}
+
+	/**
+	 * Cancels vanilla's own collision on a cosmetic visual. The id stays registered: this hit's
+	 * {@code EntityDamageByEntityEvent} fires after this one and still needs the {@code isCosmetic} guard above, and
+	 * {@code SteppedProjectileTask.terminate()} is what unregisters the visual.
+	 */
 	@EventHandler(priority = EventPriority.LOWEST)
 	public void onProjectileHit(ProjectileHitEvent event) {
-		int projectileId = event.getEntity().getEntityId();
-
-		if (visualSpawner.isCosmetic(projectileId)) {
-			visualSpawner.unregisterCosmetic(projectileId);
+		if (visualSpawner.isCosmetic(event.getEntity().getEntityId())) {
+			event.setCancelled(true);
 		}
 	}
 

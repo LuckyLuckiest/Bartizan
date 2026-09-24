@@ -49,18 +49,71 @@ public class ModifierHandler {
 		}
 
 		double armor          = armorInstance.getValue();
+		double toughness      = readArmorToughness(target);
 		double effectiveArmor = armorPiercing.calculateEffectiveArmor(armor);
 
-		// Minecraft damage reduction formula: damage * (1 - min(20, armor) / 25)
-		double normalReduction   = Math.min(20, armor) / 25.0;
-		double piercingReduction = Math.min(20, effectiveArmor) / 25.0;
+		double intended = vanillaDamageAfterArmor(baseDamage, effectiveArmor, toughness);
 
-		// Calculate the damage difference
-		double normalDamage   = baseDamage * (1 - normalReduction);
-		double piercingDamage = baseDamage * (1 - piercingReduction);
+		// living.damage() will re-run Minecraft's REAL armor formula against the target's un-pierced armor/
+		// toughness on top of whatever we return here. BZ-RT-16: dividing by a single flat reduction constant (the
+		// previous fix) overcorrects, because vanilla's actual reduction shrinks as the input damage grows
+		// (vanillaDamageAfterArmor is quadratic in its damage argument, not linear) — so instead we solve for the
+		// pre-armor damage that, once vanilla's real formula reduces it again, lands exactly `intended`.
+		return solveForPreArmorDamage(intended, armor, toughness);
+	}
 
-		// Return the piercing damage (will be reduced again by Minecraft, so we compensate)
-		return baseDamage + (piercingDamage - normalDamage);
+	/**
+	 * Reads the target's {@code Armor_Toughness} attribute via {@link XAttribute} for cross-version compatibility,
+	 * defaulting to 0 (vanilla's own default) when the attribute or its instance is unavailable.
+	 */
+	private static double readArmorToughness(LivingEntity target) {
+		Attribute toughnessAttribute = XAttribute.ARMOR_TOUGHNESS.get();
+		if (toughnessAttribute == null) {
+			return 0.0;
+		}
+
+		AttributeInstance toughnessInstance = target.getAttribute(toughnessAttribute);
+		return toughnessInstance == null ? 0.0 : toughnessInstance.getValue();
+	}
+
+	/**
+	 * Minecraft's real post-1.9 armor formula ({@code CombatRules.getDamageAfterAbsorb}) — not the flat
+	 * {@code damage*(1-min(20,armor)/25)} model, which ignores toughness and stays constant regardless of how much
+	 * damage is being reduced. The real reduction shrinks as {@code damage} grows.
+	 */
+	private static double vanillaDamageAfterArmor(double damage, double armor, double toughness) {
+		double f = 2.0 + toughness / 4.0;
+		double g = Math.max(armor * 0.2, Math.min(armor - damage / f, 20.0));
+		return damage * (1.0 - g / 25.0);
+	}
+
+	/**
+	 * Solves for the pre-armor damage {@code D} such that {@link #vanillaDamageAfterArmor} — applied with the
+	 * target's real, un-bypassed {@code armor}/{@code toughness} — reduces {@code D} down to exactly
+	 * {@code intended}. {@code vanillaDamageAfterArmor} is monotonic increasing in its damage argument, so a short
+	 * bisection finds the inverse without needing a piecewise closed form for its clamp.
+	 */
+	private static double solveForPreArmorDamage(double intended, double armor, double toughness) {
+		if (intended <= 0) {
+			return 0.0;
+		}
+
+		// vanillaDamageAfterArmor(D) <= D always (reduction is never negative), so D must be >= intended.
+		double low  = intended;
+		double high = Math.max(intended * 5.0, 1.0);
+		while (vanillaDamageAfterArmor(high, armor, toughness) < intended) {
+			high *= 2;
+		}
+
+		for (int i = 0; i < 40; i++) {
+			double mid = (low + high) / 2.0;
+			if (vanillaDamageAfterArmor(mid, armor, toughness) < intended) {
+				low = mid;
+			} else {
+				high = mid;
+			}
+		}
+		return high;
 	}
 
 	/**

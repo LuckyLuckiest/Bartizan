@@ -7,14 +7,18 @@ import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.ScoreboardManager;
 import org.bukkit.scoreboard.Team;
 import org.jetbrains.annotations.Nullable;
+import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
 import org.luckyraven.bartizan.api.weapon.dto.ExplosionData;
 import org.luckyraven.bartizan.api.weapon.dto.ThrowableData;
 
 /**
  * Resolves {@code Damage.Owner_Immunity} / {@code Damage.Ignore_Teams} (and the throwable equivalents) against a
- * shooter/victim pair (weapons-roadmap.md gate {@code HF}, §4). A "protected" victim should take no damage — callers
- * skip it rather than stopping a raytrace ray on it.
+ * shooter/victim pair (weapons-roadmap.md gate {@code HF}, §4), plus {@link CombatEligibility} (BZ-RT-03/BZ-RT-20):
+ * a victim a consumer plugin has marked un-hittable (downed, etc.) is "protected" here too, so every caller that
+ * already routes through this shared filter — hitscan/stepped raytrace entity hits and {@code ExplosionHandler}
+ * blast victims alike — honours it without each needing its own check. A "protected" victim should take no damage —
+ * callers skip it rather than stopping a raytrace ray on it.
  */
 public final class DamageRules {
 
@@ -39,6 +43,8 @@ public final class DamageRules {
 
 	private static boolean isProtected(boolean ownerImmunity, boolean ignoreTeams, @Nullable LivingEntity shooter,
 	                                   LivingEntity victim) {
+		if (victim instanceof Player player && !CombatEligibility.resolve().canBeHit(player)) return true;
+
 		if (shooter == null) return false;
 		if (victim.equals(shooter)) return ownerImmunity;
 
