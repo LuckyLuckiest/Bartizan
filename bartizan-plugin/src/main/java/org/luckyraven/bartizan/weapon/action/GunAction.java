@@ -56,8 +56,10 @@ public class GunAction {
 			return;
 		}
 
-		// consume a bullet
-		boolean consumed = weapon.consumeShot();
+		// consume a bullet - captured pre-consume so a cancelled WeaponShootEvent below can restore the exact
+		// magazine count (BZ-FA-05: refunding a hardcoded 1 round shorted every Consumed_Amount > 1 weapon)
+		int     magBeforeConsume = weapon.getCurrentMagCapacity();
+		boolean consumed         = weapon.consumeShot();
 
 		// no shot fired
 		if (!consumed) {
@@ -80,7 +82,9 @@ public class GunAction {
 		Bukkit.getPluginManager().callEvent(shootEvent);
 
 		if (shootEvent.isCancelled()) {
-			weapon.addAmmunition(1);
+			// BZ-FA-05: restores the exact pre-shot magazine count rather than a hardcoded 1 round, so a
+			// Consumed_Amount > 1 weapon isn't shorted a round every time a listener cancels the shot.
+			weapon.setCurrentMagCapacity(magBeforeConsume);
 			return;
 		}
 
