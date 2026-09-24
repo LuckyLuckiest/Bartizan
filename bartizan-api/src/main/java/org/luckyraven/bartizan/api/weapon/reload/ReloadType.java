@@ -5,18 +5,37 @@ import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.weapon.reload.InstantReload;
 import org.luckyraven.bartizan.api.weapon.reload.NumberedReload;
 
+import java.util.Locale;
+import java.util.Optional;
+
 public enum ReloadType {
 
 	INSTANT,
 	ONE,
 	NUM;
 
-	public static ReloadType getType(String type) {
-		return switch (type.toLowerCase()) {
-			case "one" -> ONE;
-			case "num" -> NUM;
-			default -> INSTANT;
+	/**
+	 * @return the matching {@link ReloadType} for a recognised key, or {@link Optional#empty()} for an
+	 * 		unrecognised/blank/{@code null} one — callers that can report a {@code ConfigReport} warning (BZ-CF-14)
+	 * 		should use this instead of {@link #getType(String)}, which silently defaults.
+	 */
+	public static Optional<ReloadType> fromKey(String type) {
+		if (type == null || type.isBlank()) return Optional.empty();
+
+		return switch (type.trim().toLowerCase(Locale.ROOT)) {
+			case "one" -> Optional.of(ONE);
+			case "num" -> Optional.of(NUM);
+			case "instant" -> Optional.of(INSTANT);
+			default -> Optional.empty();
 		};
+	}
+
+	/**
+	 * Thin default-on-unrecognised wrapper around {@link #fromKey(String)} for callers with no {@code ConfigReport}
+	 * to warn on.
+	 */
+	public static ReloadType getType(String type) {
+		return fromKey(type).orElse(INSTANT);
 	}
 
 	/**

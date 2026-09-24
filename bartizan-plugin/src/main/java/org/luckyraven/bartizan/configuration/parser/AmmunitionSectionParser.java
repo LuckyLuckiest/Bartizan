@@ -14,6 +14,7 @@ import org.luckyraven.bartizan.api.weapon.reload.ReloadType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Parses the {@code Ammunition:} and optional {@code Reload:} sections from a weapon YAML file. Returns a
@@ -97,7 +98,14 @@ public class AmmunitionSectionParser {
 					typeAmount = 1;
 				}
 			}
-			reloadType   = ReloadType.getType(typeStr);
+			// BZ-CF-14: an unrecognised Reload.Type (e.g. a reversed "2-num") used to silently resolve to INSTANT
+			// via ReloadType.getType's default branch, with no warning anywhere.
+			Optional<ReloadType> parsedReloadType = ReloadType.fromKey(typeStr);
+			reloadType = parsedReloadType.orElse(ReloadType.INSTANT);
+			if (parsedReloadType.isEmpty()) {
+				report.add(Severity.WARNING, reloadSection.location(), "Reload.Type",
+				           "unrecognised value '" + rawTypeStr + "' for Reload.Type", "reload.unknown_type");
+			}
 			reloadAmount = typeAmount;
 
 			unloadAmmoOnReload    = reload.get("Unload_Ammo_On_Reload").asBool().orDefault(false);

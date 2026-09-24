@@ -252,6 +252,23 @@ class AmmunitionSectionParserTest {
 		assertFalse(report.hasErrors());
 	}
 
+	@Test
+	@DisplayName("BZ-CF-14: an unrecognised Reload.Type warns and falls back to instant, not silently")
+	void unknownReloadType_warnsAndFallsBackToInstant() {
+		ParsedAmmo parsed = parser.parse(rootReaderFor("""
+				Ammunition:
+				   Ammo_Type: 9mm
+				   Capacity: 6
+				Reload:
+				   Type: 2-num
+				"""), report);
+
+		assertEquals(org.luckyraven.bartizan.api.weapon.reload.ReloadType.INSTANT, parsed.reload().getType());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("reload.unknown_type")));
+	}
+
 	private NodeReader rootReaderFor(String yaml) {
 		report = new ConfigReport();
 		ConfigDocument doc = new ConfigParser().parse(FIXTURE, new StringReader(yaml), report);
