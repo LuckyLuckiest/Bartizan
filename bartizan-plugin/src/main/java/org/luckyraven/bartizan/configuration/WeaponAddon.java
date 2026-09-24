@@ -282,7 +282,18 @@ public class WeaponAddon {
 
 		String selectiveFireString = shoot.get("Selective_Fire").asString().orNull();
 		if (selectiveFireString != null) {
-			weapon.setCurrentSelectiveFire(SelectiveFire.getType(selectiveFireString));
+			// BZ-CF-14: an unrecognised Selective_Fire value used to silently resolve to AUTO via
+			// SelectiveFire.getType's default branch, with no warning anywhere — same fix as
+			// SelectiveFireSectionParser.parse, kept under the same "selectiveFire.unknown_mode" code.
+			Optional<SelectiveFire> selectiveFire = SelectiveFire.fromKey(selectiveFireString);
+			weapon.setCurrentSelectiveFire(selectiveFire.orElse(SelectiveFire.AUTO));
+			if (selectiveFire.isEmpty()) {
+				ConfigNode node = shoot.get("Selective_Fire").node();
+				report.add(Severity.WARNING, node != null ? node.location() : shoot.mapping().location(),
+				           "Shoot.Selective_Fire",
+				           "unrecognised value '" + selectiveFireString + "' for Shoot.Selective_Fire",
+				           "selectiveFire.unknown_mode");
+			}
 		}
 
 		MappingNode weaponConsumedSection = shoot.get("Weapon_Consumed").asMapping().orNull();
@@ -356,7 +367,15 @@ public class WeaponAddon {
 		weapon.getSpreadData().setChangeBase(change.get("Base").asDouble().orDefault(0.0));
 
 		MappingNode boundSection = change.get("Bounds").asMapping().orNull();
-		if (boundSection == null) return;
+		if (boundSection == null) {
+			// BZ-WM-09: SpreadData's bounds now default to unbounded (no more silent collapse to 0), but a
+			// Change.Base with no matching Bounds block is still very likely an authoring oversight — the spread
+			// will now simply grow/shrink forever instead of being clamped anywhere. Worth flagging.
+			report.add(Severity.WARNING, change.mapping().location(), "Spread.Change.Bounds",
+			           "Spread.Change.Base is configured but Change.Bounds is not — spread will never be clamped",
+			           "spread.change_without_bounds");
+			return;
+		}
 
 		NodeReader bounds = NodeReader.of(boundSection, report);
 		weapon.getSpreadData().setResetOnBound(bounds.get("Reset_On_Bound").asBool().orDefault(false));

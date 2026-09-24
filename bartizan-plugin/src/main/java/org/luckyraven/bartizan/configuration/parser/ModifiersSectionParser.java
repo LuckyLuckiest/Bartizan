@@ -49,15 +49,28 @@ public final class ModifiersSectionParser {
 
 		weapon.setModifiersData(new ModifiersData());
 
-		applyBreakBlocks(modifiers, weapon);
+		applyBreakBlocks(modifiers, weapon, report);
 		applyPenetration(modifiers, weapon, report);
-		applyRicochet(modifiers, weapon);
-		applyTracer(modifiers, weapon);
-		applyArmorPiercing(modifiers, weapon);
-		applyFlatDamage(modifiers, weapon);
+		applyRicochet(modifiers, weapon, report);
+		applyTracer(modifiers, weapon, report);
+		applyArmorPiercing(modifiers, weapon, report);
+		applyFlatDamage(modifiers, weapon, report);
 	}
 
-	private static void applyBreakBlocks(NodeReader modifiers, Weapon weapon) {
+	/**
+	 * BZ-CF-13: every {@code Modifiers.*} DSL entry that fails to parse routes through here so an admin sees it in
+	 * the reload/startup log (mirrors the pattern already used elsewhere in this package, e.g.
+	 * {@link EffectsSectionParser#parseEntry}) instead of the value silently vanishing with zero indication
+	 * anywhere.
+	 */
+	private static void warnMalformed(NodeReader modifiers, ConfigReport report, String key, String raw) {
+		MappingNode mapping = modifiers.mapping();
+		report.add(Severity.WARNING, mapping.location(), mapping.path() + "." + key,
+		           "malformed " + key + " value '" + raw + "'",
+		           "modifiers." + key.toLowerCase(Locale.ROOT) + ".malformed");
+	}
+
+	private static void applyBreakBlocks(NodeReader modifiers, Weapon weapon, ConfigReport report) {
 		for (String entry : modifiers.get("Break_Blocks").asList().ofStrings().orEmpty()) {
 			String[] parts = entry.split("-");
 			if (parts.length != 2 && parts.length != 3) continue;
@@ -65,7 +78,14 @@ public final class ModifiersSectionParser {
 				Set<Material> materials = BlockGroupResolver.resolve(parts[0].trim());
 				if (materials.isEmpty()) continue;
 
-				int       hits = Integer.parseInt(parts[1].trim());
+				int hits = Integer.parseInt(parts[1].trim());
+				// BZ-RT-13: BlockBreakModifier's compact constructor already clamps hits to at least 1 as
+				// defense-in-depth (BlockDamageManager.applyDamage divides by it on every hit), but a config-level
+				// WARNING here is what actually tells the admin their "breaks in one hit" typo got silently
+				// reinterpreted, instead of them just noticing the block-break feature quietly stopped working.
+				if (hits < 1) {
+					warnMalformed(modifiers, report, "Break_Blocks", entry);
+				}
 				BreakMode mode = BreakMode.RESTORE;
 				if (parts.length == 3) {
 					String token = parts[2].trim().toUpperCase(Locale.ROOT);
@@ -99,7 +119,11 @@ public final class ModifiersSectionParser {
 					      .setPenetration(new PenetrationModifier(Integer.parseInt(parts[0].trim()),
 					                                              Integer.parseInt(parts[1].trim()),
 					                                              Double.parseDouble(parts[2].trim())));
-				} catch (NumberFormatException ignored) { }
+				} catch (NumberFormatException exception) {
+					warnMalformed(modifiers, report, "Penetration", penetrationString);
+				}
+			} else {
+				warnMalformed(modifiers, report, "Penetration", penetrationString);
 			}
 
 			if (pierceEntities > 0) {
@@ -139,10 +163,13 @@ public final class ModifiersSectionParser {
 		           + "precedence", "modifiers.pierce_entities_and_beam_pierce");
 	}
 
-	private static void applyRicochet(NodeReader modifiers, Weapon weapon) {
+	private static void applyRicochet(NodeReader modifiers, Weapon weapon, ConfigReport report) {
 		for (String entry : modifiers.get("Ricochet").asList().ofStrings().orEmpty()) {
 			String[] parts = entry.split("-");
-			if (parts.length != 3) continue;
+			if (parts.length != 3) {
+				warnMalformed(modifiers, report, "Ricochet", entry);
+				continue;
+			}
 
 			try {
 				Set<Material> bounceOffBlocks = new HashSet<>();
@@ -151,16 +178,21 @@ public final class ModifiersSectionParser {
 				weapon.getModifiersData()
 				      .addRicochet(new RicochetModifier(Integer.parseInt(parts[0].trim()), bounceOffBlocks,
 				                                        Double.parseDouble(parts[2].trim())));
-			} catch (NumberFormatException ignored) { }
+			} catch (NumberFormatException exception) {
+				warnMalformed(modifiers, report, "Ricochet", entry);
+			}
 		}
 	}
 
-	private static void applyTracer(NodeReader modifiers, Weapon weapon) {
+	private static void applyTracer(NodeReader modifiers, Weapon weapon, ConfigReport report) {
 		String tracerString = modifiers.get("Tracer").asString().orNull();
 		if (tracerString == null) return;
 
 		String[] parts = tracerString.split("-");
-		if (parts.length != 3) return;
+		if (parts.length != 3) {
+			warnMalformed(modifiers, report, "Tracer", tracerString);
+			return;
+		}
 
 		try {
 			String colorHex = parts[0].trim();
@@ -170,27 +202,33 @@ public final class ModifiersSectionParser {
 			weapon.getModifiersData()
 			      .setTracer(new TracerModifier(color, Boolean.parseBoolean(parts[1].trim()),
 			                                    Float.parseFloat(parts[2].trim())));
-		} catch (NumberFormatException | IndexOutOfBoundsException ignored) { }
+		} catch (NumberFormatException | IndexOutOfBoundsException exception) {
+			warnMalformed(modifiers, report, "Tracer", tracerString);
+		}
 	}
 
-	private static void applyArmorPiercing(NodeReader modifiers, Weapon weapon) {
+	private static void applyArmorPiercing(NodeReader modifiers, Weapon weapon, ConfigReport report) {
 		String armorPiercingString = modifiers.get("Armor_Piercing").asString().orNull();
 		if (armorPiercingString == null) return;
 
 		try {
 			weapon.getModifiersData()
 			      .setArmorPiercing(new ArmorPiercingModifier(Double.parseDouble(armorPiercingString.trim())));
-		} catch (NumberFormatException ignored) { }
+		} catch (NumberFormatException exception) {
+			warnMalformed(modifiers, report, "Armor_Piercing", armorPiercingString);
+		}
 	}
 
-	private static void applyFlatDamage(NodeReader modifiers, Weapon weapon) {
+	private static void applyFlatDamage(NodeReader modifiers, Weapon weapon, ConfigReport report) {
 		String flatDamageString = modifiers.get("Flat_Damage").asString().orNull();
 		if (flatDamageString == null) return;
 
 		try {
 			double bonus = Double.parseDouble(flatDamageString.trim());
 			if (bonus > 0) weapon.getModifiersData().setFlatDamage(new FlatDamageModifier(bonus));
-		} catch (NumberFormatException ignored) { }
+		} catch (NumberFormatException exception) {
+			warnMalformed(modifiers, report, "Flat_Damage", flatDamageString);
+		}
 	}
 
 }

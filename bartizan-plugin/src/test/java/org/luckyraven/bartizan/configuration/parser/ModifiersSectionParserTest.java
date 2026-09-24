@@ -78,6 +78,118 @@ class ModifiersSectionParserTest {
 		assertTrue(report.issues().stream().noneMatch(issue -> issue.severity() == Severity.WARNING));
 	}
 
+	@Test
+	@DisplayName("BZ-CF-13: a malformed Penetration string warns instead of silently dropping")
+	void malformedPenetration_warns() {
+		ConfigReport report = new ConfigReport();
+		NodeReader   root   = rootReaderFor(report, """
+				Modifiers:
+				   Penetration: 2-3
+				""");
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+
+		ModifiersSectionParser.apply(root, weapon, report);
+
+		assertEquals(null, weapon.getModifiersData().getPenetration());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("modifiers.penetration.malformed")));
+	}
+
+	@Test
+	@DisplayName("BZ-CF-13: a malformed Ricochet entry warns instead of silently dropping")
+	void malformedRicochet_warns() {
+		ConfigReport report = new ConfigReport();
+		NodeReader   root   = rootReaderFor(report, """
+				Modifiers:
+				   Ricochet:
+				      - "3-GLASS-not_a_number"
+				""");
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+
+		ModifiersSectionParser.apply(root, weapon, report);
+
+		assertTrue(weapon.getModifiersData().getRicochets().isEmpty());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("modifiers.ricochet.malformed")));
+	}
+
+	@Test
+	@DisplayName("BZ-CF-13: a malformed Tracer string warns instead of silently dropping")
+	void malformedTracer_warns() {
+		ConfigReport report = new ConfigReport();
+		NodeReader   root   = rootReaderFor(report, """
+				Modifiers:
+				   Tracer: FF5500-true
+				""");
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+
+		ModifiersSectionParser.apply(root, weapon, report);
+
+		assertEquals(null, weapon.getModifiersData().getTracer());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("modifiers.tracer.malformed")));
+	}
+
+	@Test
+	@DisplayName("BZ-CF-13: a malformed Armor_Piercing value warns instead of silently dropping")
+	void malformedArmorPiercing_warns() {
+		ConfigReport report = new ConfigReport();
+		NodeReader   root   = rootReaderFor(report, """
+				Modifiers:
+				   Armor_Piercing: not_a_number
+				""");
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+
+		ModifiersSectionParser.apply(root, weapon, report);
+
+		assertEquals(null, weapon.getModifiersData().getArmorPiercing());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("modifiers.armor_piercing.malformed")));
+	}
+
+	@Test
+	@DisplayName("BZ-CF-13: a malformed Flat_Damage value warns instead of silently dropping")
+	void malformedFlatDamage_warns() {
+		ConfigReport report = new ConfigReport();
+		NodeReader   root   = rootReaderFor(report, """
+				Modifiers:
+				   Flat_Damage: not_a_number
+				""");
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+
+		ModifiersSectionParser.apply(root, weapon, report);
+
+		assertEquals(null, weapon.getModifiersData().getFlatDamage());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("modifiers.flat_damage.malformed")));
+	}
+
+	@Test
+	@DisplayName("BZ-RT-13: a Break_Blocks entry with hits 0 warns and the resulting modifier clamps to 1")
+	void breakBlocksZeroHits_warnsAndClampsToOne() {
+		ConfigReport report = new ConfigReport();
+		NodeReader   root   = rootReaderFor(report, """
+				Modifiers:
+				   Break_Blocks:
+				      - "GLASS-0"
+				""");
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+
+		ModifiersSectionParser.apply(root, weapon, report);
+
+		assertEquals(1, weapon.getModifiersData().getBreakBlocks().size());
+		assertEquals(1, weapon.getModifiersData().getBreakBlocks().get(0).hitsRequired(),
+		            "hits: 0 must not reach BlockDamageManager as 0 (divide-by-zero on the first hit)");
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("modifiers.break_blocks.malformed")));
+	}
+
 	private NodeReader rootReaderFor(ConfigReport report, String yaml) {
 		ConfigDocument doc = new ConfigParser().parse(FIXTURE, new StringReader(yaml), report);
 		return NodeReader.of(doc.root(), report);

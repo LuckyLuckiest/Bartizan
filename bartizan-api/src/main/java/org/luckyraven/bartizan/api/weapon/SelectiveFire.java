@@ -1,5 +1,7 @@
 package org.luckyraven.bartizan.api.weapon;
 
+import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 
 public enum SelectiveFire {
@@ -10,12 +12,28 @@ public enum SelectiveFire {
 
 	private static final SelectiveFire[] STATES = values();
 
-	public static SelectiveFire getType(String type) {
-		return switch (type.toLowerCase()) {
-			case "single" -> SINGLE;
-			case "burst" -> BURST;
-			default -> AUTO;
+	/**
+	 * @return the matching {@link SelectiveFire} for a recognised key, or {@link Optional#empty()} for an
+	 * 		unrecognised/blank/{@code null} one — callers that can report a {@code ConfigReport} warning (BZ-CF-14)
+	 * 		should use this instead of {@link #getType(String)}, which silently defaults to AUTO.
+	 */
+	public static Optional<SelectiveFire> fromKey(String type) {
+		if (type == null || type.isBlank()) return Optional.empty();
+
+		return switch (type.trim().toLowerCase(Locale.ROOT)) {
+			case "single" -> Optional.of(SINGLE);
+			case "burst" -> Optional.of(BURST);
+			case "auto" -> Optional.of(AUTO);
+			default -> Optional.empty();
 		};
+	}
+
+	/**
+	 * Thin default-on-unrecognised wrapper around {@link #fromKey(String)} for callers with no {@code ConfigReport}
+	 * to warn on.
+	 */
+	public static SelectiveFire getType(String type) {
+		return fromKey(type).orElse(AUTO);
 	}
 
 	public static SelectiveFire getState(int index) {

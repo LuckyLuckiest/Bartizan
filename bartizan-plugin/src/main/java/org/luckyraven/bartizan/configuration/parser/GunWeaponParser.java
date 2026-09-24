@@ -144,7 +144,7 @@ public class GunWeaponParser {
 				ignoreTeams, Shape.SPHERE, new ExplosionData.Detonation(Set.of(Trigger.BLOCK, Trigger.ENTITY), 0, 0));
 		ExplosionData explosionData = ExplosionSectionParser.parse(explosionReader, legacyExplosion, report);
 
-		int projectileConsumed = projectile.get("Consumed_Amount").asInt().min(0).orDefault(0);
+		int projectileConsumed = projectile.get("Consumed_Amount").asInt().min(1).orDefault(1);
 		int projectilePerShot  = projectile.get("Per_Shot").asInt().min(1).orDefault(1);
 		// Cooldown is authored as a decimal (e.g. 0.8) and Bukkit's getInt silently truncated to 0. Preserve that
 		// semantic by reading as double and casting — keeps existing configs working without surfacing a type error.

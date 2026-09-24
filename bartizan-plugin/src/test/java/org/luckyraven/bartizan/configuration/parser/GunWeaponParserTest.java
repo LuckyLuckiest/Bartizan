@@ -294,6 +294,35 @@ class GunWeaponParserTest {
 				issue -> issue.severity() == Severity.WARNING && issue.code().equals("projectile.unknown_trail")));
 	}
 
+	@Test
+	@DisplayName("BZ-CF-03: Consumed_Amount omitted defaults to 1, not 0 (an omitted key must not grant infinite ammo)")
+	void consumedAmount_absent_defaultsToOne() throws Exception {
+		GunWeapon gun = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Damage:
+				         Base: 10
+				""");
+
+		assertEquals(1, gun.getProjectileData().getConsumed());
+	}
+
+	@Test
+	@DisplayName("BZ-CF-03: Consumed_Amount: 0 is clamped up to 1")
+	void consumedAmount_zero_clampedToOne() throws Exception {
+		GunWeapon gun = parse("""
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Consumed_Amount: 0
+				      Damage:
+				         Base: 10
+				""");
+
+		assertEquals(1, gun.getProjectileData().getConsumed());
+	}
+
 	private GunWeapon parse(String yaml) throws Exception {
 		ConfigDocument doc  = new ConfigParser().parse(FIXTURE, new StringReader(yaml), report);
 		NodeReader     root = NodeReader.of(doc.root(), report);

@@ -204,6 +204,54 @@ class ExplosionSectionParserTest {
 				issue -> issue.severity() == Severity.WARNING && issue.code().equals("explosion.unknown_trigger")));
 	}
 
+	@Test
+	@DisplayName("BZ-CF-17: Cluster.Count above 32 is rejected and falls back to the default of 3, with an ERROR")
+	void clusterCountAboveCeiling_fallsBackToDefault() throws Exception {
+		NodeReader explosion = parseExplosionBlock("""
+				Explosion:
+				   Cluster:
+				      Count: 5000
+				""");
+
+		ExplosionData data = ExplosionSectionParser.parse(explosion, GUN_LEGACY, report);
+
+		assertEquals(3, data.getCluster().count(), "an out-of-range Count must not fan out into 5000 sub-munitions");
+		assertTrue(report.hasErrors());
+	}
+
+	@Test
+	@DisplayName("BZ-CF-17: Airstrike.Count above 32 is rejected and falls back to the default of 3, with an ERROR")
+	void airstrikeCountAboveCeiling_fallsBackToDefault() throws Exception {
+		NodeReader explosion = parseExplosionBlock("""
+				Explosion:
+				   Airstrike:
+				      Count: 9999
+				""");
+
+		ExplosionData data = ExplosionSectionParser.parse(explosion, GUN_LEGACY, report);
+
+		assertEquals(3, data.getAirstrike().count(), "an out-of-range Count must not fan out into 9999 sub-munitions");
+		assertTrue(report.hasErrors());
+	}
+
+	@Test
+	@DisplayName("BZ-CF-17: Cluster/Airstrike Count at the ceiling (32) is accepted")
+	void countAtCeiling_accepted() throws Exception {
+		NodeReader explosion = parseExplosionBlock("""
+				Explosion:
+				   Cluster:
+				      Count: 32
+				   Airstrike:
+				      Count: 32
+				""");
+
+		ExplosionData data = ExplosionSectionParser.parse(explosion, GUN_LEGACY, report);
+
+		assertEquals(32, data.getCluster().count());
+		assertEquals(32, data.getAirstrike().count());
+		assertFalse(report.hasErrors());
+	}
+
 	private NodeReader parseExplosionBlock(String yaml) throws Exception {
 		ConfigDocument doc  = new ConfigParser().parse(FIXTURE, new StringReader(yaml), report);
 		NodeReader     root = NodeReader.of(doc.root(), report);

@@ -176,7 +176,8 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		this.recoil               = new RecoilManager(this);
 		this.spread               = new SpreadManager(this);
 		this.reload               = ammunitionData != null && reloadData != null ?
-		                            reloadData.getType().createInstance(this, ammunitionData.getAmmoType()) :
+		                            reloadData.getType().createInstance(this, ammunitionData.getAmmoType(),
+		                                                                 reloadData.getAmount()) :
 		                            null;
 		this.changingDisplayName  = buildDisplayName();
 		this.durabilityCalculator = new DurabilityCalculator(this);

@@ -419,6 +419,47 @@ class WeaponAddonTest {
 		           "expected a WARNING for the unresolvable Material");
 	}
 
+	/**
+	 * BZ-CF-14: {@code applyOptionalShootConfig}'s own {@code Selective_Fire} read (independent of each type
+	 * parser's {@code SelectiveFireSectionParser} call) used to silently resolve an unrecognised value to AUTO via
+	 * {@code SelectiveFire.getType}'s default branch, with no {@link ConfigReport} entry anywhere.
+	 */
+	@Test
+	@DisplayName("registerWeapon: an unrecognised Shoot.Selective_Fire warns instead of silently becoming AUTO")
+	void registerWeapon_unknownSelectiveFire_warns() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		File weaponFile = writeWeaponFile("bad_selective_fire.yml", """
+				Information:
+				   Name: "&7Bad Selective Fire&r"
+				   Category: gun
+				   Material: IRON_HOE
+				   Durability:
+				      Base: 100
+
+				Shoot:
+				   Selective_Fire: sinlge
+				   Weapon_Consumed:
+				      Consume_On_Shot: 0
+				   Projectile:
+				      Damage:
+				         Base: 10
+				""");
+
+		WeaponAddon  weaponAddon = new WeaponAddon(null);
+		ConfigReport report      = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, weaponFile));
+
+		assertTrue(report.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.WARNING
+				                    && issue.code().equals("selectiveFire.unknown_mode")),
+		           "expected a selectiveFire.unknown_mode WARNING for 'sinlge'");
+
+		Weapon weapon = weaponAddon.getWeapon("bad_selective_fire");
+		assertNotNull(weapon);
+		assertEquals(org.luckyraven.bartizan.api.weapon.SelectiveFire.AUTO, weapon.getCurrentSelectiveFire());
+	}
+
 	private File writeWeaponFile(String name, String yaml) throws IOException {
 		File file = tempDir.resolve("weapon/" + name).toFile();
 		Files.createDirectories(file.getParentFile().toPath());

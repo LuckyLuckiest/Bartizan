@@ -189,6 +189,86 @@ class AmmunitionSectionParserTest {
 		assertTrue(reload.isAutoReloadWhenEmpty());
 	}
 
+	@Test
+	@DisplayName("BZ-CF-04: Capacity/Restore of 0 are clamped to 1, not left at 0 (avoids a reload division by zero)")
+	void capacityAndRestore_zero_clampedToOne() {
+		ParsedAmmo parsed = parser.parse(rootReaderFor("""
+				Ammunition:
+				   Ammo_Type: 9mm
+				   Capacity: 0
+				   Restore: 0
+				"""), report);
+
+		assertEquals(1, parsed.ammo().getMaxMagCapacity());
+		assertEquals(1, parsed.ammo().getRestore());
+	}
+
+	@Test
+	@DisplayName("BZ-CF-04: Reload.Type: numbered-0 is clamped to 1 with a WARNING, not left at 0")
+	void reloadTypeNumberedZero_clampedToOneWithWarning() {
+		ParsedAmmo parsed = parser.parse(rootReaderFor("""
+				Ammunition:
+				   Ammo_Type: 9mm
+				   Capacity: 6
+				Reload:
+				   Type: num-0
+				"""), report);
+
+		assertEquals(1, parsed.reload().getAmount());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("reload.type_amount_too_low")));
+	}
+
+	@Test
+	@DisplayName("BZ-CF-04: Reload.Type with a non-numeric amount is clamped to 1 with a WARNING")
+	void reloadTypeMalformedAmount_clampedToOneWithWarning() {
+		ParsedAmmo parsed = parser.parse(rootReaderFor("""
+				Ammunition:
+				   Ammo_Type: 9mm
+				   Capacity: 6
+				Reload:
+				   Type: num-abc
+				"""), report);
+
+		assertEquals(1, parsed.reload().getAmount());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("reload.type_amount_malformed")));
+	}
+
+	@Test
+	@DisplayName("BZ-CF-04: Reload.Type: num-3 parses the amount normally, no warning")
+	void reloadTypeNumberedValid_parsesNormally() {
+		ParsedAmmo parsed = parser.parse(rootReaderFor("""
+				Ammunition:
+				   Ammo_Type: 9mm
+				   Capacity: 6
+				Reload:
+				   Type: num-3
+				"""), report);
+
+		assertEquals(3, parsed.reload().getAmount());
+		assertFalse(report.hasErrors());
+	}
+
+	@Test
+	@DisplayName("BZ-CF-14: an unrecognised Reload.Type warns and falls back to instant, not silently")
+	void unknownReloadType_warnsAndFallsBackToInstant() {
+		ParsedAmmo parsed = parser.parse(rootReaderFor("""
+				Ammunition:
+				   Ammo_Type: 9mm
+				   Capacity: 6
+				Reload:
+				   Type: 2-num
+				"""), report);
+
+		assertEquals(org.luckyraven.bartizan.api.weapon.reload.ReloadType.INSTANT, parsed.reload().getType());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("reload.unknown_type")));
+	}
+
 	private NodeReader rootReaderFor(String yaml) {
 		report = new ConfigReport();
 		ConfigDocument doc = new ConfigParser().parse(FIXTURE, new StringReader(yaml), report);

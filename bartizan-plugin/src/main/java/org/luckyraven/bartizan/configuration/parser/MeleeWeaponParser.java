@@ -3,12 +3,15 @@ package org.luckyraven.bartizan.configuration.parser;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
 import org.luckyraven.bartizan.configuration.parser.AmmunitionSectionParser.ParsedAmmo;
 import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
 import org.luckyraven.bartizan.api.weapon.dto.MeleeData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
+
+import java.util.EnumSet;
 
 /**
  * Parses the {@code Attack:} / {@code Shoot:} section of a MELEE weapon YAML and constructs a {@link MeleeWeapon}.
@@ -37,9 +40,25 @@ public class MeleeWeaponParser {
 		ReloadData     reloadData     = parsed != null ? parsed.reload() : null;
 		AmmunitionData ammunitionData = parsed != null ? parsed.ammo() : null;
 
-		return new MeleeWeapon(null, base.fileName(), base.displayName(), base.category(),
-		                       base.material(), base.customModelData(), base.durability(), base.lore(),
-		                       base.dropHologram(), base.deathMessages(), meleeData, reloadData, ammunitionData);
+		MeleeWeapon weapon = new MeleeWeapon(null, base.fileName(), base.displayName(), base.category(),
+		                                     base.material(), base.customModelData(), base.durability(), base.lore(),
+		                                     base.dropHologram(), base.deathMessages(), meleeData, reloadData,
+		                                     ammunitionData);
+
+		// BZ-CF-07: without this, Weapon.allowedSelectiveFires stays null (no default) and
+		// SelectiveFire.getNextState(Set) treats null as "no restriction", so a melee weapon configured with
+		// Selective_Fire: single still cycles through AUTO/BURST on a sneak+swap-hand.
+		SelectiveFireSectionParser.ParsedSelectiveFire parsedSelectiveFire =
+				SelectiveFireSectionParser.parse(shoot, report, base.fileName());
+		if (parsedSelectiveFire != null) {
+			weapon.setCurrentSelectiveFire(parsedSelectiveFire.current());
+			weapon.setAllowedSelectiveFires(parsedSelectiveFire.allowed());
+		} else {
+			weapon.setCurrentSelectiveFire(SelectiveFire.SINGLE);
+			weapon.setAllowedSelectiveFires(EnumSet.of(SelectiveFire.SINGLE));
+		}
+
+		return weapon;
 	}
 
 }
