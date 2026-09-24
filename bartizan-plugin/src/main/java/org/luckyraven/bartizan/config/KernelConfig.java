@@ -68,8 +68,11 @@ public class KernelConfig {
 
 	/**
 	 * Installs the reflective recoil adapter (bartizan.md §1.6(2)) — {@code PacketBridge} does not auto-detect, so
-	 * every consumer plugin installs its own adapter exactly once at bootstrap. {@code Bartizan.onDisable()} calls
-	 * {@code PacketBridge.reset()}.
+	 * every consumer plugin installs its own adapter exactly once at bootstrap. {@code Bartizan.onDisable()}
+	 * deliberately never calls {@code PacketBridge.reset()} (BZ-NU-01): on the documented deployment floor
+	 * (Keystone 1.9.0) that reset is a single server-global field shared by every Keystone-powered plugin, so
+	 * withdrawing it here would silently kill packet handling for every other plugin still running. The install
+	 * itself is stateless reflection, so leaving it live for the rest of the server's uptime is harmless.
 	 */
 	@Bean
 	public ReflectivePacketAdapter packetAdapter() {
