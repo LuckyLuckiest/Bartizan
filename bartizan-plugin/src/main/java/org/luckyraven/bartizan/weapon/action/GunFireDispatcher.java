@@ -75,11 +75,13 @@ public final class GunFireDispatcher {
 
 	/**
 	 * {@code Projectile.Cooldown}-derived fire-rate window, in ticks, floored at {@link #MIN_PRESS_LOCK_TICKS} -
-	 * the one formula every {@link #shoot} caller uses to compute how long to {@link #lock} the weapon for.
+	 * the one formula every {@link #shoot} caller uses to compute how long to {@link #lock} the weapon for. Only a
+	 * BURST fires {@code Per_Shot} rounds per press, so only a BURST locks for all of them (BZ-EV-07).
 	 */
 	public static long lockTicksFor(GunWeapon weapon) {
-		var projectileData = weapon.getProjectileData();
-		return Math.max((long) projectileData.getPerShot() * projectileData.getCooldown(), MIN_PRESS_LOCK_TICKS);
+		var  projectileData = weapon.getProjectileData();
+		long rounds         = weapon.getCurrentSelectiveFire() == SelectiveFire.BURST ? projectileData.getPerShot() : 1;
+		return Math.max(rounds * projectileData.getCooldown(), MIN_PRESS_LOCK_TICKS);
 	}
 
 	public static void shoot(JavaPlugin plugin, WeaponService weaponService, GunWeapon weapon,

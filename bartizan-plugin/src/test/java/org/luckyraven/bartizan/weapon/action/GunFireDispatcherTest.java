@@ -85,4 +85,18 @@ class GunFireDispatcherTest {
 		}
 	}
 
+	// BZ-EV-07
+
+	@Test
+	@DisplayName("SINGLE locks for one cooldown, even when the BURST Per_Shot is larger")
+	void lockTicks_single_isOneCooldown() {
+		assertEquals(6, GunFireDispatcher.lockTicksFor(gun(3, 6, SelectiveFire.SINGLE, -1)));
+	}
+
+	@Test
+	@DisplayName("BURST locks for Per_Shot cooldowns")
+	void lockTicks_burst_isPerShotCooldowns() {
+		assertEquals(18, GunFireDispatcher.lockTicksFor(gun(3, 6, SelectiveFire.BURST, -1)));
+	}
+
 }
