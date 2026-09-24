@@ -144,6 +144,21 @@ class WeaponServiceTest {
 	}
 
 	/**
+	 * BZ-WM-06: a throwable's uuid is deterministic per type, so minting one for a second player used to overwrite
+	 * the instance the first player's items already resolve to.
+	 */
+	@Test
+	@DisplayName("minting a throwable type that is already registered keeps the registered instance (BZ-WM-06)")
+	void getWeapon_throwableAlreadyRegistered_isNotOverwritten() {
+		Weapon first  = service.getWeapon(null, null, "test_grenade", true);
+		Weapon second = service.getWeapon(null, null, "test_grenade", true);
+
+		assertNotNull(first);
+		assertSame(first, second);
+		assertSame(first, service.getWeapons().get(first.getUuid()));
+	}
+
+	/**
 	 * BZ-WM-05: {@code getWeapon(String)} and {@code getWeapon(Player, String)} looked like read-only lookups but
 	 * forwarded a null uuid into the minting overload, registering a fresh instance per call. They are gone; the
 	 * read-only callers use {@code getWeaponTemplate}/{@code createTransientWeapon}.

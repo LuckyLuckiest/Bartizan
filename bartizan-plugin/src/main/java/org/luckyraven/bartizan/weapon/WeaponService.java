@@ -284,7 +284,10 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		// Register the weapon first so isWeapon() can find it when setWeaponData
 		// calls getHeldWeaponItem — otherwise the map lookup returns null and the
 		// NBT ammo/durability data is never applied (weapon stays at max capacity).
-		weapons.put(finalUuid, finalWeapon);
+		// putIfAbsent: a throwable's deterministic per-type uuid may already be registered by another holder - keep
+		// that instance instead of overwriting it (BZ-WM-06); also settles two threads minting the same uuid at once.
+		Weapon registered = weapons.putIfAbsent(finalUuid, finalWeapon);
+		if (registered != null) finalWeapon = registered;
 
 		// check if the weapon is new or not
 		// if it was new, then no need to set the data of the uuid since it is not even created/built
