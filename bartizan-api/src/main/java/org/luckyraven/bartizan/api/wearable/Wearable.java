@@ -53,9 +53,7 @@ import java.util.concurrent.ThreadLocalRandom;
 @Getter
 public class Wearable {
 
-	public static final String NBT_KEY          = "wearable";
-	public static final String NBT_TRAIT_PREFIX = "wt_";
-	public static final String NBT_BASE_REDUCE  = "wr_base";
+	public static final String NBT_KEY = "wearable";
 
 	/**
 	 * Per-trait {@code {maxLevel, effectPerLevel}} table, ported verbatim from Gangland's {@code WearableTrait}
@@ -341,11 +339,14 @@ public class Wearable {
 	 * Builds an ItemStack for this registered Wearable. The item is stamped with:
 	 * <ul>
 	 *   <li>{@link #NBT_KEY} → {@link #wearableKey}</li>
-	 *   <li>Per-trait levels under {@code "wt_<traitKey>"}</li>
-	 *   <li>Base reduction under {@link #NBT_BASE_REDUCE}</li>
 	 *   <li>Top-level scalar {@link #extraTags} entries, stamped as-is</li>
 	 * </ul>
 	 * Leather armor additionally has its dye color applied when {@link #leatherColor} is set.
+	 *
+	 * <p>BZ-WE-05: no longer also stamps a {@code wr_base}/per-trait {@code wt_<traitKey>} snapshot - every
+	 * consumer ({@code WearableItemSerializer}, {@code WearableRefresher}, {@code BartizanItemPredicates}) already
+	 * resolves traits and base reduction live from the registry by {@link #NBT_KEY} alone, so that snapshot was
+	 * write-only data nothing ever read back, silently going stale the moment {@code wearables.yml} changed.
 	 */
 	public ItemStack buildItem() {
 		return buildItem(null);
@@ -362,16 +363,8 @@ public class Wearable {
 			builder.setCustomModelData(customModelData);
 		}
 
-		// Stamp registry key and base data into NBT
+		// Stamp the registry key - every consumer resolves traits/base reduction live from the registry by this.
 		builder.addTag(NBT_KEY, wearableKey);
-		builder.addTag(NBT_BASE_REDUCE, baseDamageReduction);
-
-		// Embed per-trait levels
-		if (traits != null) {
-			for (Map.Entry<String, Integer> entry : traits.entrySet()) {
-				builder.addTag(NBT_TRAIT_PREFIX + entry.getKey(), entry.getValue());
-			}
-		}
 
 		// Apply leather dye color
 		if (leatherColor != null && isLeatherArmor(material)) {

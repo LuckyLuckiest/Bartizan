@@ -35,6 +35,7 @@ Errors:
       Invalid: "Invalid wearable: &c%name%"
       Not_Registered: "Wearable not registered: &c%key%"
       Not_Wearable: "Not a registered wearable!"
+      Equip_Denied: "&cYou are not authorized to equip this armor."
    Import:
       Not_Found: "&cWeaponMechanics folder not found at &3%path%&c."
 

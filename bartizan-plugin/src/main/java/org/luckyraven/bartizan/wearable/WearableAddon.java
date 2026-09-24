@@ -166,6 +166,14 @@ public class WearableAddon extends WearableService implements FileInitializer {
 	}
 
 	/**
+	 * Trait keys that are stamped directly onto a wearable's own built item ({@code buildItem}/
+	 * {@code appendSwiftAttribute}) rather than read back out of {@link WearableService#resolveTraitLevels}'s
+	 * body-wide sum. A Set tier has no item of its own to stamp one onto, so granting one of these under
+	 * {@code Sets.*.Traits} would silently do nothing (BZ-WE-09) - {@link #loadSets} rejects them instead.
+	 */
+	private static final Set<String> SET_ONLY_INERT_TRAITS = Set.of("swift");
+
+	/**
 	 * Parses the top-level {@code Sets:} section (weapons-roadmap.md gate {@code HL}, §4) into
 	 * {@link WearableService#registerSet}. An unrecognised tier key (not matching {@code Pieces_N}) is a
 	 * {@link Severity#WARNING} and that one tier is skipped; the rest of the set keeps loading.
@@ -198,12 +206,29 @@ public class WearableAddon extends WearableService implements FileInitializer {
 
 				NodeReader   tier             = NodeReader.of(tierMapping, report);
 				Map<String, Integer> traits   = readTraits(tier, report, "set '" + setName + "'");
+				rejectSetOnlyInertTraits(traits, tierMapping, report, setName);
 				List<String> effectsWhileWorn = tier.get("Effects_While_Worn").asList().ofStrings().orEmpty();
 
 				tiers.put(Integer.parseInt(matcher.group(1)), new SetTier(traits, effectsWhileWorn));
 			}
 
 			if (!tiers.isEmpty()) registerSet(setName, tiers);
+		}
+	}
+
+	/**
+	 * Warns and drops any {@link #SET_ONLY_INERT_TRAITS} key from a Set tier's {@code Traits} (BZ-WE-09) - mutates
+	 * {@code traits} in place since it's the same mutable map {@link SetTier} is about to be built from.
+	 */
+	private void rejectSetOnlyInertTraits(Map<String, Integer> traits, MappingNode tierMapping, ConfigReport report,
+	                                      String setName) {
+		for (String inert : SET_ONLY_INERT_TRAITS) {
+			if (traits.remove(inert) == null) continue;
+
+			report.add(Severity.WARNING, tierMapping.location(), joinPath(tierMapping.path(), "Traits"),
+			           "set '" + setName + "' Traits has '" + inert.toUpperCase(Locale.ROOT) + "', which is " +
+			           "stamped on an item's own attributes at build time and has no effect when granted by a " +
+			           "Set - dropped", "wearable.inert_set_trait");
 		}
 	}
 
@@ -291,7 +316,10 @@ public class WearableAddon extends WearableService implements FileInitializer {
 	 * Reads a {@code Traits:} section (shared by a wearable's own block and a {@code Sets.<name>.Pieces_N} tier) —
 	 * string-keyed (lower-cased on read), per §1.6(6): the YAML keys stay upper-case unchanged. A level below 1 is
 	 * clamped to 1 by {@code NodeReader}'s own {@code min(1)}, matching the pre-{@code HL} loader's
-	 * {@code Math.max(1, ...)} behaviour, now with the clamp itself reported.
+	 * {@code Math.max(1, ...)} behaviour, now with the clamp itself reported. A key not in
+	 * {@link Wearable#traitMaxLevel(String)}'s table (e.g. a typo like {@code REINFORCE}) is a
+	 * {@link Severity#WARNING} and that one entry is skipped (BZ-WE-02) - mirrors {@link #readAttributes}'s
+	 * existing unrecognised-key pattern, one guard covering both callers of this shared method.
 	 */
 	private Map<String, Integer> readTraits(NodeReader parent, ConfigReport report, String ownerDescription) {
 		Map<String, Integer> traits        = new HashMap<>();
@@ -300,8 +328,17 @@ public class WearableAddon extends WearableService implements FileInitializer {
 
 		NodeReader traitsReader = NodeReader.of(traitsSection, report);
 		for (String traitKey : traitsReader.keys()) {
-			int level = traitsReader.get(traitKey).asInt().min(1).orDefault(1);
-			traits.put(traitKey.toLowerCase(Locale.ROOT), level);
+			int    level         = traitsReader.get(traitKey).asInt().min(1).orDefault(1);
+			String normalizedKey = traitKey.toLowerCase(Locale.ROOT);
+
+			if (Wearable.traitMaxLevel(normalizedKey) <= 0) {
+				report.add(Severity.WARNING, traitsSection.location(), joinPath(traitsSection.path(), traitKey),
+				           ownerDescription + " has an unrecognised Traits key '" + traitKey +
+				           "' - contributes nothing", "wearable.unknown_trait");
+				continue;
+			}
+
+			traits.put(normalizedKey, level);
 		}
 		return traits;
 	}

@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Central registry and calculation service for {@link Wearable} armor pieces (bartizan.md §1.1 PLG table: drops
@@ -202,8 +203,10 @@ public class WearableService implements WearableCatalog {
 	 * "virtual" slot, computed purely from the tier's own traits through the same per-level table. A set only adds;
 	 * every existing (set-less) loadout's numbers are unchanged from before {@code HL}.
 	 *
-	 * <p>The {@code reactive} trait is rolled per piece, in slot order; the first piece that procs nullifies the
-	 * entire hit immediately (matches the pre-{@code HL} behaviour — not a body-wide roll).
+	 * <p>The {@code reactive} trait is rolled per piece, in slot order, then once more for an active Set tier's own
+	 * {@code reactive} level (BZ-WE-08 — previously parsed but never rolled, unlike its {@code reinforced}/
+	 * {@code bulletproof} set-tier siblings just above); the first roll that procs nullifies the entire hit
+	 * immediately (matches the pre-{@code HL} per-piece behaviour — not a body-wide roll).
 	 *
 	 * <p>Every other trait ({@code toughened}, {@code fire_resistant}, {@code sealed}, {@code insulated}) is instead
 	 * summed body-wide via {@link #resolveTraitLevels} by their own readers ({@link #reduceCritBonus},
@@ -247,10 +250,17 @@ public class WearableService implements WearableCatalog {
 			damage *= (1.0 - totalSlotReduction);
 		}
 
-		// An active worn Set's own reinforced/bulletproof bonus folds in as one further, separate discount per
-		// active set — a "virtual" extra slot computed from the tier's traits alone, never merged into a worn
+		// An active worn Set's own reinforced/bulletproof/reactive bonus folds in as one further, separate discount
+		// per active set — a "virtual" extra slot computed from the tier's traits alone, never merged into a worn
 		// piece's own level above.
 		for (SetTier tier : activeSetTiers(target).values()) {
+			// reactive: same per-tier proc-nullifies-the-hit roll as a worn piece's own level (BZ-WE-08).
+			int reactiveLevel = tier.traits().getOrDefault("reactive", 0);
+			if (reactiveLevel > 0 &&
+			    ThreadLocalRandom.current().nextDouble() < Wearable.traitBonusForLevel("reactive", reactiveLevel)) {
+				return 0;
+			}
+
 			double setReduction = Wearable.traitBonusForLevel("reinforced", tier.traits().getOrDefault("reinforced", 0));
 			if (isProjectile) {
 				setReduction += Wearable.traitBonusForLevel("bulletproof", tier.traits().getOrDefault("bulletproof", 0));

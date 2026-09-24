@@ -43,9 +43,10 @@ public enum BartizanMessages {
 	// commands - wearable
 	WEARABLE_GAVE("Commands.Wearable.Gave", Type.COMMAND),
 	WEARABLE_LIST_HEADER("Commands.Wearable.List_Header", Type.COMMAND),
-	WEARABLE_INVALID("Errors.Wearable.Invalid", Type.PREFIX),
-	WEARABLE_NOT_REGISTERED("Errors.Wearable.Not_Registered", Type.PREFIX),
-	WEARABLE_NOT_WEARABLE("Errors.Wearable.Not_Wearable", Type.PREFIX),
+	WEARABLE_INVALID("Errors.Wearable.Invalid", Type.ERROR),
+	WEARABLE_NOT_REGISTERED("Errors.Wearable.Not_Registered", Type.ERROR),
+	WEARABLE_NOT_WEARABLE("Errors.Wearable.Not_Wearable", Type.ERROR),
+	WEARABLE_EQUIP_DENIED("Errors.Wearable.Equip_Denied", Type.ERROR),
 
 	// commands - stats
 	NO_STATS("Errors.No_Stats", Type.ERROR),
