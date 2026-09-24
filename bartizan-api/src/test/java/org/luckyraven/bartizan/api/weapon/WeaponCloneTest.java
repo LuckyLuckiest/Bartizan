@@ -49,6 +49,21 @@ class WeaponCloneTest {
 	}
 
 	@Test
+	@DisplayName("ThrowableWeapon.copyWithUUID deep-copies explosionData via clone(), not a shared reference (BZ-WM-10)")
+	void copyWithUUID_throwableWeapon_deepCopiesExplosionData() {
+		ThrowableWeapon original = WeaponFixtures.throwableWeapon(1);
+		original.getExplosionData().setDamage(6.0);
+
+		ThrowableWeapon copy = original.copyWithUUID(UUID.randomUUID());
+		copy.getExplosionData().setDamage(999.0);
+
+		assertNotSame(original.getExplosionData(), copy.getExplosionData(),
+		             "copyWithUUID must go through ThrowableWeapon.clone()'s deep copy, not Weapon.clone() directly");
+		assertEquals(6.0, original.getExplosionData().getDamage(),
+		             "mutating the copy's explosionData must not affect the template's");
+	}
+
+	@Test
 	@DisplayName("clone deep-copies ModifiersData — mutating the clone's list must not affect the source")
 	void clone_deepCopiesModifiersData() {
 		GunWeapon original = WeaponFixtures.gunWeapon(30, 1);

@@ -39,7 +39,9 @@ public class ThrowableWeapon extends Weapon {
 
 	@Override
 	public ThrowableWeapon copyWithUUID(UUID newUuid) {
-		ThrowableWeapon copy = (ThrowableWeapon) super.clone();
+		// this.clone(), not super.clone() — must reach ThrowableWeapon.clone()'s explosionData deep copy below
+		// through virtual dispatch, exactly like GunWeapon.copyWithUUID (BZ-WM-10).
+		ThrowableWeapon copy = this.clone();
 		copy.setUUID(newUuid);
 		return copy;
 	}
