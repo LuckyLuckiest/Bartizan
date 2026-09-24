@@ -16,7 +16,7 @@ public class WeaponChangeSelectiveFireEvent extends WeaponEvent implements Cance
 		super(weapon);
 	}
 
-	private static HandlerList getHandlerList() {
+	public static HandlerList getHandlerList() {
 		return handler;
 	}
 
