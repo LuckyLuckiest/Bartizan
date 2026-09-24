@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.configuration;
 
+import com.cryptomorin.xseries.XMaterial;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.BeforeAll;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
+import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.testsupport.BukkitRegistryFixture;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
@@ -223,6 +225,198 @@ class WeaponAddonTest {
 
 		assertNotNull(weaponAddon.getWeapon("first_spyglass"), "the collision must not block either weapon's load");
 		assertNotNull(weaponAddon.getWeapon("second_spyglass"), "the collision must not block either weapon's load");
+	}
+
+	/**
+	 * Gate {@code BZ-CF-02}: {@code registerWeapon} used to return immediately once a {@code Config_Version} key
+	 * was present - before any section was parsed, before the {@link ConfigReport} was logged, and before the
+	 * weapon was put into the catalogue map. An ordinary versioning habit for a config author therefore made the
+	 * weapon disappear with zero output anywhere.
+	 */
+	@Test
+	@DisplayName("registerWeapon: a Config_Version key warns and falls through instead of aborting the load")
+	void registerWeapon_configVersionKeyPresent_stillRegisters() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		// Matches PluginMocks' default plugin version exactly: Keystone's own FileHandler has an unrelated
+		// Config_Version convention (regenerate-on-mismatch for upgrade migrations) that would otherwise move this
+		// fixture aside as *-old.yml before WeaponAddon ever sees it - a real value is fine here since
+		// WeaponAddon.registerWeapon's own Config_Version handling (under test) only checks presence, not content.
+		File weaponFile = writeWeaponFile("versioned.yml", """
+				Config_Version: "0.0.1-TEST"
+
+				Information:
+				   Name: "&7Versioned&r"
+				   Category: melee
+				   Material: IRON_HOE
+				   Durability:
+				      Base: 100
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+				""");
+
+		WeaponAddon  weaponAddon = new WeaponAddon(null);
+		ConfigReport report     = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, weaponFile));
+
+		assertNotNull(weaponAddon.getWeapon("versioned"),
+		              "a Config_Version key must not make the whole file disappear from the catalogue");
+		assertTrue(report.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.WARNING &&
+				                    issue.code().equals("weapon.config_version_unsupported")),
+		           "expected a WARNING recorded for the unimplemented Config_Version key");
+	}
+
+	/**
+	 * Gate {@code BZ-CF-09}: {@code Durability.Base: 0} used to be accepted and stored as {@code durability = 0}.
+	 * Two independent consumers divide by {@code weapon.getDurability()} with no guard ({@code Weapon.buildItem()}
+	 * and {@code DurabilityCalculator.getWeaponDurability}), producing NaN/Infinity that a narrowing cast silently
+	 * truncates to 0 instead of surfacing the misconfiguration.
+	 */
+	@Test
+	@DisplayName("registerWeapon: Durability.Base of 0 is rejected instead of reaching the weapon as a zero denominator")
+	void registerWeapon_durabilityBaseZero_neverProducesZeroDurability() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		File weaponFile = writeWeaponFile("zero_durability.yml", """
+				Information:
+				   Name: "&7Zero Durability&r"
+				   Category: melee
+				   Material: IRON_HOE
+				   Durability:
+				      Base: 0
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+				""");
+
+		WeaponAddon  weaponAddon = new WeaponAddon(null);
+		ConfigReport report     = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, weaponFile));
+
+		Weapon weapon = weaponAddon.getWeapon("zero_durability");
+		assertNotNull(weapon, "a non-fatal Durability.Base range violation must not block registration");
+		assertTrue(weapon.getDurability() >= 1,
+		           "Durability.Base of 0 must never reach the weapon as 0 - the durability scale divides by it");
+		assertTrue(report.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.ERROR && issue.code().equals("config.range")),
+		           "expected a config.range ERROR for Durability.Base below the minimum");
+	}
+
+	/**
+	 * Gate {@code BZ-CF-11}: a missing {@code Information.Category} used to reach
+	 * {@code Objects.requireNonNull(categoryString)} and throw a bare, message-less {@link NullPointerException}
+	 * that escapes {@code WeaponLoader}'s {@code catch (InvalidConfigurationException)} entirely - a materially
+	 * worse diagnostic than every other required-field violation in this method produces.
+	 */
+	@Test
+	@DisplayName("registerWeapon: missing Information.Category throws a clean InvalidConfigurationException, not an NPE")
+	void registerWeapon_missingCategory_throwsCleanException() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		File weaponFile = writeWeaponFile("no_category.yml", """
+				Information:
+				   Name: "&7No Category&r"
+				   Material: IRON_HOE
+				   Durability:
+				      Base: 100
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+				""");
+
+		WeaponAddon weaponAddon = new WeaponAddon(null);
+		FileHandler handler     = new FileHandler(plugin, weaponFile);
+
+		InvalidConfigurationException exception = assertThrows(InvalidConfigurationException.class,
+				() -> weaponAddon.registerWeapon(ammunitionManager, handler));
+		assertTrue(exception.getMessage().contains("Category"),
+		           "exception message should mention the missing key: " + exception.getMessage());
+	}
+
+	/**
+	 * Gate {@code BZ-CF-11}: the identical {@code Objects.requireNonNull} trap two lines later for
+	 * {@code Information.Material}.
+	 */
+	@Test
+	@DisplayName("registerWeapon: missing Information.Material throws a clean InvalidConfigurationException, not an NPE")
+	void registerWeapon_missingMaterial_throwsCleanException() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		File weaponFile = writeWeaponFile("no_material.yml", """
+				Information:
+				   Name: "&7No Material&r"
+				   Category: melee
+				   Durability:
+				      Base: 100
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+				""");
+
+		WeaponAddon weaponAddon = new WeaponAddon(null);
+		FileHandler handler     = new FileHandler(plugin, weaponFile);
+
+		InvalidConfigurationException exception = assertThrows(InvalidConfigurationException.class,
+				() -> weaponAddon.registerWeapon(ammunitionManager, handler));
+		assertTrue(exception.getMessage().contains("Material"),
+		           "exception message should mention the missing key: " + exception.getMessage());
+	}
+
+	/**
+	 * Gate {@code BZ-CF-06}: an unrecognised {@code Category} silently resolved through
+	 * {@code WeaponType.getType}'s {@code default -> OTHER} (dispatching like a GUN), and an unresolvable
+	 * {@code Material} silently fell back to {@code FEATHER}, with no diagnostic at all.
+	 */
+	@Test
+	@DisplayName("registerWeapon: unrecognised Category/Material fall back with a WARNING instead of silently")
+	void registerWeapon_unknownCategoryAndMaterial_warnsAndFallsBack() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+		ammunitionManager.register("test_ammo",
+				new Ammunition("test_ammo", "&7Test Ammo&r", XMaterial.IRON_INGOT.get(), 0, List.of()));
+
+		File weaponFile = writeWeaponFile("typo_category.yml", """
+				Information:
+				   Name: "&7Typo&r"
+				   Category: "gunn"
+				   Material: "NOT_A_REAL_MATERIAL"
+				   Durability:
+				      Base: 100
+
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Speed: 20
+				      Type: BULLET
+				      Damage:
+				         Base: 5
+
+				Ammunition:
+				   Ammo_Type: "test_ammo"
+				""");
+
+		WeaponAddon  weaponAddon = new WeaponAddon(null);
+		ConfigReport report     = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, weaponFile));
+
+		assertNotNull(weaponAddon.getWeapon("typo_category"),
+		              "an unrecognised Category/Material must still register the weapon under its OTHER/FEATHER "
+		              + "fallback");
+		assertTrue(report.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.WARNING &&
+				                    issue.code().equals("weapon.unknown_category")),
+		           "expected a WARNING for the unrecognised Category");
+		assertTrue(report.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.WARNING &&
+				                    issue.code().equals("weapon.unknown_material")),
+		           "expected a WARNING for the unresolvable Material");
 	}
 
 	private File writeWeaponFile(String name, String yaml) throws IOException {

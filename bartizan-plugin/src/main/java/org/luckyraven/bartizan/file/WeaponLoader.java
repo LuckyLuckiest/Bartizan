@@ -71,9 +71,22 @@ public class WeaponLoader extends FolderLoader {
 			try {
 				weaponAddon.registerWeapon(ammunitionManager, fileHandler);
 			} catch (InvalidConfigurationException exception) {
-				log.info("There was a problem loading the weapon: {}", exception.getMessage());
+				log.error("There was a problem loading the weapon: {}", exception.getMessage());
 			}
 		}, fileManager);
+	}
+
+	/**
+	 * Wipes the previously-loaded weapon catalogue before {@link #onInitialize} re-parses the {@code weapon/}
+	 * folder on {@code /bartizan reload} (BeanLifecycle.onClear, gate {@code BZ-CF-12}). Without this, a weapon
+	 * file that stops parsing on reload leaves its old, pre-edit {@link WeaponAddon} entry in place forever - {@code
+	 * clear()} also drops {@code folderFiles} so a deleted custom weapon file isn't re-registered from its stale
+	 * in-memory {@link org.luckyraven.keystone.persistence.FileHandler}.
+	 */
+	@Override
+	public void onClear() {
+		clear();
+		weaponAddon.clear();
 	}
 
 }
