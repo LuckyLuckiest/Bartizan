@@ -8,12 +8,13 @@ import org.bukkit.inventory.meta.FireworkMeta;
 import org.luckyraven.bartizan.api.weapon.dto.EffectSpec;
 import org.luckyraven.bartizan.effect.Effect;
 import org.luckyraven.bartizan.effect.EffectContext;
+import org.luckyraven.bartizan.listener.projectile.CosmeticTag;
 
 import java.util.Locale;
 
 /**
  * {@code Firework}: {@code Power (0), Color (#RRGGBB), Firework_Type (BALL), At (impact)} — spawns and immediately
- * detonates a firework for an effect-only burst (no flight). Keyed {@code Firework_Type} rather than {@code Type}:
+ * detonates a firework for an effect-only burst (no flight, no damage). Keyed {@code Firework_Type} rather than {@code Type}:
  * every effect entry's own {@code Type} key already picks the effect (this one), so the firework shape needs a
  * distinct key.
  */
@@ -32,6 +33,8 @@ public class FireworkHookEffect implements Effect {
 		                             .withColor(parseColor(spec.arg("Color", "#FFFFFF")))
 		                             .build());
 		firework.setFireworkMeta(meta);
+		// Effect-only: the tag makes ProjectileDamageListener cancel the burst's vanilla splash damage.
+		CosmeticTag.mark(firework);
 
 		firework.detonate();
 	}

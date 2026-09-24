@@ -34,7 +34,8 @@ public class ProjectileDamageListener implements Listener {
 		// cops-n-crooks NPC AI) reacts to a purely visual entity hitting something. Checked directly against the
 		// damager's entity id (not narrowed to `instanceof Projectile`) since gate HI part b's Projectile.Visual
 		// can drive a FallingBlock/Item/ArmorStand/TNTPrimed visual too, none of which are a Projectile.
-		if (visualSpawner.isCosmetic(event.getDamager().getEntityId())) {
+		// CosmeticTag covers FireworkHookEffect's effect-only burst, whose vanilla splash damage would otherwise land.
+		if (visualSpawner.isCosmetic(event.getDamager().getEntityId()) || CosmeticTag.isMarked(event.getDamager())) {
 			event.setCancelled(true);
 		}
 	}

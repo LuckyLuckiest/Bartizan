@@ -1,7 +1,11 @@
 package org.luckyraven.bartizan.listener.projectile;
 
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Firework;
 import org.bukkit.entity.Item;
+import org.bukkit.entity.Player;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -54,6 +58,22 @@ class ProjectileDamageListenerTest {
 		listener.onHopperPickup(event);
 
 		assertTrue(event.isCancelled(), "a thrown grenade must not become a real item in a hopper");
+	}
+
+	@Test
+	@DisplayName("entity damage: a CosmeticTag-marked Firework effect burst deals no damage")
+	void entityDamage_markedFirework_cancelled() {
+		PersistentDataContainer pdc      = mock(PersistentDataContainer.class);
+		Firework                firework = mock(Firework.class);
+		when(firework.getEntityId()).thenReturn(11);
+		when(firework.getPersistentDataContainer()).thenReturn(pdc);
+		when(pdc.has(CosmeticTag.KEY, PersistentDataType.BYTE)).thenReturn(true);
+		EntityDamageByEntityEvent event = new EntityDamageByEntityEvent(firework, mock(Player.class),
+		                                                                DamageCause.ENTITY_EXPLOSION, 7.0);
+
+		listener.onProjectileEntityDamage(event);
+
+		assertTrue(event.isCancelled(), "an effect-only firework must not hurt the shooter or bystanders");
 	}
 
 	@Test
