@@ -166,8 +166,6 @@ public class WeaponInteract implements Listener {
 		ItemStack item   = event.getItem();
 		Weapon    weapon = weaponService.validateAndGetWeapon(player, item);
 
-		if (weapon == null) return;
-
 		boolean leftClick = event.getAction() == Action.LEFT_CLICK_AIR || event.getAction() == Action.LEFT_CLICK_BLOCK;
 		boolean rightClick = event.getAction() == Action.RIGHT_CLICK_AIR ||
 		                     event.getAction() == Action.RIGHT_CLICK_BLOCK;
@@ -176,9 +174,13 @@ public class WeaponInteract implements Listener {
 		// which makes the item a LOADED crossbow as far as the client/server are concerned - any right-click that
 		// reaches an exit below without denying the vanilla item use (isDead/!canBeHit, sneak + right-click on a
 		// left_click-trigger weapon, right-click during Equip_Delay, scoped-but-Level:-0) would otherwise fire a
-		// real vanilla arrow. DENY unconditionally here; the spyglass branch below still overrides it with ALLOW
-		// (last write wins).
-		if (rightClick) event.setUseItemInHand(Event.Result.DENY);
+		// real vanilla arrow. DENY for every weapon-tagged item, including one that no longer resolves (its type was
+		// removed from config - BZ-EV-16); the spyglass branch below still overrides it with ALLOW (last write wins).
+		if (rightClick && (weapon != null || weaponService.getHeldWeaponName(item) != null)) {
+			event.setUseItemInHand(Event.Result.DENY);
+		}
+
+		if (weapon == null) return;
 
 		// Off-hand weapons are inert (Dual_Wield is Missing, gate HN): an OFF_HAND use threw an off-hand grenade
 		// while ThrowableAction took the item from the main hand, and a gun in each hand fired both on one click
