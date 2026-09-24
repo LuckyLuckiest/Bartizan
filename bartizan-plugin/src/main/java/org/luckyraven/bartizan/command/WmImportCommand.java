@@ -147,6 +147,10 @@ public final class WmImportCommand extends Command {
 
 		File weaponOutDir = new File(bartizan.getDataFolder(), "weapon");
 		List<WmWeaponImporter.AmmoAppend> ammoAppends = new ArrayList<>();
+		// Tracks fileKeys this run has already claimed, on top of outFile.exists() - the only thing that lets a
+		// --dry-run detect two source weapons colliding on the same sanitized fileKey (a dry run never writes, so
+		// exists() alone only ever reflects state from BEFORE this run).
+		Set<String> claimedKeys = new HashSet<>();
 
 		for (File weaponFile : weaponFiles) {
 			YamlConfiguration doc = YamlConfiguration.loadConfiguration(weaponFile);
@@ -155,7 +159,8 @@ public final class WmImportCommand extends Command {
 				if (body == null) continue;
 
 				WmImportReport.WeaponEntry entry = report.weapon(title);
-				importOne(title, body, projectiles, ammos, entry, weaponOutDir, dryRun, force, ammoAppends);
+				importOne(title, body, projectiles, ammos, entry, weaponOutDir, dryRun, force, ammoAppends,
+				         claimedKeys);
 			}
 		}
 
@@ -197,17 +202,18 @@ public final class WmImportCommand extends Command {
 	private void importOne(String title, ConfigurationSection body, Map<String, ConfigurationSection> projectiles,
 	                       Map<String, ConfigurationSection> ammos, WmImportReport.WeaponEntry entry,
 	                       File weaponOutDir, boolean dryRun, boolean force,
-	                       List<WmWeaponImporter.AmmoAppend> ammoAppends) {
+	                       List<WmWeaponImporter.AmmoAppend> ammoAppends, Set<String> claimedKeys) {
 		try {
 			WmWeaponImporter.ImportedWeapon imported =
 					WmWeaponImporter.importWeapon(title, body, projectiles, ammos, entry);
 			if (imported == null) return;
 
 			File outFile = new File(weaponOutDir, imported.fileKey() + ".yml");
-			if (outFile.exists() && !force) {
+			if (collidesWithClaimedFile(imported.fileKey(), claimedKeys, outFile) && !force) {
 				entry.error("not written - " + outFile.getName() + " already exists (pass --force to overwrite)");
 				return;
 			}
+			claimedKeys.add(imported.fileKey());
 
 			if (!dryRun) {
 				Files.createDirectories(outFile.getParentFile().toPath());
@@ -221,6 +227,15 @@ public final class WmImportCommand extends Command {
 			entry.error("unexpected failure importing this weapon: " + exception);
 			log.error("WM import failed for '{}'", title, exception);
 		}
+	}
+
+	/**
+	 * Whether {@code fileKey} would collide with an already-claimed weapon file - either one this SAME run has
+	 * already written/claimed (so a {@code --dry-run}, which never touches the filesystem, still catches two
+	 * source weapons sanitizing to the same {@code fileKey}) or one already on disk from an earlier run.
+	 */
+	static boolean collidesWithClaimedFile(String fileKey, Set<String> claimedKeysThisRun, File outFile) {
+		return claimedKeysThisRun.contains(fileKey) || outFile.exists();
 	}
 
 	private Map<String, ConfigurationSection> loadRefs(File dir) {
