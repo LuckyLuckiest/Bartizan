@@ -873,6 +873,13 @@ public final class WmWeaponImporter {
 				report.approximated(wmPath + ": '" + entry + "' - Push/Leap has both speed and height; only one "
 				                     + "is kept as Strength");
 			}
+			// An absent Command{} console key now defaults to As: player, not console (least-privilege - see
+			// WmMechanicsTranslator) - reported like every other place this importer substitutes its own default
+			// for a value WM's own config didn't set.
+			if ("command".equals(result.type()) && value(parsed, "console") == null) {
+				report.approximated(wmPath + ": '" + entry + "' - no explicit console flag, defaulted Command's "
+				                     + "As to player (least-privilege)");
+			}
 
 			Map<String, Object> spec = new LinkedHashMap<>();
 			spec.put("Type", capitalizeType(result.type()));

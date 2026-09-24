@@ -93,6 +93,12 @@ class WmMechanicsTranslatorTest {
 
 		var playerCommand = translate("Command{command=say hi, console=false}");
 		assertEquals("player", playerCommand.args().get("As"));
+
+		// BZ-IM-07: an absent console key must default to player (least-privilege), never to console - the
+		// converter cannot verify WM's own default for this flag and must not silently hand a migrated weapon's
+		// effect full console permissions it was never explicitly configured for.
+		var noConsoleKey = translate("Command{command=say hi}");
+		assertEquals("player", noConsoleKey.args().get("As"));
 	}
 
 	@Test
