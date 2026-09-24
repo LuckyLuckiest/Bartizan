@@ -8,8 +8,10 @@ import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.BlockBreakModifier;
 
 import java.lang.reflect.Method;
@@ -39,7 +41,9 @@ public class BlockDamageManager {
 	}
 
 	/**
-	 * Applies damage to a block from a projectile hit.
+	 * Applies damage to a block from a projectile hit. Equivalent to {@code applyDamage(block, modifier, null)} — no
+	 * vanilla {@link BlockBreakEvent} is fired, so nothing can veto the break. Prefer the 3-arg overload whenever a
+	 * {@link Player} caused the hit, so protection plugins (WorldGuard, GriefPrevention, ...) get a chance to see it.
 	 *
 	 * @param block The block that was hit
 	 * @param modifier The break block modifier configuration
@@ -47,6 +51,23 @@ public class BlockDamageManager {
 	 * @return true if the block was broken, false otherwise
 	 */
 	public boolean applyDamage(Block block, BlockBreakModifier modifier) {
+		return applyDamage(block, modifier, null);
+	}
+
+	/**
+	 * Applies damage to a block from a projectile hit fired by {@code player}. A {@code DESTROY}/{@code RESTORE}
+	 * break fires a cancellable vanilla {@link BlockBreakEvent} first — the same event a protection plugin already
+	 * listens to for a hand-mined block — so a claim/region plugin can veto a weapon-caused break exactly as it
+	 * would a punch. {@code player} is {@code null} for a weapon-caused break with no attributable player (an NPC
+	 * shooter, an explosion): the break proceeds unchecked in that case, matching the pre-existing behaviour.
+	 *
+	 * @param block The block that was hit
+	 * @param modifier The break block modifier configuration
+	 * @param player The player who caused the hit, or {@code null} if none is attributable
+	 *
+	 * @return true if the block was broken, false otherwise (including when a listener cancelled the break)
+	 */
+	public boolean applyDamage(Block block, BlockBreakModifier modifier, @Nullable Player player) {
 		Location location = block.getLocation();
 		Material material = block.getType();
 
@@ -83,12 +104,10 @@ public class BlockDamageManager {
 		if (currentHits >= hitsRequired) {
 			switch (modifier.mode()) {
 				case DESTROY -> {
-					destroyBlock(block, location);
-					return true;
+					return destroyBlock(block, location, player);
 				}
 				case RESTORE -> {
-					breakAndScheduleRestore(block, location, state, hitsRequired);
-					return true;
+					return breakAndScheduleRestore(block, location, state, hitsRequired, player);
 				}
 				case CRACK_ONLY -> {
 					// Block reached max damage but should not break.
@@ -220,8 +239,14 @@ public class BlockDamageManager {
 
 	/**
 	 * Permanently breaks the block — used by {@link BreakMode#DESTROY}. Discards the damage state.
+	 *
+	 * @return true if the block was broken, false if a listener cancelled the {@link BlockBreakEvent}
 	 */
-	private void destroyBlock(Block block, Location location) {
+	private boolean destroyBlock(Block block, Location location, @Nullable Player player) {
+		if (!fireBlockBreakEvent(block, player)) {
+			return false;
+		}
+
 		BlockDamageState state = damagedBlocks.remove(location);
 		if (state != null) {
 			state.cancelRegeneration();
@@ -232,14 +257,22 @@ public class BlockDamageManager {
 
 		// Set to air (doesn't drop items)
 		block.setType(Material.AIR);
+		return true;
 	}
 
 	/**
 	 * Breaks the block and schedules its restoration after the configured delay — used by {@link BreakMode#RESTORE}.
 	 * The damage state is kept in {@link #damagedBlocks} with {@code broken = true} so a follow-up restore task can
 	 * find it.
+	 *
+	 * @return true if the block was broken, false if a listener cancelled the {@link BlockBreakEvent}
 	 */
-	private void breakAndScheduleRestore(Block block, Location location, BlockDamageState state, int hitsRequired) {
+	private boolean breakAndScheduleRestore(Block block, Location location, BlockDamageState state, int hitsRequired,
+	                                        @Nullable Player player) {
+		if (!fireBlockBreakEvent(block, player)) {
+			return false;
+		}
+
 		state.cancelRegeneration();
 		playBreakEffects(block, location);
 		clearBlockDamage(location, state.getEntityId());
@@ -266,6 +299,25 @@ public class BlockDamageManager {
 		}, settings.getRestoreDelayTicks());
 
 		state.setRegenerationTask(restoreTask);
+		return true;
+	}
+
+	/**
+	 * Fires a cancellable vanilla {@link BlockBreakEvent} for a weapon-caused break, so a protection plugin can veto
+	 * it the same way it vetoes a hand-mined block. {@code player} is {@code null} when no player is attributable to
+	 * the hit (an NPC shooter, an explosion) — there is nothing to fire the event as, so the break proceeds
+	 * unchecked, matching the pre-existing behaviour for those paths.
+	 *
+	 * @return false if a listener cancelled the break
+	 */
+	private boolean fireBlockBreakEvent(Block block, @Nullable Player player) {
+		if (player == null) {
+			return true;
+		}
+
+		BlockBreakEvent event = new BlockBreakEvent(block, player);
+		Bukkit.getPluginManager().callEvent(event);
+		return !event.isCancelled();
 	}
 
 	/**

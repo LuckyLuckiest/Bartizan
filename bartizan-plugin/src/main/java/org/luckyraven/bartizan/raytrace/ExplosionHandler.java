@@ -135,7 +135,7 @@ public class ExplosionHandler {
 		}
 
 		if (data.isBlockDamage()) {
-			applyBlockDamage(world, centre, data);
+			applyBlockDamage(world, centre, data, shooter instanceof Player playerShooter ? playerShooter : null);
 		}
 
 		EffectContext effectCtx = EffectContext.builder().weapon(weapon).source(shooter).impact(centre).build();
@@ -202,7 +202,7 @@ public class ExplosionHandler {
 	 * // ponytail: a naive full bounding-box triple loop, not a spatial/priority scan — fine below the 512-block
 	 * cap; revisit with a surface-first scan if huge-radius block-damage explosions become common.
 	 */
-	private void applyBlockDamage(World world, Location centre, ExplosionData data) {
+	private void applyBlockDamage(World world, Location centre, ExplosionData data, @Nullable Player player) {
 		double radius = data.getRadius();
 		int    r      = (int) Math.ceil(radius);
 		int    hits   = 0;
@@ -224,7 +224,7 @@ public class ExplosionHandler {
 					if (!isBreakable(block)) continue;
 
 					blockDamageManager.applyDamage(block,
-							new BlockBreakModifier(Set.of(block.getType()), 1, BreakMode.RESTORE));
+							new BlockBreakModifier(Set.of(block.getType()), 1, BreakMode.RESTORE), player);
 					hits++;
 				}
 			}

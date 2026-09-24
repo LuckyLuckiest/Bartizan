@@ -401,7 +401,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 			BlockFace face = blockHit.getHitBlockFace();
 			if (face == null) return false;
 
-			applyBlockBreak(block, request.getWeapon());
+			applyBlockBreak(block, request.getWeapon(), request.getShooter());
 			handleBlockImpact(impactPt, block, face, ctx);
 			ctx.getTracerSegments().add(impactPt);
 
@@ -782,12 +782,13 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 		return point.distance(closest);
 	}
 
-	private void applyBlockBreak(Block block, Weapon weapon) {
+	private void applyBlockBreak(Block block, Weapon weapon, @Nullable LivingEntity shooter) {
+		Player player = shooter instanceof Player p ? p : null;
 		for (BlockBreakModifier mod : weapon.getModifiersData().getBreakBlocks()) {
 			if (!mod.appliesTo(block.getType())) {
 				continue;
 			}
-			blockDamageManager.applyDamage(block, mod);
+			blockDamageManager.applyDamage(block, mod, player);
 			break;
 		}
 	}
