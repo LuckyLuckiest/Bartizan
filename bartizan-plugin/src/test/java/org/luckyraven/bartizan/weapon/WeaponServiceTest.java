@@ -13,6 +13,8 @@ import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.keystone.item.ItemBuilder;
+import org.mockito.MockedConstruction;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -28,6 +30,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -196,6 +199,33 @@ class WeaponServiceTest {
 
 		verify(inventory).setItemInOffHand(offHandItem);
 		verify(inventory, never()).setItem(anyInt(), any(ItemStack.class));
+	}
+
+	/**
+	 * BZ-EV-04: a hand-edited or corrupted {@code uuid} tag threw {@link IllegalArgumentException} out of
+	 * {@code UUID.fromString}, and so out of every listener that routes through {@code validateAndGetWeapon} - on
+	 * every interaction, since the item stays in the inventory.
+	 */
+	@Test
+	@DisplayName("a malformed uuid tag reads as no uuid instead of throwing out of every listener (BZ-EV-04)")
+	void getWeaponUUID_malformedTag_returnsNull() {
+		ItemStack item = weaponItem();
+
+		try (MockedConstruction<ItemBuilder> ignored = mockConstruction(ItemBuilder.class, (builder, ctx) -> {
+			when(builder.getStringTagData("uuid")).thenReturn("not-a-uuid");
+			when(builder.getStringTagData("weapon")).thenReturn("test_gun");
+		})) {
+			assertNull(WeaponService.getWeaponUUID(item));
+			assertNull(service.validateAndGetWeapon(mock(Player.class), item));
+			assertTrue(service.getWeapons().isEmpty());
+		}
+	}
+
+	private static ItemStack weaponItem() {
+		ItemStack item = mock(ItemStack.class);
+		when(item.getType()).thenReturn(Material.IRON_HOE);
+		when(item.getAmount()).thenReturn(1);
+		return item;
 	}
 
 }

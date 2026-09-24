@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.weapon;
 
+import lombok.CustomLog;
 import lombok.Getter;
 import org.bukkit.GameMode;
 import org.bukkit.Material;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+@CustomLog
 public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog {
 
 	private final WeaponAddon weaponAddon;
@@ -58,7 +60,13 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 		UUID   uuid          = null;
 
 		if (!(value == null || value.equals("null") || value.isEmpty())) {
-			uuid = UUID.fromString(value);
+			try {
+				uuid = UUID.fromString(value);
+			} catch (IllegalArgumentException exception) {
+				// a hand-edited/corrupted tag must read as "not a weapon", not throw out of every listener
+				log.warn("Ignoring weapon item " + item.getType() + " with a malformed '" + tagProperName + "' tag: " +
+				         value);
+			}
 		}
 
 		return uuid;
