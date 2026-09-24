@@ -176,6 +176,28 @@ class SkinSectionParserTest {
 	}
 
 	@Test
+	@DisplayName("a Named skin called 'default' is rejected with a warning, not silently unreachable")
+	void namedSkinCalledDefault_isRejected() {
+		NodeReader skins = skinsReaderFor("""
+				Skins:
+				   Named:
+				      default:
+				         Default: 2000
+				      gold:
+				         Default: 3000
+				""");
+
+		SkinsData data = SkinSectionParser.parse(skins, 0, report);
+
+		assertNotNull(data);
+		assertNull(data.named("default"), "the reserved keyword must never resolve to a configured skin");
+		assertNotNull(data.named("gold"), "sibling Named entries must still parse");
+		assertFalse(report.hasErrors());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING && issue.code().equals("skins.reserved_name")));
+	}
+
+	@Test
 	@DisplayName("a malformed Named.<name>.Item_Model is a warning and resolves to null")
 	void badItemModel_warnsAndIsNull() {
 		NodeReader skins = skinsReaderFor("""

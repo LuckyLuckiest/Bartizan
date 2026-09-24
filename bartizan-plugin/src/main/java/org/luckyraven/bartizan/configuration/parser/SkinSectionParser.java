@@ -60,6 +60,15 @@ public final class SkinSectionParser {
 			NodeReader namedReader = NodeReader.of(namedSection, report);
 
 			for (String skinName : namedReader.keys()) {
+				// "default" is the reserved clear-selection keyword baked into the command syntax
+				// <name|default> (documentation/bartizan-api.md:153) and into WeaponSkinCommand's contract - a
+				// Named skin with this name could never be reached, so reject it here rather than let the command
+				// silently treat the literal name as "clear selection" instead of the configured skin.
+				if (skinName.equalsIgnoreCase("default")) {
+					reportReservedName(namedReader, skinName, report);
+					continue;
+				}
+
 				MappingNode skinMapping = namedReader.get(skinName).asMapping().orNull();
 				if (skinMapping == null) continue;
 
@@ -128,6 +137,16 @@ public final class SkinSectionParser {
 
 		report.add(Severity.WARNING, node != null ? node.location() : parent.mapping().location(), path,
 		           "malformed " + key + " '" + raw + "' - ignored", issueId);
+	}
+
+	private static void reportReservedName(NodeReader parent, String key, ConfigReport report) {
+		ConfigNode node       = parent.mapping().get(key);
+		String     parentPath = parent.mapping().path();
+		String     path       = parentPath == null || parentPath.isEmpty() ? key : parentPath + "." + key;
+
+		report.add(Severity.WARNING, node != null ? node.location() : parent.mapping().location(), path,
+		           "Named." + key + " uses the reserved keyword 'default' - a weapon skin cannot be named this, "
+		           + "since '<name|default>' already treats it as clear-selection - ignored", "skins.reserved_name");
 	}
 
 }
