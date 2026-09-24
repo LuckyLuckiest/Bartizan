@@ -161,6 +161,14 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 			int interval = i == 0 ? 0 : cooldown;
 
 			burstTimer.addIntervalTaskPair(interval, timer -> {
+				// bug docket BZ-NU-04: the shooter may have died or been destroy()'d between rounds of this same
+				// burst - stop here instead of firing against a dead/removed entity. Safe to call from inside the
+				// body: SequenceTimer runs it outside its monitor (see that class's javadoc).
+				if (isShooterGone()) {
+					timer.stop();
+					return;
+				}
+
 				fireRound(gun);
 
 				if (weapon.isMagazineEmpty()) {
@@ -170,6 +178,20 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 		}
 
 		burstTimer.start(false);
+	}
+
+	/**
+	 * True once the shooter has died or otherwise become invalid since this burst was scheduled (bug docket
+	 * BZ-NU-04). Checked at the top of every scheduled round in {@link #scheduleBurst} - Keystone's
+	 * {@code AbstractNpc.destroy()} calls {@link #onDestroy()} then despawns/destroys the entity in the same call,
+	 * before any pending burst interval elapses, so a still-running round has to notice the dead/removed shooter
+	 * itself rather than rely on {@link #onDestroy()} to have cancelled anything. {@code Entity#isValid()} is
+	 * {@code false} for both a dead entity and a despawned/removed one, so this single check covers death and
+	 * every destroy path. Package-private (rather than inlined in the scheduling lambda) so
+	 * {@code NpcWeaponCadenceTest} can pin it without a live Bukkit scheduler — see the class javadoc.
+	 */
+	boolean isShooterGone() {
+		return !shooter.isValid();
 	}
 
 	/**
@@ -239,8 +261,10 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 
 	@Override
 	public void onDestroy() {
-		// No standing timer or listener registration to release: each burst's SequenceTimer self-expires after its
-		// last interval, matching the original NpcCombatDelegate (which owns no lifecycle beyond the NPC itself).
+		// No standing timer or listener registration to release: this hook fires (and the entity despawns/
+		// destroys) before any pending burst interval elapses, so cancelling a timer here would be too late
+		// anyway - each scheduled round checks isShooterGone() itself and stops the SequenceTimer the moment it
+		// finds a dead/removed shooter (bug docket BZ-NU-04).
 	}
 
 	/** Ported from {@code NpcCombatDelegate.decrementAttackCooldown} (`:113-115`) — one decrement per NPC tick. */
