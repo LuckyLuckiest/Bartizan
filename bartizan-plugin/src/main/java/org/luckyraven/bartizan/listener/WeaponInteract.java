@@ -14,6 +14,7 @@ import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.luckyraven.keystone.bean.autowire.AutowireTarget;
@@ -178,6 +179,11 @@ public class WeaponInteract implements Listener {
 		// real vanilla arrow. DENY unconditionally here; the spyglass branch below still overrides it with ALLOW
 		// (last write wins).
 		if (rightClick) event.setUseItemInHand(Event.Result.DENY);
+
+		// Off-hand weapons are inert (Dual_Wield is Missing, gate HN): an OFF_HAND use threw an off-hand grenade
+		// while ThrowableAction took the item from the main hand, and a gun in each hand fired both on one click
+		// (BZ-EV-11, BZ-EV-12). The vanilla use stays denied above.
+		if (event.getHand() == EquipmentSlot.OFF_HAND) return;
 
 		if (player.isDead() || !combatEligibility.canBeHit(player)) return;
 
