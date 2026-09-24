@@ -12,18 +12,16 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pins {@link ProjectileState}'s per-shot damage-multiplier and penetration/ricochet-budget bookkeeping (weapons.md
  * W17 — Modifiers: penetration, ricochet, block break, tracer, AP, flat damage).
  *
- * <p>Pins Observation #7 (weapons.md): {@code canPenetrateBlock}/{@code canPenetrateEntity}/{@code canRicochet}
- * dereference {@code weapon.getModifiersData()} with no null check. {@code ModifiersData} is only populated by
- * {@code ModifiersSectionParser} when a weapon YAML has a {@code Modifiers:} section — a weapon built without one
- * (as every {@code WeaponFixtures} factory intentionally leaves it, matching an admin-authored file that omits
- * {@code Modifiers:}) throws {@link NullPointerException} on first use, not a graceful "no modifiers" no-op.
+ * <p>Pins the BZ-WM-01 fix: {@code Weapon.modifiersData} defaults to an empty {@link ModifiersData}, so
+ * {@code canPenetrateBlock}/{@code canPenetrateEntity}/{@code canRicochet} see a safe "nothing configured" object
+ * — not {@code null} — for a weapon built without a {@code Modifiers:} section (as every {@code WeaponFixtures}
+ * factory intentionally leaves it, matching an admin-authored file that omits {@code Modifiers:}).
  */
 @DisplayName("ProjectileState — damage multiplier and penetration/ricochet budget")
 class ProjectileStateTest {
@@ -123,15 +121,15 @@ class ProjectileStateTest {
 	}
 
 	@Test
-	@DisplayName("canPenetrateBlock/Entity/canRicochet throw NPE when the weapon has no Modifiers: section at all (Observation #7, weapons.md)")
-	void canPenetrateAndRicochet_nullModifiersData_throwsNpe() {
+	@DisplayName("canPenetrateBlock/Entity/canRicochet are false, not an NPE, when the weapon has no Modifiers: section at all (BZ-WM-01)")
+	void canPenetrateAndRicochet_noModifiersSection_falseNotNpe() {
 		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1); // no setModifiersData call — matches an admin YAML with
 		                                                     // no `Modifiers:` section
 		ProjectileState state = new ProjectileState(weapon, 10.0);
 
-		assertThrows(NullPointerException.class, state::canPenetrateBlock);
-		assertThrows(NullPointerException.class, state::canPenetrateEntity);
-		assertThrows(NullPointerException.class, state::canRicochet);
+		assertFalse(state.canPenetrateBlock());
+		assertFalse(state.canPenetrateEntity());
+		assertFalse(state.canRicochet());
 	}
 
 }

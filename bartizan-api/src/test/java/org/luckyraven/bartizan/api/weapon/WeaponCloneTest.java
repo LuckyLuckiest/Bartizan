@@ -155,15 +155,19 @@ class WeaponCloneTest {
 	}
 
 	@Test
-	@DisplayName("a weapon with no ModifiersData/RecoilData/ScopeData/SpreadData configured clones cleanly to all-null")
+	@DisplayName("a weapon with no RecoilData/ScopeData/SpreadData configured clones cleanly to all-null, and ModifiersData clones to its own empty instance (BZ-WM-01)")
 	void clone_allNullOptionalData_staysNull() {
 		GunWeapon original = WeaponFixtures.gunWeapon(30, 1);
 		// WeaponFixtures never sets ModifiersData/RecoilData/ScopeData/SpreadData/SoundData/DurabilityData/
-		// ReloadActionBarData — matches an admin weapon YAML missing every optional section.
+		// ReloadActionBarData — matches an admin weapon YAML missing every optional section. ModifiersData is the
+		// one exception: Weapon.modifiersData defaults to a fresh, empty ModifiersData() (BZ-WM-01) rather than
+		// null, so every hasXxx() check sees a safe object instead of needing a null guard.
+		assertFalse(original.getModifiersData().hasPenetration(), "sanity check: the default is genuinely empty");
 
 		GunWeapon copy = original.clone();
 
-		assertSame(null, copy.getModifiersData());
+		assertNotSame(original.getModifiersData(), copy.getModifiersData(),
+		             "the clone must get its own ModifiersData instance, not share the template's");
 		assertSame(null, copy.getRecoilData());
 		assertSame(null, copy.getScopeData());
 		assertSame(null, copy.getSpreadData());

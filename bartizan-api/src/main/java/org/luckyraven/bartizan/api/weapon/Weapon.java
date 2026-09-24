@@ -66,7 +66,9 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	private       DurabilityData         durabilityData;
 	private       SoundData              soundData;
 	private       ReloadActionBarData    reloadActionBarData;
-	private       ModifiersData          modifiersData;
+	// Defaults to an empty (all-null/empty-list) instance so a weapon YAML with no `Modifiers:` section still
+	// gives every hasXxx()/getXxx() caller a safe, non-null object instead of an NPE (BZ-WM-01).
+	private       ModifiersData          modifiersData = new ModifiersData();
 	private       RecoilData             recoilData;
 	private       ScopeData              scopeData;
 	private       SpreadData             spreadData;
