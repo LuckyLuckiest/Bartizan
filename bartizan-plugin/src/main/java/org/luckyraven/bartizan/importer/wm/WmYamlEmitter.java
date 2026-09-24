@@ -132,7 +132,20 @@ public final class WmYamlEmitter {
 		}
 
 		if (!needsQuote) return raw;
-		return '"' + raw.replace("\"", "\\\"") + '"';
+		return '"' + escapeDoubleQuoted(raw) + '"';
+	}
+
+	/**
+	 * Escapes {@code raw} for embedding inside a double-quoted YAML scalar: backslashes first, then literal
+	 * double quotes - escaping the quote alone (as this method used to, and as {@code WmImportCommand
+	 * #appendAmmunition} independently did) leaves a source backslash free to combine with the inserted
+	 * {@code \"} into an escaped-backslash-then-bare-quote (e.g. a name ending {@code foo\"} becomes {@code
+	 * foo\\"}), which closes the string early and corrupts every entry after it in the same document. A raw
+	 * newline needs no handling here - double-quoted YAML scalars fold an embedded line break to a space rather
+	 * than erroring.
+	 */
+	public static String escapeDoubleQuoted(String raw) {
+		return raw.replace("\\", "\\\\").replace("\"", "\\\"");
 	}
 
 	private static String indent(int level) {

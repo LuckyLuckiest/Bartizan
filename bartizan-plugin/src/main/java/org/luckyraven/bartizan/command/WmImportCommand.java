@@ -256,17 +256,30 @@ public final class WmImportCommand extends Command {
 		for (WmWeaponImporter.AmmoAppend ammo : ammoAppends) {
 			if (existing.contains(ammo.id())) continue;
 
-			appendText.append(ammo.id()).append(":\n")
-			          .append("   Material: \"").append(ammo.material()).append("\"\n")
-			          .append("   Name: \"").append(ammo.name().replace("\"", "\\\"")).append("\"\n")
-			          .append("   Lore:\n")
-			          .append("      - \"&7Imported from WeaponMechanics.\"\n");
+			appendText.append(ammoBlock(ammo));
 			existing.set(ammo.id(), new LinkedHashMap<>()); // marks it seen so a later dupe in this same run is skipped
 		}
 
 		if (appendText.length() == 0) return;
 
 		Files.writeString(ammoFile.toPath(), "\n" + appendText, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+	}
+
+	/**
+	 * One {@code AmmoAppend}'s block, hand-built rather than run through a YAML dumper (weapons-roadmap.md gate
+	 * {@code HM}, §6.1) - see {@link WmYamlEmitter} for why the importer writes plain text at all. {@code
+	 * ammunition.yml} is the ONE file every weapon's {@code Ammunition.Ammo_Type} resolves against, appended to
+	 * (never replaced) as a single SnakeYAML document (Keystone's {@code ConfigParser}), so both free-text fields
+	 * (WM's own {@code Material}/{@code Name}) must go through {@link WmYamlEmitter#escapeDoubleQuoted} - an
+	 * unescaped backslash-then-quote in either one closes the quoted scalar early and corrupts every ammo entry
+	 * after it in the file, not just the one being imported.
+	 */
+	static String ammoBlock(WmWeaponImporter.AmmoAppend ammo) {
+		return ammo.id() + ":\n"
+		     + "   Material: \"" + WmYamlEmitter.escapeDoubleQuoted(ammo.material()) + "\"\n"
+		     + "   Name: \"" + WmYamlEmitter.escapeDoubleQuoted(ammo.name()) + "\"\n"
+		     + "   Lore:\n"
+		     + "      - \"&7Imported from WeaponMechanics.\"\n";
 	}
 
 	private File writeReport(WmImportReport report) throws IOException {
