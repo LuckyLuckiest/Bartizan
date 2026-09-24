@@ -5,6 +5,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
@@ -53,6 +54,18 @@ public class StatsListener implements Listener {
 
 		Entity killer = event.getKiller();
 		statsService.recordKill(event.getWeapon(), killer, event.getKilled());
+	}
+
+	/**
+	 * BZ-HU-04: unconditional, so every player death counts — falling, drowning, lava, void, starvation, unarmed
+	 * PvP, a vanilla/other-plugin mob kill, all the same as a Bartizan weapon kill. {@code MONITOR} runs after
+	 * {@code WeaponDeathListener}'s {@code HIGH}-priority handler (and, nested inside it, this class's own
+	 * {@code onKill} above whenever a weapon claims the kill), so by the time this runs
+	 * {@link StatsService#recordDeath} always observes the final state.
+	 */
+	@EventHandler(priority = EventPriority.MONITOR)
+	public void onDeath(PlayerDeathEvent event) {
+		statsService.recordDeath(event.getEntity());
 	}
 
 	@EventHandler

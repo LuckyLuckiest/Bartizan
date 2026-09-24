@@ -142,9 +142,9 @@ class StatsServiceTest {
 	}
 
 	@Test
-	@DisplayName("a kill credits the killer's weapon, sets longestKillDistance from the recorded hit, and counts "
-			+ "a death for a player victim")
-	void recordKill_creditsKillerAndDeath(@TempDir File dataFolder) {
+	@DisplayName("a kill credits the killer's weapon and sets longestKillDistance from the recorded hit — the "
+			+ "victim's death count is BZ-HU-04's recordDeath's job now, not recordKill's")
+	void recordKill_creditsKillerButNotDeath(@TempDir File dataFolder) {
 		StatsService service = service(dataFolder);
 		Player       killer  = player();
 		Player       victim  = player();
@@ -159,7 +159,51 @@ class StatsServiceTest {
 		WeaponStat killerStat = service.lookup(killer.getUniqueId()).weapon("rifle");
 		assertEquals(1, killerStat.kills);
 		assertEquals(42.5, killerStat.longestKillDistance);
-		assertEquals(1, service.lookup(victim.getUniqueId()).deaths);
+		assertNull(service.lookup(victim.getUniqueId()), "recordKill alone never creates a stats entry for the victim");
+	}
+
+	@Test
+	@DisplayName("BZ-HU-04: recordDeath increments the victim's death counter unconditionally — the only path that "
+			+ "does, now that recordKill no longer touches it")
+	void recordDeath_incrementsDeaths(@TempDir File dataFolder) {
+		StatsService service = service(dataFolder);
+		Player       victim  = player();
+
+		service.recordDeath(victim);
+		service.recordDeath(victim);
+
+		assertEquals(2, service.lookup(victim.getUniqueId()).deaths);
+	}
+
+	@Test
+	@DisplayName("BZ-HU-04: recordDeath clears the victim's recentDamage entry too, so an ordinary (non-weapon) "
+			+ "death still cleans up a stray earlier hit instead of leaking it forever")
+	void recordDeath_clearsRecentDamageEntry(@TempDir File dataFolder) throws ReflectiveOperationException {
+		StatsService service  = service(dataFolder);
+		Player       attacker = player();
+		Player       victim   = player();
+
+		service.recordDamage(attacker, victim, "rifle", 5.0, null, 10.0);
+		service.recordDeath(victim);
+
+		Field field = StatsService.class.getDeclaredField("recentDamage");
+		field.setAccessible(true);
+		Map<?, ?> recentDamage = (Map<?, ?>) field.get(service);
+
+		assertFalse(recentDamage.containsKey(victim.getUniqueId()));
+	}
+
+	@Test
+	@DisplayName("Stats.Enabled: false silently skips recordDeath too")
+	void recordDeath_statsDisabled_recordsNothing(@TempDir File dataFolder) throws ReflectiveOperationException {
+		setStatic("statsEnabled", false);
+
+		StatsService service = service(dataFolder);
+		Player       victim  = player();
+
+		service.recordDeath(victim);
+
+		assertNull(service.lookup(victim.getUniqueId()));
 	}
 
 	@Test
@@ -243,8 +287,8 @@ class StatsServiceTest {
 
 	@Test
 	@DisplayName("recordKill with a null weapon (throwable claim whose template no longer resolves) skips kill "
-			+ "credit but still counts the death and runs the assist loop")
-	void recordKill_nullWeapon_skipsKillCreditKeepsDeathAndAssists(@TempDir File dataFolder) {
+			+ "credit but still runs the assist loop")
+	void recordKill_nullWeapon_skipsKillCreditKeepsAssists(@TempDir File dataFolder) {
 		StatsService service  = service(dataFolder);
 		Player       assister = player();
 		Player       killer   = player();
@@ -260,7 +304,6 @@ class StatsServiceTest {
 		}
 
 		assertNull(service.lookup(killer.getUniqueId()), "no kill-credit block ran, so the killer never got a stats entry");
-		assertEquals(1, service.lookup(victim.getUniqueId()).deaths);
 		assertEquals(1, service.lookup(assister.getUniqueId()).weapon("pistol").assists);
 	}
 

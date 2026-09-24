@@ -53,10 +53,10 @@ public class StatsService implements BeanLifecycle {
 
 	/**
 	 * {@code victim -> attacker -> last recorded hit}, consumed (the victim's whole inner map removed) the moment
-	 * that victim dies. Player victims only: entries are removed only by {@link #recordKill}, which in turn is
-	 * only ever reached through {@code WeaponDeathListener.onPlayerDeath} — a player-victim death. Recording a
-	 * mob (or any non-player) victim here would sit in the map forever, since nothing ever calls
-	 * {@code recordKill} for a mob death to remove it.
+	 * that victim dies. Player victims only: entries are removed by {@link #recordKill} (a weapon-claimed kill) and,
+	 * unconditionally for every player death regardless of cause (BZ-HU-04), by {@link #recordDeath} — recording a
+	 * mob (or any non-player) victim here would sit in the map forever, since neither is ever reached for a mob
+	 * death.
 	 *
 	 * <p>// ponytail: an entry for a player victim that takes damage but never dies (and is never touched again)
 	 * leaks until server restart — bounded in practice by "players currently mid-fight," trivial at real-world
@@ -115,14 +115,15 @@ public class StatsService implements BeanLifecycle {
 	}
 
 	/**
-	 * Kills (for the killer's weapon, plus {@code longestKillDistance} from the recorded distance), a death (for a
-	 * player victim), and — for every other player who damaged the same victim within
-	 * {@code Stats.Assist_Window_Ticks} of this kill — an assist plus a fired {@link WeaponAssistEvent}.
+	 * Kills (for the killer's weapon, plus {@code longestKillDistance} from the recorded distance) and — for every
+	 * other player who damaged the same victim within {@code Stats.Assist_Window_Ticks} of this kill — an assist
+	 * plus a fired {@link WeaponAssistEvent}. The victim's death count is <b>not</b> touched here (BZ-HU-04) —
+	 * {@link #recordDeath} is the single, unconditional source of that count, since this method only ever runs when
+	 * a Bartizan weapon (or a biological status) actually claimed the kill.
 	 *
 	 * <p>{@code weapon} may be {@code null} — {@code WeaponDeathListener} fires {@code WeaponKillEntityEvent} with
 	 * a null weapon when a throwable claim's template no longer resolves. Only the kill-credit block is skipped in
-	 * that case; the death count and the assist loop (keyed by each attacker's own recorded weapon, never the
-	 * killer's) still run.
+	 * that case; the assist loop (keyed by each attacker's own recorded weapon, never the killer's) still runs.
 	 */
 	public void recordKill(@Nullable Weapon weapon, @Nullable Entity killer, Entity killed) {
 		if (!BartizanSettings.isStatsEnabled()) return;
@@ -139,11 +140,6 @@ public class StatsService implements BeanLifecycle {
 				stat.longestKillDistance = killerRecord.distance();
 			}
 			markDirty(killerPlayer);
-		}
-
-		if (killed instanceof Player killedPlayer) {
-			stats(killedPlayer).deaths++;
-			markDirty(killedPlayer);
 		}
 
 		if (attackers == null || !(killed instanceof LivingEntity victim)) return;
@@ -165,6 +161,22 @@ public class StatsService implements BeanLifecycle {
 			Bukkit.getPluginManager().callEvent(
 					new WeaponAssistEvent(entry.getValue().weaponName(), assister, victim, killer));
 		}
+	}
+
+	/**
+	 * BZ-HU-04: the single, unconditional death counter — called for every {@code PlayerDeathEvent}, regardless of
+	 * cause. Previously {@code deaths++} lived only in {@link #recordKill}, which is only ever reached when a
+	 * Bartizan weapon or an active biological status claimed the kill, so an ordinary death (fall, drowning, lava,
+	 * void, starvation, unarmed PvP, a vanilla/other-plugin mob kill) never incremented it. Also clears the
+	 * victim's {@link #recentDamage} entry — a harmless no-op when {@link #recordKill} already consumed it for a
+	 * weapon-claimed kill, the only cleanup at all otherwise.
+	 */
+	public void recordDeath(Player victim) {
+		if (!BartizanSettings.isStatsEnabled()) return;
+
+		recentDamage.remove(victim.getUniqueId());
+		stats(victim).deaths++;
+		markDirty(victim);
 	}
 
 	public void onQuit(UUID playerId) {
