@@ -92,7 +92,8 @@ public class SpreadManager {
 		long currentTime       = System.currentTimeMillis();
 		long timeSinceLastShot = currentTime - lastShotTime;
 
-		if (timeSinceLastShot >= spreadData.getResetTime()) {
+		// SpreadData.resetTime is authored in YAML as ticks (Time: 5), not milliseconds (BZ-WM-02).
+		if (timeSinceLastShot >= spreadData.getResetTime() * 50L) { // 50ms/tick
 			currentSpread = spreadData.getStart();
 		}
 
