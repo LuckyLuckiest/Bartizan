@@ -19,7 +19,6 @@ commands:
       permission: bartizan.command.main
       aliases:
          - btz
-         - weapon
 
 permissions:
    bartizan.command.main:
