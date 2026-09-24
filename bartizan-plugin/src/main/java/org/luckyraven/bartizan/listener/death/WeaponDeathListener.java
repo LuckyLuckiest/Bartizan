@@ -127,10 +127,19 @@ public class WeaponDeathListener implements Listener {
 		RecordedKill recorded = recentThrowableKills.remove(victim.getUniqueId());
 
 		Player killer = victim.getKiller();
+
+		// BZ-EV-21: Player#getKiller() names the last player to land ANY hit within Bukkit's own ~5s
+		// last-hurt-by-player window, not whoever actually dealt the fatal blow — a killer != null here does not
+		// mean their hit was lethal. When the victim's own last damage cause is the status DoT itself
+		// (POISON/WITHER), the status's shooter is asked first, the same as the no-killer case below; only when
+		// that declines (no active status, outside its window, shooter offline, or vetoed) do we fall through to
+		// the killer-based path.
+		boolean statusMayHaveKilled = killer == null || isStatusDamageCause(victim.getLastDamageCause());
+		if (statusMayHaveKilled && creditStatusKill(event, victim)) {
+			return;
+		}
+
 		if (killer == null) {
-			// No entity dealt the final blow — the common shape of a poison/wither status death. Ask the status
-			// service whether a shooter is still owed the kill (weapons-roadmap.md gate HB §2.2 "Kill credit").
-			creditStatusKill(event, victim);
 			return;
 		}
 
@@ -179,30 +188,34 @@ public class WeaponDeathListener implements Listener {
 
 	/**
 	 * Poison/wither death kill credit (weapons-roadmap.md gate {@code HB} §2.2): a death with no attributable
-	 * killer still credits the shooter of an active biological status when the last application landed within
-	 * {@code Status.Kill_Credit_Window} ticks and that shooter is still online.
+	 * killer, or one whose last damage cause is the status DoT itself (BZ-EV-21), still credits the shooter of an
+	 * active biological status when the last application landed within {@code Status.Kill_Credit_Window} ticks and
+	 * that shooter is still online.
+	 *
+	 * @return {@code true} if this credited the kill (fired the event, uncancelled, and set the death message) —
+	 * 		callers use this to decide whether the killer-based path below should still run.
 	 */
-	private void creditStatusKill(PlayerDeathEvent event, Player victim) {
+	private boolean creditStatusKill(PlayerDeathEvent event, Player victim) {
 		Optional<ActiveStatus> statusOptional = statusService.activeOn(victim.getUniqueId());
-		if (statusOptional.isEmpty()) return;
+		if (statusOptional.isEmpty()) return false;
 
 		ActiveStatus status = statusOptional.get();
-		if (status.getShooterId() == null) return;
+		if (status.getShooterId() == null) return false;
 
 		BiologicalWeapon weapon = status.getWeapon();
 		long             window = weapon.getBiologicalData().getStatus().getKillCreditWindow();
-		if (statusService.currentTick() - status.getAppliedTick() > window) return;
+		if (statusService.currentTick() - status.getAppliedTick() > window) return false;
 
 		Player shooter = Bukkit.getPlayer(status.getShooterId());
-		if (shooter == null || !shooter.isOnline()) return;
+		if (shooter == null || !shooter.isOnline()) return false;
 
 		String template = weapon.pickDeathMessage().orElse(null);
 		if (template == null) template = pickRandomGlobalMessage(BartizanMessages.DEAD_USING_WEAPON.toStringList());
-		if (template == null) return;
+		if (template == null) return false;
 
 		WeaponKillEntityEvent killEvent = new WeaponKillEntityEvent(weapon, shooter, victim);
 		Bukkit.getPluginManager().callEvent(killEvent);
-		if (killEvent.isCancelled()) return;
+		if (killEvent.isCancelled()) return false;
 
 		EffectContext ctx = EffectContext.builder().weapon(weapon).source(shooter).victim(victim).build();
 		effectRunner.run(weapon, EffectHook.ON_KILL, ctx);
@@ -210,6 +223,18 @@ public class WeaponDeathListener implements Listener {
 		event.setDeathMessage(BartizanChatUtil.color(template.replace("%killer%", shooter.getName())
 		                                                     .replace("%victim%", victim.getName())
 		                                                     .replace("%item%", weapon.getDisplayName())));
+		return true;
+	}
+
+	/**
+	 * BZ-EV-21: {@code true} when the victim's last recorded damage was the status DoT itself, independent of
+	 * {@code Player#getKiller()}'s own, much looser ~5s last-hurt-by-player tracking.
+	 */
+	private static boolean isStatusDamageCause(@Nullable EntityDamageEvent lastDamage) {
+		if (lastDamage == null) return false;
+
+		DamageCause cause = lastDamage.getCause();
+		return cause == DamageCause.POISON || cause == DamageCause.WITHER;
 	}
 
 	private boolean isExpired(RecordedKill recorded) {

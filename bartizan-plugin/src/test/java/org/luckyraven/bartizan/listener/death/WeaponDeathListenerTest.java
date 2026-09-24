@@ -500,4 +500,110 @@ class WeaponDeathListenerTest {
 		verify(effectRunner, never()).run(any(), any(), any());
 	}
 
+	@Test
+	@DisplayName("BZ-EV-21: a graze from an unrelated player inside Bukkit's own combat-tracker window does not "
+			+ "steal a poison kill's credit — a last damage cause of POISON routes to the status shooter first")
+	void onPlayerDeath_lastDamageCausePoison_creditsStatusShooterOverGrazingKiller() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		EffectRunner        effectRunner  = mock(EffectRunner.class);
+		StatusEffectService statusService = mock(StatusEffectService.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner, statusService);
+
+		Player victim   = mock(Player.class);
+		UUID   victimId = UUID.randomUUID();
+		when(victim.getUniqueId()).thenReturn(victimId);
+		when(victim.getName()).thenReturn("Victim");
+
+		// Bukkit's getKiller() names the player who last grazed the victim, not who actually killed them.
+		Player grazer = mock(Player.class);
+		when(victim.getKiller()).thenReturn(grazer);
+
+		EntityDamageEvent lastDamage = mock(EntityDamageEvent.class);
+		when(lastDamage.getCause()).thenReturn(EntityDamageEvent.DamageCause.POISON);
+		when(victim.getLastDamageCause()).thenReturn(lastDamage);
+
+		Player shooter   = mock(Player.class);
+		UUID   shooterId = UUID.randomUUID();
+		when(shooter.getUniqueId()).thenReturn(shooterId);
+		when(shooter.getName()).thenReturn("Shooter");
+		when(shooter.isOnline()).thenReturn(true);
+
+		BiologicalWeapon weapon = mock(BiologicalWeapon.class);
+		when(weapon.getDisplayName()).thenReturn("Syringe Gun");
+		when(weapon.pickDeathMessage()).thenReturn(Optional.of("%killer% infected %victim% with %item%"));
+
+		StatusData statusData = mock(StatusData.class);
+		when(statusData.getKillCreditWindow()).thenReturn(200);
+
+		BiologicalData biologicalData = mock(BiologicalData.class);
+		when(biologicalData.getStatus()).thenReturn(statusData);
+		when(weapon.getBiologicalData()).thenReturn(biologicalData);
+
+		ActiveStatus status = new ActiveStatus(victimId, shooterId, weapon, 2, 1000L, 1400L);
+		when(statusService.activeOn(victimId)).thenReturn(Optional.of(status));
+		when(statusService.currentTick()).thenReturn(1150L);
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+			bukkit.when(() -> Bukkit.getPlayer(shooterId)).thenReturn(shooter);
+
+			listener.onPlayerDeath(event);
+		}
+
+		// The grazing "killer" is never consulted at all — the status claim wins outright.
+		verify(weaponManager, never()).validateAndGetWeapon(any(), any());
+		verify(event).setDeathMessage("Shooter infected Victim with Syringe Gun");
+	}
+
+	@Test
+	@DisplayName("BZ-EV-21: a killer whose hit actually was the fatal blow (last damage cause is not the status "
+			+ "DoT) is still credited normally even with an unrelated active status in its window")
+	void onPlayerDeath_lastDamageCauseNotStatus_fallsThroughToKillerDespiteActiveStatus() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		EffectRunner        effectRunner  = mock(EffectRunner.class);
+		StatusEffectService statusService = mock(StatusEffectService.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner, statusService);
+
+		Player victim = mock(Player.class);
+		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
+		when(victim.getName()).thenReturn("Victim");
+
+		EntityDamageEvent lastDamage = mock(EntityDamageEvent.class);
+		when(lastDamage.getCause()).thenReturn(EntityDamageEvent.DamageCause.ENTITY_ATTACK);
+		when(victim.getLastDamageCause()).thenReturn(lastDamage);
+
+		Player          killer    = mock(Player.class);
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		ItemStack       heldItem  = mock(ItemStack.class);
+		when(killer.getInventory()).thenReturn(inventory);
+		when(inventory.getItemInMainHand()).thenReturn(heldItem);
+		when(killer.getName()).thenReturn("Killer");
+		when(victim.getKiller()).thenReturn(killer);
+
+		Weapon heldWeapon = mock(Weapon.class);
+		when(heldWeapon.getDisplayName()).thenReturn("Knife");
+		when(heldWeapon.pickDeathMessage()).thenReturn(Optional.of("%killer% killed %victim% with %item%"));
+		when(weaponManager.validateAndGetWeapon(eq(killer), eq(heldItem))).thenReturn(heldWeapon);
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			listener.onPlayerDeath(event);
+		}
+
+		// The status service is never even consulted — isStatusDamageCause gated it out before creditStatusKill.
+		verify(statusService, never()).activeOn(any());
+		verify(event).setDeathMessage("Killer killed Victim with Knife");
+	}
+
 }
