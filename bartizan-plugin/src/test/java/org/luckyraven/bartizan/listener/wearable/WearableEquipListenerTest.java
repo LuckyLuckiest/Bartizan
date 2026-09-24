@@ -21,11 +21,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.testsupport.BukkitRegistryFixture;
 import org.luckyraven.bartizan.api.wearable.Wearable;
+import org.luckyraven.bartizan.file.BartizanMessages;
+import org.luckyraven.bartizan.file.BartizanSettings;
 import org.luckyraven.bartizan.support.PerStackNbtAccessor;
 import org.luckyraven.bartizan.wearable.WearableService;
 import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.keystone.item.nbt.NbtBridge;
+import org.luckyraven.keystone.message.MessageProvider;
 
+import java.lang.reflect.Field;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -59,8 +64,31 @@ class WearableEquipListenerTest {
 	}
 
 	@AfterEach
-	void tearDown() {
+	void tearDown() throws Exception {
 		NbtBridge.reset();
+		resetMessageProvider();
+	}
+
+	/**
+	 * {@code BartizanMessages.provider} is a shared static, set once at plugin startup - primed directly here the
+	 * same way {@code WeaponDeathListenerTest#primeMoneySymbol} primes {@code BartizanSettings.moneySymbol}, and
+	 * reset in {@link #tearDown} so the mock doesn't leak into another test class in the same fork.
+	 */
+	private static void primeMessageProvider(String denialMessage) throws ReflectiveOperationException {
+		Field moneySymbol = BartizanSettings.class.getDeclaredField("moneySymbol");
+		moneySymbol.setAccessible(true);
+		moneySymbol.set(null, "$");
+
+		MessageProvider provider = mock(MessageProvider.class);
+		when(provider.getString("Errors.Prefix")).thenReturn("&4Error&7: ");
+		when(provider.getString("Errors.Wearable.Equip_Denied")).thenReturn(denialMessage);
+		BartizanMessages.init(provider);
+	}
+
+	private static void resetMessageProvider() throws ReflectiveOperationException {
+		Field provider = BartizanMessages.class.getDeclaredField("provider");
+		provider.setAccessible(true);
+		provider.set(null, null);
 	}
 
 	private static ItemStack wearableItem(String key) {
@@ -95,7 +123,8 @@ class WearableEquipListenerTest {
 
 	@Test
 	@DisplayName("HOTBAR_SWAP onto an armor slot with a permission-gated wearable is blocked (number-key equip)")
-	void onArmorEquip_hotbarSwap_permissionDenied_isCancelled() {
+	void onArmorEquip_hotbarSwap_permissionDenied_isCancelled() throws Exception {
+		primeMessageProvider("&cYou are not authorized to equip this armor.");
 		WearableEquipListener listener = new WearableEquipListener(serviceWith(KEY));
 
 		Player          player    = playerLackingPermission();
@@ -139,7 +168,8 @@ class WearableEquipListenerTest {
 
 	@Test
 	@DisplayName("right-clicking a permission-gated wearable in hand is blocked (vanilla right-click equip)")
-	void onArmorRightClickEquip_permissionDenied_blocksItemUse() {
+	void onArmorRightClickEquip_permissionDenied_blocksItemUse() throws Exception {
+		primeMessageProvider("&cYou are not authorized to equip this armor.");
 		WearableEquipListener listener = new WearableEquipListener(serviceWith(KEY));
 
 		Player    player = playerLackingPermission();
@@ -184,6 +214,32 @@ class WearableEquipListenerTest {
 		listener.onArmorRightClickEquip(event);
 
 		assertEquals(Event.Result.DEFAULT, event.useItemInHand());
+	}
+
+	@Test
+	@DisplayName("BZ-WE-04: permission-denied equip sends the message through BartizanMessages, not a hardcoded "
+			+ "raw Keystone ChatUtil string")
+	void onArmorEquip_permissionDenied_sendsThroughBartizanMessages() throws Exception {
+		primeMessageProvider("&cYou are not authorized to equip this armor.");
+		String expected = BartizanMessages.WEARABLE_EQUIP_DENIED.toString();
+
+		WearableEquipListener listener = new WearableEquipListener(serviceWith(KEY));
+
+		Player          player    = playerLackingPermission();
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		when(inventory.getItem(0)).thenReturn(wearableItem(KEY));
+		when(player.getInventory()).thenReturn(inventory);
+
+		InventoryView view = mock(InventoryView.class);
+		when(view.getPlayer()).thenReturn(player);
+		when(view.convertSlot(anyInt())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		InventoryClickEvent event = new InventoryClickEvent(view, SlotType.ARMOR, 5, ClickType.NUMBER_KEY,
+		                                                    InventoryAction.HOTBAR_SWAP, 0);
+
+		listener.onArmorEquip(event);
+
+		verify(player).sendMessage(expected);
 	}
 
 }

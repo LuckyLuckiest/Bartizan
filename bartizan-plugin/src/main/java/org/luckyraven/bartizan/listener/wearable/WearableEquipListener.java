@@ -14,7 +14,7 @@ import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.bean.autowire.AutowireTarget;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
-import org.luckyraven.keystone.util.ChatUtil;
+import org.luckyraven.bartizan.file.BartizanMessages;
 import org.luckyraven.bartizan.wearable.WearableService;
 import org.luckyraven.bartizan.api.wearable.Wearable;
 
@@ -90,7 +90,7 @@ public class WearableEquipListener implements Listener {
 	}
 
 	private void sendDenied(Player player) {
-		player.sendMessage(ChatUtil.color("&cYou are not authorized to equip this armor."));
+		player.sendMessage(BartizanMessages.WEARABLE_EQUIP_DENIED.toString());
 	}
 
 	/**

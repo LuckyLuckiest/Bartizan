@@ -46,6 +46,7 @@ public enum BartizanMessages {
 	WEARABLE_INVALID("Errors.Wearable.Invalid", Type.ERROR),
 	WEARABLE_NOT_REGISTERED("Errors.Wearable.Not_Registered", Type.ERROR),
 	WEARABLE_NOT_WEARABLE("Errors.Wearable.Not_Wearable", Type.ERROR),
+	WEARABLE_EQUIP_DENIED("Errors.Wearable.Equip_Denied", Type.ERROR),
 
 	// commands - stats
 	NO_STATS("Errors.No_Stats", Type.ERROR),
