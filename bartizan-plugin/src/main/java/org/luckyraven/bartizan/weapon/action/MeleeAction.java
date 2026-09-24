@@ -5,6 +5,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.util.ParticleUtil;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
@@ -187,15 +188,12 @@ public class MeleeAction {
 		if (ap != null && ap.armorBypass() > 0) {
 			double armoredDmg = baseDmg * (1.0 - ap.armorBypass());
 			double pierceDmg  = baseDmg * ap.armorBypass();
-			pendingDamage.add(target.getUniqueId());
-			target.damage(armoredDmg, player);
+			dealPendingDamage(target, armoredDmg, player);
 			if (!target.isDead() && pierceDmg > 0) {
-				pendingDamage.add(target.getUniqueId());
-				target.damage(pierceDmg);
+				dealPendingDamage(target, pierceDmg, null);
 			}
 		} else {
-			pendingDamage.add(target.getUniqueId());
-			target.damage(baseDmg, player);
+			dealPendingDamage(target, baseDmg, player);
 		}
 
 		// If health didn't decrease, a protection plugin blocked the damage (same "damageBlocked" shape as
@@ -221,6 +219,26 @@ public class MeleeAction {
 		if (target.isDead() || knockback <= 0) return;
 		Vector kb = lookDir.clone().multiply(knockback);
 		target.setVelocity(target.getVelocity().add(kb));
+	}
+
+	/**
+	 * BZ-FA-11: {@code pendingDamage} used to be drained only by {@code WeaponInteract.onEntityDamage}, which fires
+	 * exclusively on {@link org.bukkit.event.entity.EntityDamageByEntityEvent} — a call with no {@code source}
+	 * (the armor-piercing follow-up below) raises no such event at all, and even a sourced call raises none when
+	 * the target is fully invulnerable (creative, {@code EntityDamageEvent} cancelled upstream, ...), so the UUID
+	 * was stranded in the static set until the next unrelated hit on that same entity wrongly drained it and
+	 * skipped {@code WeaponInteract}'s cancel guard. Draining synchronously in a {@code finally} right after the
+	 * damage call returns — regardless of whether an event fired at all — removes the dependency on that
+	 * event-based drain entirely.
+	 */
+	private void dealPendingDamage(LivingEntity target, double amount, @Nullable Player source) {
+		pendingDamage.add(target.getUniqueId());
+		try {
+			if (source != null) target.damage(amount, source);
+			else target.damage(amount);
+		} finally {
+			pendingDamage.remove(target.getUniqueId());
+		}
 	}
 
 }
