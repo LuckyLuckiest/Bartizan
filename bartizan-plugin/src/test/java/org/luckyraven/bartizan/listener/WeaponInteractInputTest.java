@@ -12,6 +12,7 @@ import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitScheduler;
@@ -33,6 +34,7 @@ import org.luckyraven.bartizan.api.weapon.IncendiaryWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.weapon.action.ChargeController;
+import org.luckyraven.bartizan.weapon.action.FullAutoTask;
 import org.luckyraven.bartizan.weapon.action.IncendiaryAction;
 import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
 import org.luckyraven.bartizan.weapon.action.MeleeAction;
@@ -49,6 +51,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -274,6 +278,53 @@ class WeaponInteractInputTest {
 
 		verify(effectRunner).run(eq(gun), eq(EffectHook.ON_HOLSTER), any());
 		verify(effectRunner, never()).run(eq(gun), eq(EffectHook.ON_EQUIP), any());
+	}
+
+	// BZ-EV-02: the release watchdogs write WeaponData.shooting, which the main thread writes too
+
+	private void assertNoAsyncTimer() {
+		verify(scheduler, never()).runTaskTimerAsynchronously(any(Plugin.class), any(Runnable.class), anyLong(),
+		                                                      anyLong());
+		verify(scheduler, atLeastOnce()).runTaskTimer(any(Plugin.class), any(Runnable.class), anyLong(), anyLong());
+	}
+
+	@Test
+	@DisplayName("the SINGLE press-lock watchdog runs on the main thread")
+	void singleWatchdog_isSynchronous() {
+		gun(HandlingData.Trigger.RIGHT_CLICK);
+
+		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class)) {
+			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
+		}
+
+		assertNoAsyncTimer();
+	}
+
+	@Test
+	@DisplayName("the AUTO gun watchdog runs on the main thread")
+	void autoWatchdog_isSynchronous() {
+		gun(HandlingData.Trigger.RIGHT_CLICK).setCurrentSelectiveFire(SelectiveFire.AUTO);
+
+		try (MockedConstruction<FullAutoTask> ignored = mockConstruction(FullAutoTask.class)) {
+			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
+		}
+
+		assertNoAsyncTimer();
+	}
+
+	@Test
+	@DisplayName("the AUTO flamethrower watchdog runs on the main thread")
+	void incendiaryAutoWatchdog_isSynchronous() {
+		IncendiaryWeapon flamer = WeaponFixtures.incendiaryWeapon(10, 1);
+		flamer.setCurrentSelectiveFire(SelectiveFire.AUTO);
+		equipByHotbar(flamer, 0);
+
+		try (MockedConstruction<IncendiaryAction> ignored = mockConstruction(IncendiaryAction.class,
+				(action, context) -> when(action.fireOnce(player)).thenReturn(true))) {
+			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
+		}
+
+		assertNoAsyncTimer();
 	}
 
 }

@@ -699,7 +699,7 @@ public class WeaponInteract implements Listener {
 				return;
 			}
 			stillShooting.get().shooting = false;
-		}).start(true);
+		}).start(false);
 	}
 
 	/**
@@ -779,7 +779,8 @@ public class WeaponInteract implements Listener {
 		AtomicReference<WeaponData> ref = new AtomicReference<>(freshWeaponData);
 		pressHoldState.put(weaponUuid, ref);
 
-		// release-detection watchdog. Pure flag-flipping + map mutation, so safe to run async.
+		// release-detection watchdog. Main thread, like every watchdog here: WeaponData.shooting is a plain field the
+		// interact handler also writes, and the AUTO one resets the recoil pattern (BZ-EV-02).
 		new RepeatingTimer(plugin, MIN_PRESS_LOCK_TICKS, time -> {
 			AtomicReference<WeaponData> stillHeld = pressHoldState.get(weaponUuid);
 			if (stillHeld == null) {
@@ -795,7 +796,7 @@ public class WeaponInteract implements Listener {
 				return;
 			}
 			stillHeld.get().shooting = false;
-		}).start(true);
+		}).start(false);
 	}
 
 	/**
@@ -901,7 +902,7 @@ public class WeaponInteract implements Listener {
 				}
 
 				stillShooting.get().shooting = false;
-			}).start(true);
+			}).start(false);
 		} else {
 			AtomicReference<WeaponData> weaponData = continuousFire.get(weaponUuid);
 
