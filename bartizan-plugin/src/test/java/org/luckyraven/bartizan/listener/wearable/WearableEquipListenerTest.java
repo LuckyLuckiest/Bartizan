@@ -1,9 +1,11 @@
 package org.luckyraven.bartizan.listener.wearable;
 
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
+import org.bukkit.event.EventHandler;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -214,6 +216,72 @@ class WearableEquipListenerTest {
 		listener.onArmorRightClickEquip(event);
 
 		assertEquals(Event.Result.DEFAULT, event.useItemInHand());
+	}
+
+	@Test
+	@DisplayName("BZ-WE-01 fix round 1: onArmorRightClickEquip must not ignoreCancelled, since a RIGHT_CLICK_AIR "
+			+ "event is already isCancelled() == true at construction (CraftBukkit sets useClickedBlock = DENY "
+			+ "whenever the clicked block is null) - ignoreCancelled would make Bukkit's RegisteredListener filter "
+			+ "skip this handler for every plain right-click-to-equip, the ordinary vanilla equip path")
+	void onArmorRightClickEquip_annotationDoesNotIgnoreCancelled() throws Exception {
+		PlayerInteractEvent rightClickAir = new PlayerInteractEvent(playerWithPermission(), Action.RIGHT_CLICK_AIR,
+				wearableItem(KEY), null, BlockFace.SELF, EquipmentSlot.HAND);
+		assertTrue(rightClickAir.isCancelled(),
+				"precondition: a constructed RIGHT_CLICK_AIR event with no clicked block is already cancelled - "
+						+ "this is what ignoreCancelled = true would filter out before the handler ever runs");
+
+		EventHandler annotation = WearableEquipListener.class
+				.getMethod("onArmorRightClickEquip", PlayerInteractEvent.class)
+				.getAnnotation(EventHandler.class);
+		assertFalse(annotation.ignoreCancelled(),
+				"onArmorRightClickEquip must not ignoreCancelled, or Bukkit's real event dispatcher would never "
+						+ "call it for a RIGHT_CLICK_AIR equip");
+	}
+
+	@Test
+	@DisplayName("BZ-WE-01 fix round 1: right-click denial only blocks item use, not an unrelated block "
+			+ "interaction (e.g. opening a chest while a denied wearable happens to be in hand)")
+	void onArmorRightClickEquip_permissionDenied_leavesBlockInteractionAlone() throws Exception {
+		primeMessageProvider("&cYou are not authorized to equip this armor.");
+		WearableEquipListener listener = new WearableEquipListener(serviceWith(KEY));
+
+		Player player = playerLackingPermission();
+		Block  block  = mock(Block.class);
+
+		PlayerInteractEvent event = new PlayerInteractEvent(player, Action.RIGHT_CLICK_BLOCK, wearableItem(KEY),
+				block, BlockFace.UP, EquipmentSlot.HAND);
+
+		listener.onArmorRightClickEquip(event);
+
+		assertEquals(Event.Result.DENY, event.useItemInHand());
+		assertEquals(Event.Result.ALLOW, event.useInteractedBlock(),
+				"the block interaction itself (opening a chest/door) must still work");
+	}
+
+	@Test
+	@DisplayName("BZ-WE-01 fix round 1: pressing F (SWAP_OFFHAND) over an armor slot also fires HOTBAR_SWAP but "
+			+ "with getHotbarButton() == -1 (5-arg InventoryClickEvent constructor) - must resolve the off-hand "
+			+ "item, not call getItem(-1)")
+	void onArmorEquip_hotbarSwapOffhand_permissionDenied_isCancelled() throws Exception {
+		primeMessageProvider("&cYou are not authorized to equip this armor.");
+		WearableEquipListener listener = new WearableEquipListener(serviceWith(KEY));
+
+		Player          player    = playerLackingPermission();
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		when(inventory.getItemInOffHand()).thenReturn(wearableItem(KEY));
+		when(player.getInventory()).thenReturn(inventory);
+
+		InventoryView view = mock(InventoryView.class);
+		when(view.getPlayer()).thenReturn(player);
+		when(view.convertSlot(anyInt())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		// 5-arg constructor: no hotbar button carried, getHotbarButton() defaults to -1.
+		InventoryClickEvent event = new InventoryClickEvent(view, SlotType.ARMOR, 5, ClickType.SWAP_OFFHAND,
+				InventoryAction.HOTBAR_SWAP);
+
+		listener.onArmorEquip(event);
+
+		assertTrue(event.isCancelled(), "offhand-swap equip of a permission-gated wearable must be blocked");
 	}
 
 	@Test

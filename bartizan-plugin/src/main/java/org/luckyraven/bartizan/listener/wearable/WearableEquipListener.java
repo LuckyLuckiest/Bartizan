@@ -1,6 +1,7 @@
 package org.luckyraven.bartizan.listener.wearable;
 
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -51,12 +52,16 @@ public class WearableEquipListener implements Listener {
 	}
 
 	/**
-	 * BZ-WE-01: the ordinary vanilla way to equip armor is a plain right-click, which never fires
-	 * {@link InventoryClickEvent} at all — only this event does. Denying {@code useItemInHand} here stops the
-	 * equip before it happens; the (rare) side effect is that any other right-click use of a permission-gated
-	 * wearable item is also blocked while held, which is acceptable for an item nobody is allowed to wear.
+	 * BZ-WE-01 (fix round 1): no {@code ignoreCancelled} here. CraftBukkit's {@link PlayerInteractEvent}
+	 * constructor sets {@code useClickedBlock = DENY} whenever the clicked block is {@code null}, and
+	 * {@code isCancelled()} reads that same field — so every {@code RIGHT_CLICK_AIR} event (looking at open air,
+	 * the ordinary way to equip armor by right-click) arrives already "cancelled" before any listener runs.
+	 * {@code ignoreCancelled = true} would make Bukkit skip this handler for that exact case, leaving only the
+	 * rarer {@code RIGHT_CLICK_BLOCK} path gated. Denying just {@code useItemInHand} (not the whole event) stops
+	 * the equip before it happens without also blocking an unrelated block interaction (a chest, a door) while
+	 * the denied item merely happens to be in hand.
 	 */
-	@EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+	@EventHandler(priority = EventPriority.LOW)
 	public void onArmorRightClickEquip(PlayerInteractEvent event) {
 		if (event.getHand() != EquipmentSlot.HAND) return;
 
@@ -65,7 +70,7 @@ public class WearableEquipListener implements Listener {
 
 		Player player = event.getPlayer();
 		if (isPermissionDenied(player, event.getItem())) {
-			event.setCancelled(true);
+			event.setUseItemInHand(Event.Result.DENY);
 			sendDenied(player);
 		}
 	}
@@ -101,7 +106,11 @@ public class WearableEquipListener implements Listener {
 	 *   <li>Shift-click of an armor item from any other slot (auto-equip to the matching armor
 	 *       slot).</li>
 	 *   <li>A hotbar number-key press over an armor slot ({@code HOTBAR_SWAP}) - the item that swaps in is the
-	 *       one currently sitting in that hotbar slot, not the cursor.</li>
+	 *       one currently sitting in that hotbar slot, not the cursor. Pressing F ({@code ClickType.SWAP_OFFHAND})
+	 *       over an armor slot also produces {@code HOTBAR_SWAP}, but CraftBukkit builds that event with the 5-arg
+	 *       {@link InventoryClickEvent} constructor, which leaves {@link InventoryClickEvent#getHotbarButton()} at
+	 *       its default of {@code -1} - the item that swaps in there is the current off-hand item, not
+	 *       {@code getItem(-1)}.</li>
 	 * </ul>
 	 */
 	private ItemStack resolveArmorBeingEquipped(InventoryClickEvent event) {
@@ -114,7 +123,10 @@ public class WearableEquipListener implements Listener {
 				return Wearable.isArmorItem(cursor) ? cursor : null;
 			}
 			if (action == InventoryAction.HOTBAR_SWAP) {
-				ItemStack hotbarItem = event.getWhoClicked().getInventory().getItem(event.getHotbarButton());
+				int hotbarButton = event.getHotbarButton();
+				ItemStack hotbarItem = hotbarButton < 0
+						? event.getWhoClicked().getInventory().getItemInOffHand()
+						: event.getWhoClicked().getInventory().getItem(hotbarButton);
 				return Wearable.isArmorItem(hotbarItem) ? hotbarItem : null;
 			}
 			return null;
