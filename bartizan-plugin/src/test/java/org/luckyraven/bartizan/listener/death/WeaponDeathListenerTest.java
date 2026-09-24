@@ -2,10 +2,13 @@ package org.luckyraven.bartizan.listener.death;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.PluginManager;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
@@ -18,6 +21,7 @@ import org.luckyraven.bartizan.api.weapon.dto.StatusData;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.file.BartizanSettings;
+import org.luckyraven.bartizan.raytrace.FatalDamageAttribution;
 import org.luckyraven.bartizan.status.ActiveStatus;
 import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponManager;
@@ -43,6 +47,162 @@ import static org.mockito.Mockito.when;
  */
 @DisplayName("WeaponDeathListener")
 class WeaponDeathListenerTest {
+
+	@BeforeEach
+	void primeMoneySymbol() throws ReflectiveOperationException {
+		// Pre-existing fragility fixed in passing: BartizanChatUtil.color() always substitutes %money_symbol%, so
+		// every test that reaches event.setDeathMessage(...) needs BartizanSettings.moneySymbol non-null — it was
+		// previously primed by only one @Test method, so passing depended on JUnit's (undocumented, hash-based)
+		// method ordering happening to run that test first. See the field javadoc below for why reflection is used.
+		Field field = BartizanSettings.class.getDeclaredField("moneySymbol");
+		field.setAccessible(true);
+		field.set(null, "$");
+	}
+
+	@AfterEach
+	void clearFatalDamageAttribution() {
+		// Belt-and-suspenders: a test that throws between set() and clear() must never leak the ThreadLocal into a
+		// later test on the same (pooled) JUnit worker thread.
+		FatalDamageAttribution.clear();
+	}
+
+	@Test
+	@DisplayName("BZ-EV-19: a fatal-weapon attribution set synchronously around the killing living.damage() call "
+			+ "(e.g. a slow rocket/flare landing after the shooter swapped weapons) is credited over the killer's "
+			+ "currently-held item")
+	void onPlayerDeath_fatalDamageAttributionSet_creditsThatWeaponOverHeldItem() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
+
+		Player victim = mock(Player.class);
+		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
+		when(victim.getName()).thenReturn("Victim");
+
+		Player          killer    = mock(Player.class);
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		when(killer.getInventory()).thenReturn(inventory);
+		when(inventory.getItemInMainHand()).thenReturn(mock(ItemStack.class));
+		when(killer.getName()).thenReturn("Killer");
+		when(victim.getKiller()).thenReturn(killer);
+
+		Weapon rocket = mock(Weapon.class);
+		when(rocket.getDisplayName()).thenReturn("Rocket Launcher");
+		when(rocket.pickDeathMessage()).thenReturn(Optional.of("%killer% killed %victim% with %item%"));
+		when(weaponManager.getWeaponTemplate("rocket")).thenReturn(rocket);
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		FatalDamageAttribution.set("rocket");
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			listener.onPlayerDeath(event);
+		} finally {
+			FatalDamageAttribution.clear();
+		}
+
+		// Never even consulted the killer's held item — the fatal-hit attribution won outright.
+		verify(weaponManager, never()).validateAndGetWeapon(any(), any());
+		verify(event).setDeathMessage("Killer killed Victim with Rocket Launcher");
+	}
+
+	@Test
+	@DisplayName("BZ-EV-19: a recorded FIRE claim is only consulted when the victim's last damage cause is the "
+			+ "ongoing burn, so an unrelated later finish still credits the killer's held weapon")
+	void onPlayerDeath_fireClaim_onlyConsultedWhenLastDamageCauseIsFire() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
+
+		Player victim = mock(Player.class);
+		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
+		when(victim.getName()).thenReturn("Victim");
+
+		WeaponEntityDamageEvent fireHit = mock(WeaponEntityDamageEvent.class);
+		when(fireHit.getEntity()).thenReturn(victim);
+		when(fireHit.weaponName()).thenReturn("flamethrower");
+		when(fireHit.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.FIRE);
+		listener.onWeaponEntityDamage(fireHit);
+
+		Player          killer    = mock(Player.class);
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		ItemStack       heldItem  = mock(ItemStack.class);
+		when(killer.getInventory()).thenReturn(inventory);
+		when(inventory.getItemInMainHand()).thenReturn(heldItem);
+		when(killer.getName()).thenReturn("Killer");
+		when(victim.getKiller()).thenReturn(killer);
+
+		Weapon heldWeapon = mock(Weapon.class);
+		when(heldWeapon.getDisplayName()).thenReturn("Knife");
+		when(heldWeapon.pickDeathMessage()).thenReturn(Optional.of("%killer% killed %victim% with %item%"));
+		when(weaponManager.validateAndGetWeapon(eq(killer), eq(heldItem))).thenReturn(heldWeapon);
+
+		// The finishing blow was a knife swing, not the earlier fire — the last damage cause reflects that.
+		EntityDamageEvent lastDamage = mock(EntityDamageEvent.class);
+		when(lastDamage.getCause()).thenReturn(EntityDamageEvent.DamageCause.ENTITY_ATTACK);
+		when(victim.getLastDamageCause()).thenReturn(lastDamage);
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			listener.onPlayerDeath(event);
+		}
+
+		verify(weaponManager, never()).getWeaponTemplate("flamethrower");
+		verify(event).setDeathMessage("Killer killed Victim with Knife");
+	}
+
+	@Test
+	@DisplayName("BZ-EV-19: a delayed death whose last damage cause is the ongoing burn credits the incendiary "
+			+ "weapon that set the victim alight, even though the killer now holds something else")
+	void onPlayerDeath_fireClaim_lastDamageCauseIsFireTick_creditsIncendiaryWeapon() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
+
+		Player victim = mock(Player.class);
+		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
+		when(victim.getName()).thenReturn("Victim");
+
+		WeaponEntityDamageEvent fireHit = mock(WeaponEntityDamageEvent.class);
+		when(fireHit.getEntity()).thenReturn(victim);
+		when(fireHit.weaponName()).thenReturn("flamethrower");
+		when(fireHit.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.FIRE);
+		listener.onWeaponEntityDamage(fireHit);
+
+		Player killer = mock(Player.class);
+		when(killer.getName()).thenReturn("Killer");
+		when(victim.getKiller()).thenReturn(killer);
+
+		Weapon flamethrower = mock(Weapon.class);
+		when(flamethrower.getDisplayName()).thenReturn("Flamethrower");
+		when(flamethrower.pickDeathMessage()).thenReturn(Optional.of("%killer% killed %victim% with %item%"));
+		when(weaponManager.getWeaponTemplate("flamethrower")).thenReturn(flamethrower);
+
+		EntityDamageEvent lastDamage = mock(EntityDamageEvent.class);
+		when(lastDamage.getCause()).thenReturn(EntityDamageEvent.DamageCause.FIRE_TICK);
+		when(victim.getLastDamageCause()).thenReturn(lastDamage);
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			listener.onPlayerDeath(event);
+		}
+
+		verify(weaponManager, never()).validateAndGetWeapon(any(), any());
+		verify(event).setDeathMessage("Killer killed Victim with Flamethrower");
+	}
 
 	@Test
 	@DisplayName("M1: a null death message (an earlier LOWEST-priority listener already suppressed it) is left "
@@ -109,9 +269,7 @@ class WeaponDeathListenerTest {
 	@Test
 	@DisplayName("HA §0.1: a credited kill fires WeaponKillEntityEvent with the killer/victim/weapon before the "
 			+ "death message is applied")
-	void onPlayerDeath_creditedKill_firesWeaponKillEntityEventBeforeMessage() throws ReflectiveOperationException {
-		primeMoneySymbol();
-
+	void onPlayerDeath_creditedKill_firesWeaponKillEntityEventBeforeMessage() {
 		WeaponManager       weaponManager = mock(WeaponManager.class);
 		EffectRunner        effectRunner  = mock(EffectRunner.class);
 		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner, mock(StatusEffectService.class));
@@ -340,19 +498,6 @@ class WeaponDeathListenerTest {
 
 		verify(event, never()).setDeathMessage(any());
 		verify(effectRunner, never()).run(any(), any(), any());
-	}
-
-	/**
-	 * {@code BartizanSettings.moneySymbol} is only ever set by {@code BartizanSettings#init()}, which reads
-	 * {@code settings.yml} through Keystone's file pipeline — not available in a plain unit test. Priming it
-	 * directly is the same shortcut {@code BartizanChatUtil.color()}'s only other unit-test caller would need: the
-	 * static field is package-private-by-convention config state, not something worth standing up a fake
-	 * {@code FileManager} for.
-	 */
-	private static void primeMoneySymbol() throws ReflectiveOperationException {
-		Field field = BartizanSettings.class.getDeclaredField("moneySymbol");
-		field.setAccessible(true);
-		field.set(null, "$");
 	}
 
 }
