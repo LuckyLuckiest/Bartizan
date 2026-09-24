@@ -9,6 +9,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.util.Vector;
+import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.keystone.timer.CountdownTimer;
 import org.luckyraven.keystone.timer.RepeatingTimer;
 import org.luckyraven.keystone.util.ParticleUtil;
@@ -92,6 +93,7 @@ public class ThrowableAction {
 		if (shootEvent.isCancelled()) return;
 
 		consumeAmmoIfTracked(player);
+		applyDurabilityOnShot(player);
 
 		// Detonation.Impact_When/Delay_After_Impact (gate HI-a) — everything else about the flight loop below is
 		// unchanged; Fuse_Time (the fuseTimer further down) remains the fallback exactly as before when Impact_When
@@ -244,6 +246,22 @@ public class ThrowableAction {
 		if (weapon.getReloadData() == null) return;
 		weapon.consumeShot();
 		weaponService.persistHeldWeapon(weapon, player);
+	}
+
+	/**
+	 * BZ-FA-06: {@code Durability_On_Shot}, ignored until now for throwables — mirrors GunAction/IncendiaryAction's
+	 * own {@code On_Shot} handling. Package-private for the same unit-testability reason as
+	 * {@link #consumeAmmoIfTracked}.
+	 */
+	void applyDurabilityOnShot(Player player) {
+		short onShot = weapon.getDurabilityData().getOnShot();
+		if (onShot <= 0) return;
+
+		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(player, weapon);
+		if (heldWeapon == null) return;
+
+		weapon.decreaseDurability(heldWeapon, onShot);
+		weaponService.replaceHeldWeapon(player, weapon, heldWeapon.build());
 	}
 
 	/**
