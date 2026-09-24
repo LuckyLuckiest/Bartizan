@@ -871,11 +871,11 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 	                            Particle.DustOptions options, int fixedPointCount) {
 		Particle dustParticle = XParticle.DUST.get();
 
-		// The first leg starts at the visual muzzle (offset right of the shooter, per the weapon's configured
-		// Shoot.Muzzle_Offset if any), not at the raytrace origin (which is the eye location). Subsequent legs
-		// follow the actual ray.
-		Location previous = WeaponMuzzle.compute(ctx.getRequest().getShooter(), ctx.getRequest().getDirection(),
-		                                         ctx.getRequest().getWeapon());
+		// BZ-RT-08: the first leg starts at the same point the ray itself started (request.getOrigin(), the
+		// shooter's eye) instead of a separately-recomputed muzzle offset — the two used to disagree, drawing a
+		// visible kink from the muzzle to the ray's actual first hit point that didn't match the path the shot
+		// took. Subsequent legs already follow the actual ray.
+		Location previous = ctx.getRequest().getOrigin().clone();
 		for (Location point : segments) {
 			if (previous.getWorld() == null || !previous.getWorld().equals(point.getWorld())) {
 				previous = point;
