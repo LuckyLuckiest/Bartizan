@@ -16,6 +16,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.bean.autowire.AutowireTarget;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
 import org.luckyraven.bartizan.api.combat.CombatEligibility;
@@ -157,6 +158,23 @@ public class WeaponInteract implements Listener {
 		this.activeTasks        = new ConcurrentHashMap<>();
 		this.meleeCooldowns     = new ConcurrentHashMap<>();
 		this.lastMeleeSwingMs   = new ConcurrentHashMap<>();
+		instance                = this;
+	}
+
+	/**
+	 * // ponytail: single mutable holder, not a proper DI seam - mirrors {@code ExplosionHandler.get()}. Like that
+	 * class, {@code WeaponQuitCleanupListener} is a sibling {@code @ListenerHandler} bean, and Keystone's listener
+	 * scan never registers a listener instance back into the {@code DependencyContainer} for another bean to
+	 * constructor-inject, so a static accessor to the one instance is the smallest way to reach it (bug docket
+	 * BZ-EV-01). Upgrade path: once {@code WeaponInteract} is reachable through the bean graph, thread it through
+	 * {@code WeaponQuitCleanupListener}'s constructor instead.
+	 */
+	@Nullable
+	private static WeaponInteract instance;
+
+	@Nullable
+	public static WeaponInteract get() {
+		return instance;
 	}
 
 	@EventHandler
@@ -371,38 +389,11 @@ public class WeaponInteract implements Listener {
 		Weapon    previousWeapon = weaponService.validateAndGetWeapon(player, previousItem);
 
 		if (previousWeapon != null) {
-			UUID weaponUuid = previousWeapon.getUuid();
-
 			// unscoped and reset recoil for any weapon type
 			previousWeapon.unScope(player, true);
 			previousWeapon.getRecoil().resetRecoilPattern();
 
-			// drop the SINGLE/BURST press lock, equip-delay gate and held-trigger gate so the new selection starts
-			// on a clean trigger (applies to both gun and incendiary weapons, all of which share these maps)
-			GunFireDispatcher.unlock(weaponUuid);
-			equipDelayUntil.remove(weaponUuid);
-			pressHoldState.remove(weaponUuid);
-
-			// drop the melee dedup timestamp so swapping weapons doesn't carry stale gating across selections
-			lastMeleeSwingMs.remove(weaponUuid);
-
-			if (previousWeapon instanceof GunWeapon) {
-				// cancel any active auto fire
-				FullAutoTask autoTask = autoTasks.get(weaponUuid);
-				if (autoTask != null) {
-					autoTask.stop();
-				}
-			}
-
-			// cancel active incendiary / biological tasks
-			RepeatingTimer activeTask = activeTasks.remove(weaponUuid);
-			if (activeTask != null) {
-				activeTask.stop();
-			}
-
-			// drop any pending biological release callback so the charge dies with the swap
-			releaseCallbacks.remove(weaponUuid);
-			continuousFire.remove(weaponUuid);
+			clearWeaponState(previousWeapon);
 
 			EffectContext holsterCtx = EffectContext.builder().weapon(previousWeapon).source(player).build();
 			effectRunner.run(previousWeapon, EffectHook.ON_HOLSTER, holsterCtx);
@@ -424,6 +415,49 @@ public class WeaponInteract implements Listener {
 				                   System.currentTimeMillis() + handling.getEquipDelay() * MILLIS_PER_TICK);
 			}
 		}
+	}
+
+	/**
+	 * Drops {@code weapon}'s entry from all eight per-weapon tracking maps, stopping any live
+	 * {@link FullAutoTask}/{@link RepeatingTimer} it finds along the way. Shared by {@link #onWeaponHeld} (a
+	 * hotbar swap) and {@code WeaponQuitCleanupListener} (bug docket BZ-EV-01) — without this on quit, a player
+	 * who disconnects mid-AUTO-fire or mid-throwable-charge leaves the task running and calling Bukkit
+	 * {@code Player} APIs against an offline {@code Player} until its own watchdog times out.
+	 */
+	public void clearWeaponState(@Nullable Weapon weapon) {
+		if (weapon == null) return;
+
+		UUID weaponUuid = weapon.getUuid();
+
+		// drop the SINGLE/BURST press lock, equip-delay gate and held-trigger gate so the next selection of this
+		// weapon starts on a clean trigger (applies to both gun and incendiary weapons, all of which share these
+		// maps)
+		GunFireDispatcher.unlock(weaponUuid);
+		equipDelayUntil.remove(weaponUuid);
+		pressHoldState.remove(weaponUuid);
+
+		// drop the melee dedup/cooldown timestamps so a later re-equip doesn't carry stale gating
+		lastMeleeSwingMs.remove(weaponUuid);
+		meleeCooldowns.remove(weaponUuid);
+
+		if (weapon instanceof GunWeapon) {
+			// cancel any active auto fire — removed here rather than left to FullAutoTask#stop's own onCancel
+			// callback, so this map is guaranteed clear the moment this method returns
+			FullAutoTask autoTask = autoTasks.remove(weaponUuid);
+			if (autoTask != null) {
+				autoTask.stop();
+			}
+		}
+
+		// cancel active incendiary / biological tasks
+		RepeatingTimer activeTask = activeTasks.remove(weaponUuid);
+		if (activeTask != null) {
+			activeTask.stop();
+		}
+
+		// drop any pending biological release callback so the charge dies with the swap
+		releaseCallbacks.remove(weaponUuid);
+		continuousFire.remove(weaponUuid);
 	}
 
 	/**
