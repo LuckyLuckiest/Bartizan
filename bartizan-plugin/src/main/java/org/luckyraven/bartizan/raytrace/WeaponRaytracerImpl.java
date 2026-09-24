@@ -178,11 +178,14 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 	 * Removes every still-flying cosmetic visual on plugin disable / server stop (HI-b review #5) — otherwise a
 	 * visual type that never self-expires on its own (an {@code ARMOR_STAND} or a {@code PRIMED_TNT} with its fuse
 	 * held at {@code Integer.MAX_VALUE}) is orphaned in the world once its driving {@code SteppedProjectileTask}
-	 * stops ticking.
+	 * stops ticking. Also restores any block still mid-{@code RESTORE} (BZ-RT-15) — Bukkit cancels the pending
+	 * {@code runTaskLater} restore task on disable, so without this a block hit into {@code AIR} just before a
+	 * stop/reload would otherwise stay {@code AIR} for good.
 	 */
 	@Override
 	public void onShutdown() {
 		visualSpawner.removeAll();
+		blockDamageManager.clearAll();
 	}
 
 	// ------------------------------------------------------------------
