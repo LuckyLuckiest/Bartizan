@@ -23,6 +23,7 @@ import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.fire.PluginFireRegistry;
+import org.luckyraven.bartizan.listener.projectile.CosmeticTag;
 import org.luckyraven.bartizan.raytrace.ExplosionHandler;
 import org.luckyraven.bartizan.util.PotionEffectParser;
 import org.luckyraven.bartizan.api.weapon.ThrowableType;
@@ -108,6 +109,7 @@ public class ThrowableAction {
 		                   new ItemStack(weapon.getMaterial());
 		Item grenade = world.dropItem(eyeLoc, visual);
 		grenade.setPickupDelay(Integer.MAX_VALUE);
+		CosmeticTag.mark(grenade);
 
 		Vector throwVec = eyeLoc.getDirection().normalize().multiply(1.2).add(new Vector(0, 0.2, 0));
 		grenade.setVelocity(throwVec);

@@ -41,11 +41,11 @@ public class ProjectileDamageListener implements Listener {
 
 	/**
 	 * Hoppers and hopper minecarts ignore an {@code Item}'s pickup delay, so without this a {@code DROPPED_ITEM}
-	 * visual flying over one would be collected as a real item on every shot.
+	 * visual flying over one (or a thrown grenade's display item landing on one) would be collected as a real item.
 	 */
 	@EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
 	public void onHopperPickup(InventoryPickupItemEvent event) {
-		if (visualSpawner.isCosmetic(event.getItem().getEntityId())) {
+		if (visualSpawner.isCosmetic(event.getItem().getEntityId()) || CosmeticTag.isMarked(event.getItem())) {
 			event.setCancelled(true);
 		}
 	}

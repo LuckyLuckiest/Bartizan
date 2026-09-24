@@ -1,9 +1,11 @@
 package org.luckyraven.bartizan.listener.projectile;
 
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.raytrace.WeaponVisualSpawner;
@@ -11,6 +13,7 @@ import org.luckyraven.bartizan.api.raytrace.WeaponVisualSpawner;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -39,6 +42,30 @@ class ProjectileDamageListenerTest {
 		listener.onHopperPickup(event);
 
 		assertTrue(event.isCancelled(), "a cosmetic visual must not become a real item in a hopper");
+	}
+
+	@Test
+	@DisplayName("hopper pickup: a CosmeticTag-marked grenade display item is refused")
+	void hopperPickup_markedGrenade_cancelled() {
+		Item grenade = item(9);
+		when(grenade.getPersistentDataContainer().has(CosmeticTag.KEY, PersistentDataType.BYTE)).thenReturn(true);
+		InventoryPickupItemEvent event = new InventoryPickupItemEvent(mock(Inventory.class), grenade);
+
+		listener.onHopperPickup(event);
+
+		assertTrue(event.isCancelled(), "a thrown grenade must not become a real item in a hopper");
+	}
+
+	@Test
+	@DisplayName("CosmeticTag.mark sets the flag isMarked reads")
+	void cosmeticTag_markThenRead() {
+		PersistentDataContainer pdc    = mock(PersistentDataContainer.class);
+		Entity                  entity = mock(Entity.class);
+		when(entity.getPersistentDataContainer()).thenReturn(pdc);
+
+		CosmeticTag.mark(entity);
+
+		verify(pdc).set(CosmeticTag.KEY, PersistentDataType.BYTE, (byte) 1);
 	}
 
 	@Test
