@@ -2,7 +2,6 @@ package org.luckyraven.bartizan.item;
 
 import lombok.RequiredArgsConstructor;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
 
@@ -25,17 +24,11 @@ public class AmmunitionConverter extends ItemAttributes {
 			return null;
 		}
 
-		// clone the ammunition
+		// clone the ammunition - buildItem() already sets lore from the Ammunition's own config (ItemBuilder#setLore),
+		// so applyAttributes(...) is the only per-instance override left to apply.
 		ItemStack itemStack = ammunition.buildItem();
-		ItemMeta  meta      = itemStack.getItemMeta();
 
 		applyAttributes(itemStack, attributes);
-
-		if (meta != null && !meta.hasLore()) {
-			meta.setLore(ammunition.getLore());
-
-			itemStack.setItemMeta(meta);
-		}
 
 		return itemStack;
 	}

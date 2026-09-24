@@ -259,8 +259,11 @@ public final class WmMechanicsTranslator {
 			}
 			case "command" -> {
 				copy(parsed, "command", out, "Command");
+				// An absent console key defaults to player, not console: least-privilege for a converter that
+				// cannot verify WeaponMechanics' own default for this flag, and it must never silently hand a
+				// migrated weapon's effect full console permissions it wasn't explicitly configured for.
 				String console = arg(parsed, "console");
-				out.put("As", console == null || Boolean.parseBoolean(console) ? "console" : "player");
+				out.put("As", Boolean.parseBoolean(console) ? "console" : "player");
 				yield "command";
 			}
 			case "push", "leap" -> {

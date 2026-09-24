@@ -17,8 +17,15 @@ import java.util.Map;
  */
 public final class WmWeaponImporter {
 
-	/** One resolved physical-ammo reference a weapon's {@code Reload.Ammo} needs appended to {@code ammunition.yml}. */
-	public record AmmoAppend(String id, String material, String name) {
+	/**
+	 * One resolved physical-ammo reference a weapon's {@code Reload.Ammo} needs appended to {@code ammunition.yml}.
+	 *
+	 * @param sourceRef the raw, un-sanitized {@code Reload.Ammo} ref this entry came from - carried through so the
+	 * 		shared append point (only place that sees every weapon's {@code AmmoAppend} together) can tell two
+	 * 		different WM ammo refs that collide after {@link #sanitizeKey} (e.g. {@code "5.56mm"} vs
+	 * 		{@code "5,56mm"}, both {@code wm_5_56mm}) apart from the same ref imported by a second weapon.
+	 */
+	public record AmmoAppend(String id, String material, String name, String sourceRef) {
 	}
 
 	/** The result of importing one WM weapon file. */
@@ -511,7 +518,13 @@ public final class WmWeaponImporter {
 
 		String startMode = shoot.getString("Selective_Fire.Default", "");
 		if (startMode.isEmpty()) {
-			startMode = hasAuto ? "auto" : (hasBurst ? "burst" : "single");
+			// Selective_Fire.Default isn't a real WM key - Shoot.Selective_Fire (when present at all) describes the
+			// mode-switch TRIGGER, not a starting mode (see FN_FAL.yml: Trigger/Mechanics, no Default). A missing
+			// selective-fire NBT tag reads as 0 = SINGLE in WM, so a Selective_Fire section with no Default present
+			// starts single too - only a weapon with NO Selective_Fire section at all (so WM fires in its one
+			// configured mode) falls back to whichever of auto/burst/single that one mode is.
+			startMode = shoot.isConfigurationSection("Selective_Fire") ? "single"
+			                                                          : (hasAuto ? "auto" : (hasBurst ? "burst" : "single"));
 		}
 		String normalized = startMode.toLowerCase(Locale.ROOT);
 		if (!allowed.contains(normalized)) allowed.add(normalized);
@@ -724,7 +737,7 @@ public final class WmWeaponImporter {
 			String material = ammoSection != null ? ammoSection.getString("Item_Ammo.Bullet_Item.Type", "IRON_NUGGET")
 			                                      : "IRON_NUGGET";
 			String rawName  = ammoSection != null ? ammoSection.getString("Item_Ammo.Bullet_Item.Name", ref) : ref;
-			return new AmmoAppend(ammoId, material, WmColorTranslator.translate(rawName));
+			return new AmmoAppend(ammoId, material, WmColorTranslator.translate(rawName), ref);
 		}
 
 		ammunition.put("Ammo_Type", "none");
@@ -851,6 +864,21 @@ public final class WmWeaponImporter {
 				if (value(parsed, "delayBeforePlay") != null) {
 					report.dropped(wmPath + ": '" + entry + "' - delayBeforePlay dropped, no per-effect delay");
 				}
+			}
+			// Push/Leap{speed=..., height=...} both translate their WM arg onto the single Bartizan Strength key
+			// (WmMechanicsTranslator's "push","leap" case) - PushHookEffect has no separate vertical component, so
+			// the second copy() call silently overwrites the first. Reported here, not redesigned: there's no
+			// evidence this combination is common enough to justify a model change.
+			if ("push".equals(result.type()) && value(parsed, "speed") != null && value(parsed, "height") != null) {
+				report.approximated(wmPath + ": '" + entry + "' - Push/Leap has both speed and height; only one "
+				                     + "is kept as Strength");
+			}
+			// An absent Command{} console key now defaults to As: player, not console (least-privilege - see
+			// WmMechanicsTranslator) - reported like every other place this importer substitutes its own default
+			// for a value WM's own config didn't set.
+			if ("command".equals(result.type()) && value(parsed, "console") == null) {
+				report.approximated(wmPath + ": '" + entry + "' - no explicit console flag, defaulted Command's "
+				                     + "As to player (least-privilege)");
 			}
 
 			Map<String, Object> spec = new LinkedHashMap<>();

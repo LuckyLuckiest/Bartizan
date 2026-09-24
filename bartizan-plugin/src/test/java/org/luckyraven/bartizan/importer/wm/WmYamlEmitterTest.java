@@ -111,4 +111,28 @@ class WmYamlEmitterTest {
 		assertFalse(report.hasErrors(), report.issues().toString());
 	}
 
+	/**
+	 * BZ-IM-02: a value ending in a literal backslash-then-quote (e.g. a WM name copy-pasted with a stray
+	 * {@code \"}) used to only have its quote escaped, leaving the pre-existing backslash free to pair with the
+	 * inserted one into an escaped-backslash-then-bare-quote that closes the scalar early and corrupts every
+	 * sibling key after it in the document.
+	 */
+	@Test
+	void quotedStringWithBackslashBeforeQuote_roundTrips() {
+		Map<String, Object> root = new LinkedHashMap<>();
+		root.put("Evil", "Evil\\\" ammo=BAD"); // Evil\" ammo=BAD
+		root.put("Sibling", "still here");
+
+		String text = WmYamlEmitter.emit(root);
+
+		ConfigReport   report = new ConfigReport();
+		ConfigDocument doc    = new ConfigParser().parse(FIXTURE, new StringReader(text), report);
+		assertFalse(report.hasErrors(), "emitted YAML failed to parse:\n" + text + "\n" + report.issues());
+
+		NodeReader rootReader = NodeReader.of(doc.root(), report);
+		assertEquals("Evil\\\" ammo=BAD", rootReader.get("Evil").asString().orNull());
+		assertEquals("still here", rootReader.get("Sibling").asString().orNull(),
+		            "an unescaped backslash before the closing quote must not swallow the sibling key");
+	}
+
 }
