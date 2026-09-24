@@ -159,27 +159,60 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	}
 
 	/**
-	 * Pushes an in-memory weapon mutation (ammo, tags, ...) back onto the player's held item, exactly like
-	 * {@code GunAction}/{@code IncendiaryAction} do after consuming ammo. A no-op if the player is no longer
-	 * holding the weapon (already swapped away, item gone).
+	 * The hand holding the item stamped with {@code weaponUuid}: the main hand first, then the off hand; {@code null}
+	 * when neither does (swapped away, dropped, moved into a container). Every write-back of a live weapon's state
+	 * resolves its target through this, so the state lands on that weapon's own item and never on whatever other
+	 * weapon happens to be in hand (BZ-WM-14, BZ-EV-12).
+	 */
+	@Nullable
+	public EquipmentSlot getHeldHand(Player player, @Nullable UUID weaponUuid) {
+		if (weaponUuid == null) return null;
+		if (weaponUuid.equals(getWeaponUUID(itemAccordingToSlot(player, EquipmentSlot.HAND)))) {
+			return EquipmentSlot.HAND;
+		}
+		if (weaponUuid.equals(getWeaponUUID(itemAccordingToSlot(player, EquipmentSlot.OFF_HAND)))) {
+			return EquipmentSlot.OFF_HAND;
+		}
+		return null;
+	}
+
+	/**
+	 * {@code weapon}'s own item from whichever hand holds it (see {@link #getHeldHand}), or {@code null} when
+	 * neither hand does.
+	 */
+	@Nullable
+	public ItemBuilder getHeldWeaponItem(Player player, Weapon weapon) {
+		EquipmentSlot hand = getHeldHand(player, weapon.getUuid());
+		if (hand == null) return null;
+
+		return new ItemBuilder(itemAccordingToSlot(player, hand));
+	}
+
+	/**
+	 * Writes {@code item} into the hand holding {@code weapon} ({@code null} clears it, i.e. destroys the weapon). A
+	 * no-op when neither hand holds it any more.
+	 */
+	public void replaceHeldWeapon(Player player, Weapon weapon, @Nullable ItemStack item) {
+		EquipmentSlot hand = getHeldHand(player, weapon.getUuid());
+		if (hand == null) return;
+
+		player.getInventory().setItem(hand, item);
+	}
+
+	/**
+	 * Pushes an in-memory weapon mutation (ammo, tags, ...) back onto {@code weapon}'s own item in whichever hand holds
+	 * it. A no-op when neither hand holds that weapon (already swapped away, item gone) - never onto a different
+	 * weapon that happens to be in hand.
 	 *
 	 * @param weapon weapon whose in-memory state (e.g. {@link Weapon#getCurrentMagCapacity()}) should be persisted.
 	 * @param player player currently holding it.
 	 */
 	public void persistHeldWeapon(Weapon weapon, Player player) {
-		ItemBuilder heldWeapon = getHeldWeaponItem(player);
+		ItemBuilder heldWeapon = getHeldWeaponItem(player, weapon);
 		if (heldWeapon == null) return;
 
 		weapon.updateWeaponData(heldWeapon, player);
-
-		// getHeldWeaponItem checks the main hand first, only falling back to the off hand when the main hand
-		// isn't the weapon (gate HJ review finding 4) - write back to whichever hand it actually came from,
-		// not unconditionally the main-hand hotbar slot.
-		if (isWeapon(player.getInventory().getItemInMainHand())) {
-			weapon.updateWeapon(player, heldWeapon, player.getInventory().getHeldItemSlot());
-		} else {
-			player.getInventory().setItemInOffHand(heldWeapon.build());
-		}
+		replaceHeldWeapon(player, weapon, heldWeapon.build());
 	}
 
 	/**

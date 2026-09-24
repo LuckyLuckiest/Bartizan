@@ -13,6 +13,7 @@ import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.mockito.MockedStatic;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -26,8 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -162,40 +165,121 @@ class WeaponServiceTest {
 	}
 
 	/**
-	 * Gate {@code HJ} review finding 4: {@code getHeldWeaponItem} checks the main hand first, falling back to the
-	 * off hand only when the main hand isn't the weapon - {@code persistHeldWeapon} must write back to whichever
-	 * hand it actually read from, not unconditionally the main-hand hotbar slot. {@code isWeapon} is spied rather
-	 * than driven through real NBT so the test doesn't need a real item's tag data.
+	 * Gate {@code HJ} review finding 4: a weapon read from the off hand is written back to the off hand, not the
+	 * main-hand hotbar slot. {@code getWeaponUUID} is stubbed statically because no NBT provider is installed in a
+	 * unit test, so real items carry no readable tags.
 	 */
 	@Test
-	@DisplayName("persistHeldWeapon writes back to the off hand when the weapon was read from there")
+	@DisplayName("persistHeldWeapon writes back to the off hand when the weapon is held there")
 	void persistHeldWeapon_offHandWeapon_writesToOffHand() {
-		WeaponService serviceSpy = spy(service);
-
+		UUID      weaponUuid   = UUID.randomUUID();
 		ItemStack mainHandItem = mock(ItemStack.class);
-		when(mainHandItem.getType()).thenReturn(Material.SHIELD);
-		when(mainHandItem.getAmount()).thenReturn(1);
-		doReturn(false).when(serviceSpy).isWeapon(mainHandItem);
+		ItemStack offHandItem  = mock(ItemStack.class);
+		Weapon    weapon       = weaponWithUuid(weaponUuid);
 
-		ItemStack offHandItem = mock(ItemStack.class);
-		when(offHandItem.getType()).thenReturn(Material.IRON_HOE);
-		when(offHandItem.getAmount()).thenReturn(1);
-		doReturn(true).when(serviceSpy).isWeapon(offHandItem);
+		PlayerInventory inventory = handsInventory(mainHandItem, offHandItem);
+		Player          player    = playerWith(inventory);
 
+		try (MockedStatic<WeaponService> uuids = mockStatic(WeaponService.class)) {
+			uuids.when(() -> WeaponService.getWeaponUUID(offHandItem)).thenReturn(weaponUuid);
+
+			service.persistHeldWeapon(weapon, player);
+		}
+
+		verify(inventory).setItem(EquipmentSlot.OFF_HAND, offHandItem);
+		verify(inventory, never()).setItem(eq(EquipmentSlot.HAND), any());
+		verify(inventory, never()).setItem(anyInt(), any(ItemStack.class));
+	}
+
+	/**
+	 * BZ-WM-14: rifle A (reloading) sits in the off hand after an F swap and rifle B is in the main hand. Finishing
+	 * A's reload used to stamp A's full magazine onto B, because any weapon in the main hand was the write target.
+	 */
+	@Test
+	@DisplayName("persistHeldWeapon never writes a weapon's state onto a different weapon in the main hand")
+	void persistHeldWeapon_otherWeaponInMainHand_writesOnlyToOwnItem() {
+		UUID      weaponA = UUID.randomUUID();
+		UUID      weaponB = UUID.randomUUID();
+		ItemStack itemB   = mock(ItemStack.class);
+		ItemStack itemA   = mock(ItemStack.class);
+		Weapon    weapon  = weaponWithUuid(weaponA);
+
+		PlayerInventory inventory = handsInventory(itemB, itemA);
+		Player          player    = playerWith(inventory);
+
+		try (MockedStatic<WeaponService> uuids = mockStatic(WeaponService.class)) {
+			uuids.when(() -> WeaponService.getWeaponUUID(itemB)).thenReturn(weaponB);
+			uuids.when(() -> WeaponService.getWeaponUUID(itemA)).thenReturn(weaponA);
+
+			service.persistHeldWeapon(weapon, player);
+		}
+
+		verify(inventory, never()).setItem(eq(EquipmentSlot.HAND), any());
+		verify(inventory, never()).setItem(anyInt(), any(ItemStack.class));
+		verify(inventory).setItem(EquipmentSlot.OFF_HAND, itemA);
+	}
+
+	@Test
+	@DisplayName("persistHeldWeapon is a no-op when neither hand holds the weapon")
+	void persistHeldWeapon_weaponNotHeld_writesNothing() {
+		ItemStack itemB  = mock(ItemStack.class);
+		Weapon    weapon = weaponWithUuid(UUID.randomUUID());
+
+		PlayerInventory inventory = handsInventory(itemB, mock(ItemStack.class));
+		Player          player    = playerWith(inventory);
+
+		try (MockedStatic<WeaponService> uuids = mockStatic(WeaponService.class)) {
+			uuids.when(() -> WeaponService.getWeaponUUID(itemB)).thenReturn(UUID.randomUUID());
+
+			service.persistHeldWeapon(weapon, player);
+		}
+
+		verify(weapon, never()).updateWeaponData(any(), any());
+		verify(inventory, never()).setItem(any(EquipmentSlot.class), any());
+		verify(inventory, never()).setItem(anyInt(), any());
+	}
+
+	@Test
+	@DisplayName("persistHeldWeapon writes to the main hand when the weapon is held there")
+	void persistHeldWeapon_mainHandWeapon_writesToMainHand() {
+		UUID      weaponUuid = UUID.randomUUID();
+		ItemStack mainItem   = mock(ItemStack.class);
+		Weapon    weapon     = weaponWithUuid(weaponUuid);
+
+		PlayerInventory inventory = handsInventory(mainItem, mock(ItemStack.class));
+		Player          player    = playerWith(inventory);
+
+		try (MockedStatic<WeaponService> uuids = mockStatic(WeaponService.class)) {
+			uuids.when(() -> WeaponService.getWeaponUUID(mainItem)).thenReturn(weaponUuid);
+
+			service.persistHeldWeapon(weapon, player);
+		}
+
+		verify(inventory).setItem(EquipmentSlot.HAND, mainItem);
+		verify(inventory, never()).setItem(eq(EquipmentSlot.OFF_HAND), any());
+	}
+
+	private static Weapon weaponWithUuid(UUID uuid) {
+		Weapon weapon = mock(Weapon.class);
+		when(weapon.getUuid()).thenReturn(uuid);
+		return weapon;
+	}
+
+	private static PlayerInventory handsInventory(ItemStack mainHand, ItemStack offHand) {
+		for (ItemStack item : new ItemStack[]{mainHand, offHand}) {
+			when(item.getType()).thenReturn(Material.IRON_HOE);
+			when(item.getAmount()).thenReturn(1);
+		}
 		PlayerInventory inventory = mock(PlayerInventory.class);
-		when(inventory.getItem(EquipmentSlot.HAND)).thenReturn(mainHandItem);
-		when(inventory.getItem(EquipmentSlot.OFF_HAND)).thenReturn(offHandItem);
-		when(inventory.getItemInMainHand()).thenReturn(mainHandItem);
+		when(inventory.getItem(EquipmentSlot.HAND)).thenReturn(mainHand);
+		when(inventory.getItem(EquipmentSlot.OFF_HAND)).thenReturn(offHand);
+		return inventory;
+	}
 
+	private static Player playerWith(PlayerInventory inventory) {
 		Player player = mock(Player.class);
 		when(player.getInventory()).thenReturn(inventory);
-
-		Weapon weapon = mock(Weapon.class);
-
-		serviceSpy.persistHeldWeapon(weapon, player);
-
-		verify(inventory).setItemInOffHand(offHandItem);
-		verify(inventory, never()).setItem(anyInt(), any(ItemStack.class));
+		return player;
 	}
 
 }
