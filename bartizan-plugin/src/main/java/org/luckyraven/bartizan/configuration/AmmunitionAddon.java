@@ -61,6 +61,18 @@ public class AmmunitionAddon implements FileInitializer {
 		registerAmmunition(ammunitionManager, fileHandler.getFileConfiguration());
 	}
 
+	/**
+	 * Wipes the previously-loaded ammo catalogue before {@code FileManager.onInitialize} re-runs
+	 * {@link #initialize()} on {@code /bartizan reload} (gate {@code BZ-CF-12}). {@link AmmunitionAddon} is a
+	 * registered {@code FileManager} initializer (see {@code FilesConfig}), so {@code FileManager.onClear()} calls
+	 * this for every reload pass. Without it, an ammo id removed from {@code items/ammunition.yml} stayed fully
+	 * registered and givable after a reload.
+	 */
+	@Override
+	public void clear() {
+		ammunitionManager.clear();
+	}
+
 	private void registerAmmunition(AmmunitionManager manager, FileConfiguration ammunition) {
 		List<String> temp = new ArrayList<>();
 
