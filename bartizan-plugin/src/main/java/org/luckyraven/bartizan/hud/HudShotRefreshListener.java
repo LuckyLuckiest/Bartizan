@@ -32,7 +32,14 @@ public class HudShotRefreshListener implements Listener {
 	public void onShoot(WeaponShootEvent event) {
 		if (!(event.getShooter() instanceof Player player)) return;
 
-		Bukkit.getScheduler().runTask(plugin, () -> hudService.refresh(player));
+		// BZ-HU-02: isOnline() is checked inside the deferred task, not here — offline-ness is what can change
+		// over the one-tick gap (a kick/disconnect between this shot and the deferred task actually running).
+		// Without this, the last round of a burst/full-auto sequence fired after quit re-creates a boss bar for a
+		// player who has already left, which then leaks (WeaponQuitCleanupListener already ran) and never shows on
+		// rejoin since HudService.tick only iterates online players.
+		Bukkit.getScheduler().runTask(plugin, () -> {
+			if (player.isOnline()) hudService.refresh(player);
+		});
 	}
 
 }

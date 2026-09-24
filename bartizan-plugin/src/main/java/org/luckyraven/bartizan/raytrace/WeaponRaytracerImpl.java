@@ -534,9 +534,14 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 			Vector savedVelocity = knockback != null ? living.getVelocity().clone() : null;
 
 			WeaponRaytracer.setRaytraceDamageInProgress(true);
+			// BZ-EV-19: names the weapon dealing this specific damage() call for any PlayerDeathEvent Bukkit fires
+			// synchronously nested inside it — the only way to attribute a slow rocket/flare's fatal hit correctly
+			// once the shooter has swapped weapons since firing (the WeaponEntityDamageEvent below fires too late).
+			FatalDamageAttribution.set(weapon.getName());
 			try {
 				living.damage(event.getDamage(), shooter);
 			} finally {
+				FatalDamageAttribution.clear();
 				WeaponRaytracer.setRaytraceDamageInProgress(false);
 			}
 

@@ -152,4 +152,38 @@ class HudServiceTest {
 		verify(bar).setStyle(BarStyle.SOLID);
 	}
 
+	@Test
+	@DisplayName("BZ-HU-02: a boss bar reused for a new Player instance under the same uuid (e.g. a fresh session "
+			+ "after a rejoin) re-adds the current session's player, not just whichever session first created it")
+	void tick_reusedBarUnderSameUuid_addsCurrentPlayerInstance() {
+		HudData.BossBarData bossBarData = new HudData.BossBarData("&6Test", BarColor.YELLOW, BarStyle.SEGMENTED_10);
+		HudData              hud        = new HudData(null, bossBarData, false);
+		Weapon                weapon    = hudWeapon(hud, 15, 30);
+
+		UUID      sharedId     = UUID.randomUUID();
+		ItemStack item         = mock(ItemStack.class);
+		Player    firstSession = player(item);
+		when(firstSession.getUniqueId()).thenReturn(sharedId);
+		when(weaponService.validateAndGetWeapon(firstSession, item)).thenReturn(weapon);
+
+		BossBar bar = mock(BossBar.class);
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(firstSession));
+			bukkit.when(() -> Bukkit.createBossBar(any(), any(), any())).thenReturn(bar);
+
+			service.tick(); // creates the bar, adds firstSession
+
+			// A second Player instance under the SAME uuid - a fresh session object after a quit/rejoin, reusing
+			// the bar that survived in HudService's map (see HudShotRefreshListener/BZ-HU-02 for how that happens).
+			Player secondSession = player(item);
+			when(secondSession.getUniqueId()).thenReturn(sharedId);
+			when(weaponService.validateAndGetWeapon(secondSession, item)).thenReturn(weapon);
+
+			bukkit.when(Bukkit::getOnlinePlayers).thenReturn(List.of(secondSession));
+			service.tick(); // reuses the same bar object
+
+			verify(bar).addPlayer(secondSession);
+		}
+	}
+
 }

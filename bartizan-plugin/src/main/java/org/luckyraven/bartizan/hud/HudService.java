@@ -126,9 +126,15 @@ public class HudService implements BeanLifecycle {
 		BossBar bar = bossBars.get(player.getUniqueId());
 		if (bar == null) {
 			bar = Bukkit.createBossBar(title, data.color(), data.style());
-			bar.addPlayer(player);
 			bossBars.put(player.getUniqueId(), bar);
 		}
+
+		// BZ-HU-02: unconditional, not just on create - BossBar#addPlayer is documented idempotent, so this is a
+		// no-op for the common case, but it is what re-attaches the current session's Player to a bar that
+		// survived under this uuid from a prior session (WeaponQuitCleanupListener removes bossBars' entry on
+		// quit, but a shot fired in the same tick as the quit can still recreate one afterwards - see
+		// HudShotRefreshListener). Without this, that bar is never shown to the player again after they rejoin.
+		bar.addPlayer(player);
 
 		// Set unconditionally, not just on create - a reused bar (player switched HUD weapons, or /bartizan
 		// reload changed the config) must pick up this weapon's colour/style too, not keep the previous holder's.

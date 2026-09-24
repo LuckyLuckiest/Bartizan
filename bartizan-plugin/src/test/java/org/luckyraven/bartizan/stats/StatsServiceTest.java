@@ -21,6 +21,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -142,9 +143,9 @@ class StatsServiceTest {
 	}
 
 	@Test
-	@DisplayName("a kill credits the killer's weapon, sets longestKillDistance from the recorded hit, and counts "
-			+ "a death for a player victim")
-	void recordKill_creditsKillerAndDeath(@TempDir File dataFolder) {
+	@DisplayName("a kill credits the killer's weapon and sets longestKillDistance from the recorded hit — the "
+			+ "victim's death count is BZ-HU-04's recordDeath's job now, not recordKill's")
+	void recordKill_creditsKillerButNotDeath(@TempDir File dataFolder) {
 		StatsService service = service(dataFolder);
 		Player       killer  = player();
 		Player       victim  = player();
@@ -159,7 +160,51 @@ class StatsServiceTest {
 		WeaponStat killerStat = service.lookup(killer.getUniqueId()).weapon("rifle");
 		assertEquals(1, killerStat.kills);
 		assertEquals(42.5, killerStat.longestKillDistance);
-		assertEquals(1, service.lookup(victim.getUniqueId()).deaths);
+		assertNull(service.lookup(victim.getUniqueId()), "recordKill alone never creates a stats entry for the victim");
+	}
+
+	@Test
+	@DisplayName("BZ-HU-04: recordDeath increments the victim's death counter unconditionally — the only path that "
+			+ "does, now that recordKill no longer touches it")
+	void recordDeath_incrementsDeaths(@TempDir File dataFolder) {
+		StatsService service = service(dataFolder);
+		Player       victim  = player();
+
+		service.recordDeath(victim);
+		service.recordDeath(victim);
+
+		assertEquals(2, service.lookup(victim.getUniqueId()).deaths);
+	}
+
+	@Test
+	@DisplayName("BZ-HU-04: recordDeath clears the victim's recentDamage entry too, so an ordinary (non-weapon) "
+			+ "death still cleans up a stray earlier hit instead of leaking it forever")
+	void recordDeath_clearsRecentDamageEntry(@TempDir File dataFolder) throws ReflectiveOperationException {
+		StatsService service  = service(dataFolder);
+		Player       attacker = player();
+		Player       victim   = player();
+
+		service.recordDamage(attacker, victim, "rifle", 5.0, null, 10.0);
+		service.recordDeath(victim);
+
+		Field field = StatsService.class.getDeclaredField("recentDamage");
+		field.setAccessible(true);
+		Map<?, ?> recentDamage = (Map<?, ?>) field.get(service);
+
+		assertFalse(recentDamage.containsKey(victim.getUniqueId()));
+	}
+
+	@Test
+	@DisplayName("Stats.Enabled: false silently skips recordDeath too")
+	void recordDeath_statsDisabled_recordsNothing(@TempDir File dataFolder) throws ReflectiveOperationException {
+		setStatic("statsEnabled", false);
+
+		StatsService service = service(dataFolder);
+		Player       victim  = player();
+
+		service.recordDeath(victim);
+
+		assertNull(service.lookup(victim.getUniqueId()));
 	}
 
 	@Test
@@ -243,8 +288,8 @@ class StatsServiceTest {
 
 	@Test
 	@DisplayName("recordKill with a null weapon (throwable claim whose template no longer resolves) skips kill "
-			+ "credit but still counts the death and runs the assist loop")
-	void recordKill_nullWeapon_skipsKillCreditKeepsDeathAndAssists(@TempDir File dataFolder) {
+			+ "credit but still runs the assist loop")
+	void recordKill_nullWeapon_skipsKillCreditKeepsAssists(@TempDir File dataFolder) {
 		StatsService service  = service(dataFolder);
 		Player       assister = player();
 		Player       killer   = player();
@@ -260,7 +305,6 @@ class StatsServiceTest {
 		}
 
 		assertNull(service.lookup(killer.getUniqueId()), "no kill-credit block ran, so the killer never got a stats entry");
-		assertEquals(1, service.lookup(victim.getUniqueId()).deaths);
 		assertEquals(1, service.lookup(assister.getUniqueId()).weapon("pistol").assists);
 	}
 
@@ -321,6 +365,56 @@ class StatsServiceTest {
 		assertNull(result);
 		assertFalse(corrupt.exists(), "the corrupt file is renamed away, not left in place");
 		assertTrue(new File(statsDir, playerId + ".json.broken").isFile());
+	}
+
+	@Test
+	@DisplayName("BZ-HU-01: a failed save at quit time (the 'stats' path is blocked by a colliding file) keeps the "
+			+ "in-memory stats reachable and leaves the dirty flag set, instead of silently discarding the session")
+	void onQuit_saveFails_keepsInMemoryStatsAndDirtyFlag(@TempDir File dataFolder) throws Exception {
+		// Block statsDir entirely: a plain file sits where the "stats" directory needs to be created.
+		Files.writeString(new File(dataFolder, "stats").toPath(), "not a directory", StandardCharsets.UTF_8);
+
+		StatsService service = service(dataFolder);
+		Player       shooter = player();
+
+		service.recordShot(shooter, "rifle");
+		service.onQuit(shooter.getUniqueId());
+
+		// The in-memory copy survives the failed save — lookup() prefers the (still accurate) cached entry over
+		// disk, and it is only removed from the cache once a save actually succeeds.
+		PlayerStats stats = service.lookup(shooter.getUniqueId());
+		assertEquals(1, stats.weapon("rifle").shots);
+
+		Field dirtyField = StatsService.class.getDeclaredField("dirty");
+		dirtyField.setAccessible(true);
+		Set<?> dirty = (Set<?>) dirtyField.get(service);
+		assertTrue(dirty.contains(shooter.getUniqueId()), "still dirty so a later autosave/shutdown retries the write");
+	}
+
+	@Test
+	@DisplayName("BZ-HU-01: autosave (driven here via onShutdown) evicts a now-offline player's cache entry after "
+			+ "a successful save, but keeps an online player's entry cached")
+	void onShutdown_autosave_evictsOfflinePlayerKeepsOnlinePlayer(@TempDir File dataFolder) throws Exception {
+		StatsService service        = service(dataFolder);
+		Player       offlineShooter = player();
+		Player       onlineShooter  = player();
+
+		service.recordShot(offlineShooter, "rifle");
+		service.recordShot(onlineShooter, "pistol");
+
+		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
+			bukkit.when(() -> Bukkit.getPlayer(offlineShooter.getUniqueId())).thenReturn(null);
+			bukkit.when(() -> Bukkit.getPlayer(onlineShooter.getUniqueId())).thenReturn(onlineShooter);
+
+			service.onShutdown();
+		}
+
+		Field loadedField = StatsService.class.getDeclaredField("loaded");
+		loadedField.setAccessible(true);
+		Map<?, ?> loaded = (Map<?, ?>) loadedField.get(service);
+
+		assertFalse(loaded.containsKey(offlineShooter.getUniqueId()), "offline after a successful save - evicted");
+		assertTrue(loaded.containsKey(onlineShooter.getUniqueId()), "online - stays cached for gameplay reads");
 	}
 
 	private MockedStatic<Bukkit> mockBukkit() {
