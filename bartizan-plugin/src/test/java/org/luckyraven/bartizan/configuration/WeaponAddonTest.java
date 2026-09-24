@@ -177,6 +177,48 @@ class WeaponAddonTest {
 		             () -> weaponAddon.registerWeapon(ammunitionManager, handler));
 	}
 
+	/**
+	 * Gate {@code BZ-CF-02}: {@code registerWeapon} used to return immediately once a {@code Config_Version} key
+	 * was present - before any section was parsed, before the {@link ConfigReport} was logged, and before the
+	 * weapon was put into the catalogue map. An ordinary versioning habit for a config author therefore made the
+	 * weapon disappear with zero output anywhere.
+	 */
+	@Test
+	@DisplayName("registerWeapon: a Config_Version key warns and falls through instead of aborting the load")
+	void registerWeapon_configVersionKeyPresent_stillRegisters() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		// Matches PluginMocks' default plugin version exactly: Keystone's own FileHandler has an unrelated
+		// Config_Version convention (regenerate-on-mismatch for upgrade migrations) that would otherwise move this
+		// fixture aside as *-old.yml before WeaponAddon ever sees it - a real value is fine here since
+		// WeaponAddon.registerWeapon's own Config_Version handling (under test) only checks presence, not content.
+		File weaponFile = writeWeaponFile("versioned.yml", """
+				Config_Version: "0.0.1-TEST"
+
+				Information:
+				   Name: "&7Versioned&r"
+				   Category: melee
+				   Material: IRON_HOE
+				   Durability:
+				      Base: 100
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+				""");
+
+		WeaponAddon  weaponAddon = new WeaponAddon(null);
+		ConfigReport report     = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, weaponFile));
+
+		assertNotNull(weaponAddon.getWeapon("versioned"),
+		              "a Config_Version key must not make the whole file disappear from the catalogue");
+		assertTrue(report.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.WARNING &&
+				                    issue.code().equals("weapon.config_version_unsupported")),
+		           "expected a WARNING recorded for the unimplemented Config_Version key");
+	}
+
 	private File writeWeaponFile(String name, String yaml) throws IOException {
 		File file = tempDir.resolve("weapon/" + name).toFile();
 		Files.createDirectories(file.getParentFile().toPath());

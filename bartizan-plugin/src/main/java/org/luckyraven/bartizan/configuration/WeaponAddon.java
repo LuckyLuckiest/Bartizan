@@ -67,9 +67,17 @@ public class WeaponAddon {
 		ConfigReport report   = new ConfigReport();
 		NodeReader   root     = FileHandlerReader.read(fileHandler, report);
 
+		// Config_Version has no real per-version handling implemented yet (BZ-CF-02) - an ordinary versioning habit
+		// for a config author must not make the whole file disappear from the catalogue with zero output. Warn and
+		// fall through to parse the rest of the file normally, same as any other not-yet-implemented key.
 		String configVersion = root.get("Config_Version").asString().orNull();
 		if (configVersion != null) {
-			return report;
+			ConfigNode configVersionNode = root.get("Config_Version").node();
+			report.add(Severity.WARNING,
+			           configVersionNode != null ? configVersionNode.location() : root.mapping().location(),
+			           "Config_Version",
+			           "Config_Version is not implemented yet - the file is parsed normally and the key is ignored",
+			           "weapon.config_version_unsupported");
 		}
 
 		/* information section */
