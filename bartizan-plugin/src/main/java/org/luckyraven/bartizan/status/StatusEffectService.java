@@ -291,6 +291,9 @@ public class StatusEffectService implements BeanLifecycle {
 
 		bar.setProgress(progress);
 		bar.setTitle(formatBossBarText(statusData, status, now));
+		// Re-derived like the title: a re-stack by a different weapon swaps statusData (BZ-EF-03).
+		bar.setColor(parseEnum(BarColor.class, statusData.getBossBar().color(), BarColor.WHITE));
+		bar.setStyle(parseEnum(BarStyle.class, statusData.getBossBar().style(), BarStyle.SOLID));
 	}
 
 	private String formatBossBarText(StatusData statusData, ActiveStatus status, long now) {

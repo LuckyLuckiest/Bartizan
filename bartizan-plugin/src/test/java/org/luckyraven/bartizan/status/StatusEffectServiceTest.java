@@ -4,6 +4,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -246,6 +248,27 @@ class StatusEffectServiceTest {
 		ArgumentCaptor<EffectContext> captor = ArgumentCaptor.forClass(EffectContext.class);
 		verify(effectRunner).run(any(), eq(EffectHook.ON_STATUS_EXPIRE), captor.capture());
 		assertEquals(shooter, captor.getValue().getSource());
+	}
+
+	@Test
+	@DisplayName("a re-stack by a different weapon restyles the boss bar to that weapon's Color/Style (BZ-EF-03)")
+	void apply_restackByOtherWeapon_restylesBossBar() {
+		StatusEffectService service = service();
+		Player               victim  = player();
+		BiologicalWeapon      red     = weapon(new StatusData("Infected", "", 200, StatusData.Stacking.REFRESH, 3, 200,
+		                                                   null, new StatusData.CureData(List.of(), null),
+		                                                   new StatusData.BossBarData("%status%", "RED",
+		                                                                              "SEGMENTED_10"),
+		                                                   null, null, 20, null));
+
+		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
+			service.apply(victim, player(), weapon(StatusData.Stacking.REFRESH, 200, 3), 1);
+			service.apply(victim, player(), red, 1);
+		}
+
+		BossBar bar = service.activeOn(victim.getUniqueId()).orElseThrow().getBossBar();
+		verify(bar).setColor(BarColor.RED);
+		verify(bar).setStyle(BarStyle.SEGMENTED_10);
 	}
 
 	@Test
