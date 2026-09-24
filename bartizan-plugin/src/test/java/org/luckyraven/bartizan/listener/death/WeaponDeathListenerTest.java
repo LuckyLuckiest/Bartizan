@@ -1,8 +1,10 @@
 package org.luckyraven.bartizan.listener.death;
 
 import org.bukkit.Bukkit;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -604,6 +606,128 @@ class WeaponDeathListenerTest {
 		// The status service is never even consulted — isStatusDamageCause gated it out before creditStatusKill.
 		verify(statusService, never()).activeOn(any());
 		verify(event).setDeathMessage("Killer killed Victim with Knife");
+	}
+
+	@Test
+	@DisplayName("BZ-EV-20: a mob killed by a player's held weapon fires WeaponKillEntityEvent and runs ON_KILL — "
+			+ "PlayerDeathEvent never fires for a non-player victim, so nothing reached this before")
+	void onEntityDeath_mobKilledByHeldWeapon_firesKillEventAndOnKill() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		EffectRunner        effectRunner  = mock(EffectRunner.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner, mock(StatusEffectService.class));
+
+		LivingEntity mob = mock(LivingEntity.class);
+		when(mob.getUniqueId()).thenReturn(UUID.randomUUID());
+
+		Player          killer    = mock(Player.class);
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		ItemStack       heldItem  = mock(ItemStack.class);
+		when(killer.getInventory()).thenReturn(inventory);
+		when(inventory.getItemInMainHand()).thenReturn(heldItem);
+		when(mob.getKiller()).thenReturn(killer);
+
+		Weapon weapon = mock(Weapon.class);
+		when(weaponManager.validateAndGetWeapon(eq(killer), eq(heldItem))).thenReturn(weapon);
+
+		EntityDeathEvent event = mock(EntityDeathEvent.class);
+		when(event.getEntity()).thenReturn(mob);
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			listener.onEntityDeath(event);
+
+			ArgumentCaptor<WeaponKillEntityEvent> captor = ArgumentCaptor.forClass(WeaponKillEntityEvent.class);
+			verify(pluginManager).callEvent(captor.capture());
+			assertEquals(weapon, captor.getValue().getWeapon());
+			assertEquals(killer, captor.getValue().getKiller());
+			assertEquals(mob, captor.getValue().getKilled());
+		}
+
+		ArgumentCaptor<EffectHook> hookCaptor = ArgumentCaptor.forClass(EffectHook.class);
+		verify(effectRunner).run(eq(weapon), hookCaptor.capture(), any(EffectContext.class));
+		assertEquals(EffectHook.ON_KILL, hookCaptor.getValue());
+	}
+
+	@Test
+	@DisplayName("BZ-EV-20: a player victim is skipped entirely — onPlayerDeath already handles that death")
+	void onEntityDeath_playerVictim_skipped() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
+
+		Player playerVictim = mock(Player.class);
+		EntityDeathEvent event = mock(EntityDeathEvent.class);
+		when(event.getEntity()).thenReturn(playerVictim);
+
+		listener.onEntityDeath(event);
+
+		verify(playerVictim, never()).getKiller();
+	}
+
+	@Test
+	@DisplayName("BZ-EV-20: a mob death with no attributable killer (fall damage, another mob) fires nothing")
+	void onEntityDeath_noKiller_firesNothing() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
+
+		LivingEntity mob = mock(LivingEntity.class);
+		when(mob.getUniqueId()).thenReturn(UUID.randomUUID());
+		when(mob.getKiller()).thenReturn(null);
+
+		EntityDeathEvent event = mock(EntityDeathEvent.class);
+		when(event.getEntity()).thenReturn(mob);
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			listener.onEntityDeath(event);
+
+			verify(pluginManager, never()).callEvent(any());
+		}
+	}
+
+	@Test
+	@DisplayName("BZ-EV-20: a recorded EXPLOSION claim on a mob (widened from Player-only) still credits the "
+			+ "throwable over whatever the killer now holds")
+	void onEntityDeath_recordedExplosionClaim_creditsThrowableWeapon() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		EffectRunner        effectRunner  = mock(EffectRunner.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, effectRunner, mock(StatusEffectService.class));
+
+		LivingEntity mob = mock(LivingEntity.class);
+		UUID         mobId = UUID.randomUUID();
+		when(mob.getUniqueId()).thenReturn(mobId);
+
+		WeaponEntityDamageEvent explosionHit = mock(WeaponEntityDamageEvent.class);
+		when(explosionHit.getEntity()).thenReturn(mob);
+		when(explosionHit.weaponName()).thenReturn("grenade");
+		when(explosionHit.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.EXPLOSION);
+		listener.onWeaponEntityDamage(explosionHit);
+
+		Player killer = mock(Player.class);
+		when(mob.getKiller()).thenReturn(killer);
+
+		Weapon grenade = mock(Weapon.class);
+		when(weaponManager.getWeaponTemplate("grenade")).thenReturn(grenade);
+
+		EntityDeathEvent event = mock(EntityDeathEvent.class);
+		when(event.getEntity()).thenReturn(mob);
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			PluginManager pluginManager = mock(PluginManager.class);
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			listener.onEntityDeath(event);
+
+			ArgumentCaptor<WeaponKillEntityEvent> captor = ArgumentCaptor.forClass(WeaponKillEntityEvent.class);
+			verify(pluginManager).callEvent(captor.capture());
+			assertEquals(grenade, captor.getValue().getWeapon());
+		}
+
+		// Never even consulted the killer's held item — the recorded claim won outright.
+		verify(weaponManager, never()).validateAndGetWeapon(any(), any());
 	}
 
 }

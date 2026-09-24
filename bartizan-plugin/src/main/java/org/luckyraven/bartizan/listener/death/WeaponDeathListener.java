@@ -2,12 +2,14 @@ package org.luckyraven.bartizan.listener.death;
 
 import lombok.CustomLog;
 import org.bukkit.Bukkit;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -85,9 +87,10 @@ public class WeaponDeathListener implements Listener {
 	}
 
 	/**
-	 * Records which weapon claimed a non-projectile hit on a player, so the {@link PlayerDeathEvent} handler below
-	 * can attribute the kill even though the killer may have switched items since throwing (the same rationale the
-	 * deleted {@code ThrowableAction.pendingKillerWeapon} map existed for).
+	 * Records which weapon claimed a non-projectile hit on a living entity, so the {@link PlayerDeathEvent}/
+	 * {@link EntityDeathEvent} handlers below can attribute the kill even though the killer may have switched items
+	 * since throwing (the same rationale the deleted {@code ThrowableAction.pendingKillerWeapon} map existed for).
+	 * {@code LivingEntity}, not {@code Player} (BZ-EV-20): a mob explosion/incendiary kill needs the same claim.
 	 */
 	@EventHandler
 	public void onWeaponEntityDamage(WeaponEntityDamageEvent event) {
@@ -99,7 +102,7 @@ public class WeaponDeathListener implements Listener {
 
 		DamageKind kind = event.kind();
 		if (kind != DamageKind.EXPLOSION && kind != DamageKind.FIRE) return;
-		if (!(event.getEntity() instanceof Player victim)) return;
+		if (!(event.getEntity() instanceof LivingEntity victim)) return;
 
 		recentThrowableKills.put(victim.getUniqueId(),
 				new RecordedKill(event.weaponName(), kind, System.currentTimeMillis()));
@@ -170,20 +173,67 @@ public class WeaponDeathListener implements Listener {
 
 		// Fire the kill event before crediting the death message — a listener that cancels it should see the kill
 		// go unclaimed, leaving Gangland's own (LOWEST-priority) vanilla message in place.
+		if (!fireKillEvent(weapon, killer, victim)) return;
+
+		event.setDeathMessage(BartizanChatUtil.color(template.replace("%killer%", killer.getName())
+		                                                     .replace("%victim%", victim.getName())
+		                                                     .replace("%item%", itemName)));
+	}
+
+	/**
+	 * BZ-EV-20: {@code PlayerDeathEvent} is never fired for a non-player {@link LivingEntity} — Bukkit fires
+	 * {@link EntityDeathEvent} for those instead, which nothing previously listened for here, so a mob kill never
+	 * reached {@link WeaponKillEntityEvent} (stats.kills, assists, {@code ON_KILL}). {@code MONITOR} plays it safe
+	 * against other plugins' death handling; there is no death message to set for a mob. Resolves the weapon the
+	 * same way {@link #onPlayerDeath} does — fatal-hit attribution, then a recorded claim, then the killer's
+	 * currently-held item — but skips {@link #creditStatusKill}: that path exists for the killer-less
+	 * poison/wither shape, which {@code LivingEntity#getKiller()} already returns {@code null} for here too, and a
+	 * mob has no {@code ActiveStatus} entries to look up regardless (the status system is player-only).
+	 */
+	@EventHandler(priority = EventPriority.MONITOR)
+	public void onEntityDeath(EntityDeathEvent event) {
+		LivingEntity victim = event.getEntity();
+		if (victim instanceof Player) return;
+
+		RecordedKill recorded = recentThrowableKills.remove(victim.getUniqueId());
+
+		Player killer = victim.getKiller();
+		if (killer == null) return;
+
+		String weaponName = FatalDamageAttribution.get();
+		if (weaponName == null) {
+			weaponName = claimedWeaponName(recorded, victim);
+		}
+
+		Weapon weapon = weaponName != null ? weaponManager.getWeaponTemplate(weaponName) : null;
+
+		if (weapon == null && weaponName == null) {
+			ItemStack heldItem = killer.getInventory().getItemInMainHand();
+			weapon = weaponManager.validateAndGetWeapon(killer, heldItem);
+		}
+
+		if (weapon == null && weaponName == null) return;
+
+		fireKillEvent(weapon, killer, victim);
+	}
+
+	/**
+	 * BZ-EV-20: fires {@link WeaponKillEntityEvent} and, when it is not cancelled, runs {@code ON_KILL} — shared by
+	 * {@link #onPlayerDeath} (which additionally sets the death message on success) and {@link #onEntityDeath} (a
+	 * mob kill has no death message to set).
+	 *
+	 * @return {@code true} if the kill was not cancelled, i.e. the caller should proceed crediting it.
+	 */
+	private boolean fireKillEvent(@Nullable Weapon weapon, Player killer, LivingEntity victim) {
 		WeaponKillEntityEvent killEvent = new WeaponKillEntityEvent(weapon, killer, victim);
 		Bukkit.getPluginManager().callEvent(killEvent);
-		if (killEvent.isCancelled()) {
-			return;
-		}
+		if (killEvent.isCancelled()) return false;
 
 		if (weapon != null) {
 			EffectContext ctx = EffectContext.builder().weapon(weapon).source(killer).victim(victim).build();
 			effectRunner.run(weapon, EffectHook.ON_KILL, ctx);
 		}
-
-		event.setDeathMessage(BartizanChatUtil.color(template.replace("%killer%", killer.getName())
-		                                                     .replace("%victim%", victim.getName())
-		                                                     .replace("%item%", itemName)));
+		return true;
 	}
 
 	/**
@@ -251,14 +301,14 @@ public class WeaponDeathListener implements Listener {
 	 * last instead.
 	 */
 	@Nullable
-	private String claimedWeaponName(@Nullable RecordedKill recorded, Player victim) {
+	private String claimedWeaponName(@Nullable RecordedKill recorded, LivingEntity victim) {
 		if (recorded == null || isExpired(recorded)) return null;
 		if (recorded.kind() == DamageKind.EXPLOSION) return recorded.weaponName();
 		if (recorded.kind() == DamageKind.FIRE && isFireDeath(victim)) return recorded.weaponName();
 		return null;
 	}
 
-	private static boolean isFireDeath(Player victim) {
+	private static boolean isFireDeath(LivingEntity victim) {
 		EntityDamageEvent lastDamage = victim.getLastDamageCause();
 		if (lastDamage == null) return false;
 
