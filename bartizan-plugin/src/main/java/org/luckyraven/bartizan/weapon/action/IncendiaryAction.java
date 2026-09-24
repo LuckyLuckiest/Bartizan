@@ -100,12 +100,10 @@ public class IncendiaryAction {
 	// --- Per-tick spray ---
 
 	private void sprayFire(Player player, IncendiaryData data, boolean tracksAmmo) {
-		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(player);
+		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(player, weapon);
 		if (heldWeapon == null) {
 			return;
 		}
-
-		int slot = player.getInventory().getHeldItemSlot();
 
 		// consume fuel
 		if (tracksAmmo) weapon.consumeShot();
@@ -118,7 +116,7 @@ public class IncendiaryAction {
 		if (onShot > 0) weapon.decreaseDurability(heldWeapon, onShot);
 
 		// push updated item to inventory
-		weapon.updateWeapon(player, heldWeapon, slot);
+		weaponService.replaceHeldWeapon(player, weapon, heldWeapon.build());
 
 		// recoil and push per tick
 		if (weapon.getRecoilData() != null) {

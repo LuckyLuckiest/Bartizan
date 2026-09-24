@@ -105,15 +105,14 @@ public final class GunFireDispatcher {
 
 		if (weapon.getWeaponConsumedOnShot() > 0 &&
 		    weapon.getCurrentMagCapacity() == weapon.getWeaponConsumedOnShot()) {
-			weapon.removeWeapon(player, player.getInventory().getHeldItemSlot());
+			weaponService.replaceHeldWeapon(player, weapon, null);
 		}
 
 		int consumeOnTime = weapon.getDurabilityData().getConsumeOnTime();
 		if (consumeOnTime <= -1) return;
 
 		CountdownTimer timer = new CountdownTimer(plugin, 0L, 0L, consumeOnTime, null, null,
-		                                          time -> weapon.removeWeapon(player,
-		                                                                      player.getInventory().getHeldItemSlot()));
+		                                          time -> weaponService.replaceHeldWeapon(player, weapon, null));
 
 		timer.start(false);
 	}

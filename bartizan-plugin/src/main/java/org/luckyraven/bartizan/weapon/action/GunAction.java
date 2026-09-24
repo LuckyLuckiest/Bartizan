@@ -39,8 +39,9 @@ public class GunAction {
 			return;
 		}
 
-		// update data
-		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(shooter);
+		// update data - this weapon's own item only, from whichever hand holds it; a holstered weapon (a burst round
+		// or full-auto tick landing after a swap) must not consume a round or stamp its state onto another item
+		ItemBuilder heldWeapon = weaponService.getHeldWeaponItem(shooter, weapon);
 
 		if (heldWeapon == null) {
 			return;
@@ -93,7 +94,7 @@ public class GunAction {
 			weapon.decreaseDurability(heldWeapon, durabilityOnShot);
 		}
 
-		weapon.updateWeapon(shooter, heldWeapon, shooter.getInventory().getHeldItemSlot());
+		weaponService.replaceHeldWeapon(shooter, weapon, heldWeapon.build());
 
 		// Shoot.Destroy_When_Empty / Reset_Fall_Distance: after the item update above, so a destroy wins over
 		// whatever updateWeapon just pushed to the slot. A full-auto loop holding a stale ItemStack reference
@@ -107,7 +108,7 @@ public class GunAction {
 				shooter.setFallDistance(0f);
 			}
 			if (handling.isDestroyWhenEmpty() && weapon.isMagazineEmpty()) {
-				weapon.removeWeapon(shooter, shooter.getInventory().getHeldItemSlot());
+				weaponService.replaceHeldWeapon(shooter, weapon, null);
 			}
 		}
 

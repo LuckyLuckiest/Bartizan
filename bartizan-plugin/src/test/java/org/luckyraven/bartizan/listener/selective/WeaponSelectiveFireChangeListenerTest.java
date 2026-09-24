@@ -220,6 +220,8 @@ class WeaponSelectiveFireChangeListenerTest {
 
 		when(weaponService.validateAndGetWeapon(player, item)).thenReturn(weapon);
 		when(weaponService.getHeldWeaponItem(player)).thenReturn(mock(ItemBuilder.class));
+		// GunAction resolves the firing weapon's own item by uuid (BZ-EV-12)
+		when(weaponService.getHeldWeaponItem(player, weapon)).thenReturn(mock(ItemBuilder.class));
 
 		return player;
 	}
