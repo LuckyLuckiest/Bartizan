@@ -52,8 +52,10 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	private final boolean                dropHologram;
 	@Setter(AccessLevel.NONE)
 	private final List<String>           deathMessages;
-	// Runtime state
-	private final Map<WeaponTag, Object> tags;
+	// Runtime state — not final so initClone can assign a fresh TreeMap instead of clearing the one still shared
+	// with the clone's source/siblings (BZ-WM-07); no public setter, same as deathMessages/uuid above.
+	@Setter(AccessLevel.NONE)
+	private       Map<WeaponTag, Object> tags;
 	// Reload configuration (immutable — set at construction)
 	@Nullable
 	private final ReloadData             reloadData;
@@ -801,7 +803,9 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	 * their own {@code clone()} implementations.
 	 */
 	protected void initClone(Weapon source) {
-		this.tags.clear();
+		// A fresh map, not this.tags.clear() — Object.clone() copied only the reference, so clear() would wipe
+		// the exact TreeMap the source (and every sibling clone) still points at (BZ-WM-07).
+		this.tags = new TreeMap<>();
 		this.durabilityData      = source.durabilityData != null ? source.durabilityData.clone() : null;
 		this.soundData           = source.soundData != null ? source.soundData.clone() : null;
 		this.reloadActionBarData = source.reloadActionBarData != null ? source.reloadActionBarData.clone() : null;

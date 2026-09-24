@@ -28,12 +28,10 @@ import static org.mockito.Mockito.mock;
  * other instance minted from the same template — e.g. one player's spread/recoil state leaking into another
  * player's copy of the same gun. This test proves every mutable DTO is genuinely deep-copied, not aliased.
  *
- * <p><b>New finding beyond the audit's numbered Observations table</b> — {@link #clone_bug_tagsMapIsSharedNotCopied()}:
- * {@code Weapon.tags} is a {@code final} field, so {@code Object.clone()} inside {@link Weapon#clone()} copies only
- * the reference, not the map. {@code initClone}'s {@code this.tags.clear()} therefore clears the one map both the
- * source and the clone point to — cloning a weapon that has already had {@code initializeTags}/{@code buildItem}
- * called on it silently wipes the source's tag cache too. Confirmed in code and pinned here; not previously listed
- * in weapons.md's Observations table.
+ * <p>Pins the BZ-WM-07 fix — {@link #clone_tagsMapIsIndependentOfSource()}: {@code Weapon.tags} is no longer
+ * {@code final}, and {@code initClone} assigns a fresh {@code TreeMap} instead of calling {@code .clear()} on the
+ * map {@code Object.clone()}'s shallow copy still shares with the source. Cloning a weapon that has already had
+ * {@code initializeTags}/{@code buildItem} called on it must not touch the source's tag cache.
  */
 @DisplayName("Weapon.clone / initClone / copyWithUUID — deep copy semantics")
 class WeaponCloneTest {
@@ -139,19 +137,17 @@ class WeaponCloneTest {
 	}
 
 	@Test
-	@DisplayName("BUG: cloning a weapon whose tags were already populated silently wipes the source's tags too")
-	void clone_bug_tagsMapIsSharedNotCopied() {
+	@DisplayName("cloning a weapon whose tags were already populated leaves the source's tags untouched (BZ-WM-07)")
+	void clone_tagsMapIsIndependentOfSource() {
 		GunWeapon original = WeaponFixtures.gunWeapon(30, 1);
 		original.initializeTags(mock(org.luckyraven.keystone.item.ItemBuilder.class));
 
 		assertFalse(original.getTags().isEmpty(), "sanity check: tags were actually populated before cloning");
 
-		original.clone();
+		GunWeapon copy = original.clone();
 
-		// `tags` is `final`, so Object.clone() copied only the reference — initClone()'s `this.tags.clear()` on
-		// the freshly-cloned copy cleared the exact same TreeMap the source still points to.
-		assertTrue(original.getTags().isEmpty(),
-		           "cloning must not mutate the source, but the source's tag cache is now empty");
+		assertFalse(original.getTags().isEmpty(), "cloning must not mutate the source's tag cache");
+		assertNotSame(original.getTags(), copy.getTags(), "the clone must get its own tags map, not share the source's");
 	}
 
 	@Test
