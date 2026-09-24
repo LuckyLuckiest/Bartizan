@@ -4,6 +4,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.WeaponType;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 
 import java.util.Map;
@@ -31,13 +32,16 @@ final class WeaponGiveHelper {
 	 * @return {@code false} when {@code name} is not a configured weapon; the receiver's inventory is untouched.
 	 */
 	static boolean give(WeaponManager weaponManager, Player receiver, String name, int amount) {
-		Weapon weapon = weaponManager.getWeapon(receiver, null, name, true);
+		// never registered here - validateAndGetWeapon registers each item under its own uuid on first use
+		Weapon weapon = weaponManager.createTransientWeapon(name);
 		if (weapon == null) return false;
 
 		amount = Math.max(1, Math.min(amount, MAX_AMOUNT));
 
 		ItemStack       sampleItem   = weapon.buildItem(receiver);
-		int             maxStackSize = sampleItem.getMaxStackSize();
+		// one item per stack so every non-throwable is its own weapon with its own uuid (BZ-CM-05); throwables share
+		// one uuid per type on purpose (WeaponService#mintUuid) and keep stacking
+		int             maxStackSize = weapon.getCategory() == WeaponType.THROWABLE ? sampleItem.getMaxStackSize() : 1;
 		int             slots        = (int) Math.ceil(amount / (double) maxStackSize);
 		int             amountLeft   = amount;
 		PlayerInventory inventory    = receiver.getInventory();
@@ -48,7 +52,7 @@ final class WeaponGiveHelper {
 
 			if (amountGive <= 0) break;
 
-			ItemStack item = weapon.buildItem(receiver);
+			ItemStack item = weaponManager.createTransientWeapon(name).buildItem(receiver);
 
 			item.setAmount(amountGive);
 
