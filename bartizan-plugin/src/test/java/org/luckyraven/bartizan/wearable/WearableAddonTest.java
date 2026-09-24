@@ -178,6 +178,50 @@ class WearableAddonTest {
 		assertEquals(1, addon.getWearables().size());
 	}
 
+	@Test
+	@DisplayName("BZ-WE-02: an unrecognised Traits key warns and contributes nothing, for both a wearable's own "
+			+ "Traits and a Set tier's Traits (readTraits is shared by both)")
+	void unrecognisedTraitsKey_warnsAndContributesNothing() throws Exception {
+		JavaPlugin  plugin      = PluginMocks.plugin(tempDir);
+		FileManager fileManager = new FileManager(plugin);
+
+		writeWearablesFile("""
+				typo_vest:
+				   Material: IRON_CHESTPLATE
+				   Name: "&7Typo Vest"
+				   Traits:
+				      REINFORCE: 2
+
+				Sets:
+				   typo_set:
+				      Pieces_2:
+				         Traits:
+				            REINFORCE: 2
+				""");
+		fileManager.addFile(new FileHandler(plugin, tempDir.resolve("items/wearables.yml").toFile()), false);
+
+		WearableAddon addon  = new WearableAddon(ignored -> {
+		}, fileManager, null);
+		ConfigReport  report = addon.load();
+
+		assertFalse(report.hasErrors(), reportIssues(report));
+		// one warning from the wearable's own Traits block, one from the Set tier's - both route through the same
+		// readTraits guard.
+		assertEquals(2, report.issues().size(), reportIssues(report));
+		assertTrue(report.issues().stream().allMatch(
+				           issue -> issue.severity() == Severity.WARNING &&
+				                    issue.code().equals("wearable.unknown_trait")),
+		           "expected only wearable.unknown_trait warnings:\n" + reportIssues(report));
+
+		Wearable vest = addon.getWearable("typo_vest");
+		assertNotNull(vest);
+		assertEquals(0, vest.traitLevel("reinforce"), "the misspelled key must not be stored/contribute");
+
+		WearableService.SetTier tier = setsField(addon).get("typo_set").get(2);
+		assertNotNull(tier, "Sets.typo_set.Pieces_2 should still be registered");
+		assertEquals(0, tier.traits().getOrDefault("reinforce", 0));
+	}
+
 	@SuppressWarnings("unchecked")
 	private static Map<String, NavigableMap<Integer, WearableService.SetTier>> setsField(WearableAddon addon)
 			throws Exception {

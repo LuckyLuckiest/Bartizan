@@ -291,7 +291,10 @@ public class WearableAddon extends WearableService implements FileInitializer {
 	 * Reads a {@code Traits:} section (shared by a wearable's own block and a {@code Sets.<name>.Pieces_N} tier) —
 	 * string-keyed (lower-cased on read), per §1.6(6): the YAML keys stay upper-case unchanged. A level below 1 is
 	 * clamped to 1 by {@code NodeReader}'s own {@code min(1)}, matching the pre-{@code HL} loader's
-	 * {@code Math.max(1, ...)} behaviour, now with the clamp itself reported.
+	 * {@code Math.max(1, ...)} behaviour, now with the clamp itself reported. A key not in
+	 * {@link Wearable#traitMaxLevel(String)}'s table (e.g. a typo like {@code REINFORCE}) is a
+	 * {@link Severity#WARNING} and that one entry is skipped (BZ-WE-02) - mirrors {@link #readAttributes}'s
+	 * existing unrecognised-key pattern, one guard covering both callers of this shared method.
 	 */
 	private Map<String, Integer> readTraits(NodeReader parent, ConfigReport report, String ownerDescription) {
 		Map<String, Integer> traits        = new HashMap<>();
@@ -300,8 +303,17 @@ public class WearableAddon extends WearableService implements FileInitializer {
 
 		NodeReader traitsReader = NodeReader.of(traitsSection, report);
 		for (String traitKey : traitsReader.keys()) {
-			int level = traitsReader.get(traitKey).asInt().min(1).orDefault(1);
-			traits.put(traitKey.toLowerCase(Locale.ROOT), level);
+			int    level         = traitsReader.get(traitKey).asInt().min(1).orDefault(1);
+			String normalizedKey = traitKey.toLowerCase(Locale.ROOT);
+
+			if (Wearable.traitMaxLevel(normalizedKey) <= 0) {
+				report.add(Severity.WARNING, traitsSection.location(), joinPath(traitsSection.path(), traitKey),
+				           ownerDescription + " has an unrecognised Traits key '" + traitKey +
+				           "' - contributes nothing", "wearable.unknown_trait");
+				continue;
+			}
+
+			traits.put(normalizedKey, level);
 		}
 		return traits;
 	}
