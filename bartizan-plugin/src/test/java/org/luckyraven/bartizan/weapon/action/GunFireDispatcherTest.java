@@ -18,12 +18,16 @@ import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.keystone.timer.CountdownTimer;
 import org.mockito.MockedConstruction;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.verify;
@@ -97,6 +101,25 @@ class GunFireDispatcherTest {
 	@DisplayName("BURST locks for Per_Shot cooldowns")
 	void lockTicks_burst_isPerShotCooldowns() {
 		assertEquals(18, GunFireDispatcher.lockTicksFor(gun(3, 6, SelectiveFire.BURST, -1)));
+	}
+
+	// BZ-FA-12
+
+	@Test
+	@DisplayName("an expired fire-rate lock is dropped by the next lock, whatever happened to its weapon")
+	@SuppressWarnings("unchecked")
+	void lock_prunesExpiredLocks() throws ReflectiveOperationException {
+		UUID expired = UUID.randomUUID();
+		UUID live    = UUID.randomUUID();
+		GunFireDispatcher.lock(expired, 0);
+
+		GunFireDispatcher.lock(live, 20);
+
+		Field field = GunFireDispatcher.class.getDeclaredField("pressLockUntilTick");
+		field.setAccessible(true);
+		Map<UUID, Long> locks = (Map<UUID, Long>) field.get(null);
+		assertFalse(locks.containsKey(expired), "an expired lock outlived the next lock call");
+		assertTrue(GunFireDispatcher.isLocked(live));
 	}
 
 }

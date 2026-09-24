@@ -59,10 +59,15 @@ public final class GunFireDispatcher {
 	}
 
 	/**
-	 * Records {@code weaponUuid}'s fire-rate deadline, {@code lockTicks} ticks from now.
+	 * Records {@code weaponUuid}'s fire-rate deadline, {@code lockTicks} ticks from now, and drops every lapsed
+	 * deadline (BZ-FA-12): only {@link #unlock} on a hotbar swap removed entries, so a weapon consumed, destroyed or
+	 * taken off a quitting player kept its entry for the life of the JVM. A lapsed entry gates nothing, so the map
+	 * now holds only weapons fired within their last fire-rate window.
 	 */
 	public static void lock(UUID weaponUuid, long lockTicks) {
-		pressLockUntilTick.put(weaponUuid, System.currentTimeMillis() + lockTicks * MILLIS_PER_TICK);
+		long now = System.currentTimeMillis();
+		pressLockUntilTick.values().removeIf(lockedUntil -> lockedUntil <= now);
+		pressLockUntilTick.put(weaponUuid, now + lockTicks * MILLIS_PER_TICK);
 	}
 
 	/**
