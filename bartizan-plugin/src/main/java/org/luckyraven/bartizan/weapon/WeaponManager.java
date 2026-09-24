@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.weapon;
 
+import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.keystone.bean.BeanLifecycle;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
 
@@ -13,6 +14,19 @@ public class WeaponManager extends WeaponService implements BeanLifecycle {
 
 	public WeaponManager(WeaponAddon weaponAddon) {
 		super(weaponAddon);
+	}
+
+	/**
+	 * Ends every in-flight reload before {@link #onClear()} discards the instances it runs on (BZ-WM-13): its timer
+	 * would keep consuming ammo and writing a stale magazine while the next lookup mints a fresh, non-reloading
+	 * instance that can start a second reload in parallel. {@code Reload#stopReloading} unscopes the reloader and
+	 * fires the interrupted completion event, which persists the rounds loaded so far.
+	 */
+	@Override
+	public void onPreClear() {
+		for (Weapon weapon : getWeapons().values()) {
+			if (weapon.isReloading()) weapon.stopReloading();
+		}
 	}
 
 	@Override
