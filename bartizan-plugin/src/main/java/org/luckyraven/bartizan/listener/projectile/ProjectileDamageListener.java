@@ -5,6 +5,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.luckyraven.keystone.bean.autowire.AutowireTarget;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
 import org.luckyraven.bartizan.weapon.WeaponService;
@@ -34,6 +35,17 @@ public class ProjectileDamageListener implements Listener {
 		// damager's entity id (not narrowed to `instanceof Projectile`) since gate HI part b's Projectile.Visual
 		// can drive a FallingBlock/Item/ArmorStand/TNTPrimed visual too, none of which are a Projectile.
 		if (visualSpawner.isCosmetic(event.getDamager().getEntityId())) {
+			event.setCancelled(true);
+		}
+	}
+
+	/**
+	 * Hoppers and hopper minecarts ignore an {@code Item}'s pickup delay, so without this a {@code DROPPED_ITEM}
+	 * visual flying over one would be collected as a real item on every shot.
+	 */
+	@EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+	public void onHopperPickup(InventoryPickupItemEvent event) {
+		if (visualSpawner.isCosmetic(event.getItem().getEntityId())) {
 			event.setCancelled(true);
 		}
 	}
