@@ -16,7 +16,6 @@ import org.luckyraven.bartizan.api.weapon.modifiers.action.BlockBreakModifier;
 
 import java.lang.reflect.Method;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -144,12 +143,17 @@ public class BlockDamageManager {
 	}
 
 	/**
-	 * Sends block damage animation to all players within render distance.
+	 * Sends block damage animation to all players within render distance. A no-op if {@code location}'s world has
+	 * been unloaded (BZ-RT-06) — a delayed/repeating regeneration or restore task can still fire after that, and
+	 * must not throw inside the Bukkit scheduler callback.
 	 */
 	private void sendBlockDamage(Location location, int stage, int entityId) {
-		float progress = Math.max(0.0f, Math.min(stage / (float) MAX_DAMAGE_STAGE, 1.0f));
+		World world = location.getWorld();
+		if (world == null) {
+			return;
+		}
 
-		World world = Objects.requireNonNull(location.getWorld());
+		float progress = Math.max(0.0f, Math.min(stage / (float) MAX_DAMAGE_STAGE, 1.0f));
 		for (Player player : world.getPlayers()) {
 			if (player.getLocation().distanceSquared(location) > 64 * 64) continue;
 			sendBlockDamage(player, location, progress, entityId);
@@ -157,10 +161,14 @@ public class BlockDamageManager {
 	}
 
 	/**
-	 * Clears the block damage animation for a location.
+	 * Clears the block damage animation for a location. A no-op if {@code location}'s world has been unloaded
+	 * (BZ-RT-06) — see {@link #sendBlockDamage(Location, int, int)}.
 	 */
 	private void clearBlockDamage(Location location, int entityId) {
-		World world = Objects.requireNonNull(location.getWorld());
+		World world = location.getWorld();
+		if (world == null) {
+			return;
+		}
 		for (Player player : world.getPlayers()) {
 			if (player.getLocation().distanceSquared(location) > 64 * 64) continue;
 			sendBlockDamage(player, location, 0.0f, entityId);
