@@ -19,6 +19,7 @@ import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.wearable.WearableService;
+import org.luckyraven.bartizan.weapon.WeaponService;
 
 import java.util.HashSet;
 import java.util.Map;
@@ -48,13 +49,15 @@ public class MeleeAction {
 	private final WeaponRaytracer raytracer;
 	private final Map<UUID, Long> cooldowns;
 	private final EffectRunner    effectRunner;
+	private final WeaponService   weaponService;
 
 	public MeleeAction(MeleeWeapon weapon, WeaponRaytracer raytracer, Map<UUID, Long> cooldowns,
-	                   EffectRunner effectRunner) {
-		this.weapon       = weapon;
-		this.raytracer    = raytracer;
-		this.cooldowns    = cooldowns;
-		this.effectRunner = effectRunner;
+	                   EffectRunner effectRunner, WeaponService weaponService) {
+		this.weapon        = weapon;
+		this.raytracer     = raytracer;
+		this.cooldowns     = cooldowns;
+		this.effectRunner  = effectRunner;
+		this.weaponService = weaponService;
 	}
 
 	/**
@@ -87,6 +90,14 @@ public class MeleeAction {
 		WeaponShootEvent shootEvent = new WeaponShootEvent(weapon, player);
 		Bukkit.getPluginManager().callEvent(shootEvent);
 		if (shootEvent.isCancelled()) return false;
+
+		// BZ-FA-03: depletes a configured magazine on every swing. Gated on getReloadData() != null, same as the
+		// empty-mag guard above, so a melee weapon authored without Ammunition:/Reload: sections is unaffected. The
+		// guard above already guarantees the magazine isn't empty, so consumeShot() always succeeds here.
+		if (weapon.getReloadData() != null) {
+			weapon.consumeShot();
+			weaponService.persistHeldWeapon(weapon, player);
+		}
 
 		Vector lookDir = player.getEyeLocation().getDirection().normalize();
 		double range   = data.getRange();

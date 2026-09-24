@@ -367,7 +367,7 @@ public class WeaponInteract implements Listener {
 		if (weapon instanceof MeleeWeapon melee) {
 			event.setCancelled(true);
 			if (tryClaimMeleeSwing(melee.getUuid())) {
-				boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner).activate(player);
+				boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner, weaponService).activate(player);
 				if (hit) melee.applyOnHitDurability(player, player.getInventory().getHeldItemSlot());
 			}
 			return;
@@ -498,7 +498,7 @@ public class WeaponInteract implements Listener {
 		} else if (weapon instanceof MeleeWeapon melee) {
 			if (leftClick) {
 				if (tryClaimMeleeSwing(melee.getUuid())) {
-					boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner).activate(player);
+					boolean hit = new MeleeAction(melee, raytracer, meleeCooldowns, effectRunner, weaponService).activate(player);
 					if (hit) melee.applyOnHitDurability(player, player.getInventory().getHeldItemSlot());
 				}
 			}
@@ -625,7 +625,7 @@ public class WeaponInteract implements Listener {
 
 		engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS);
 
-		new ThrowableAction(plugin, weapon, fireRegistry, effectRunner).activate(player);
+		new ThrowableAction(plugin, weapon, fireRegistry, effectRunner, weaponService).activate(player);
 	}
 
 	/**
