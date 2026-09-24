@@ -64,10 +64,36 @@ class ModifierHandlerTest {
 		when(target.getAttribute(org.mockito.ArgumentMatchers.any(Attribute.class))).thenReturn(armorInstance);
 
 		// normalReduction = min(20,20)/25 = 0.8; effectiveArmor = 20*(1-0.5) = 10; piercingReduction = 10/25 = 0.4
-		// normalDamage = 20*(1-0.8) = 4; piercingDamage = 20*(1-0.4) = 12; result = 20 + (12-4) = 28
+		// piercingDamage = 20*(1-0.4) = 12; result = piercingDamage / (1 - normalReduction) = 12 / 0.2 = 60
+		// (BZ-RT-16: living.damage() re-applies (1 - normalReduction), so 60 * 0.2 lands exactly the intended 12).
 		double result = ModifierHandler.calculateArmorPiercingDamage(20.0, target, weapon);
 
-		assertEquals(28.0, result, 0.0001);
+		assertEquals(60.0, result, 0.0001);
+	}
+
+	@Test
+	@DisplayName("calculateArmorPiercingDamage: after Minecraft's own armor reduction is re-applied, the target "
+			+ "actually takes the piercing-adjusted damage, not the un-pierced amount (BZ-RT-16)")
+	void calculateArmorPiercingDamage_afterVanillaReduction_landsIntendedDamage() {
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+		ModifiersData modifiers = new ModifiersData();
+		modifiers.setArmorPiercing(new ArmorPiercingModifier(0.5)); // bypasses half the target's armor
+		weapon.setModifiersData(modifiers);
+
+		LivingEntity target = mock(LivingEntity.class);
+		AttributeInstance armorInstance = mock(AttributeInstance.class);
+		when(armorInstance.getValue()).thenReturn(20.0); // full diamond, capped armor value
+		when(target.getAttribute(org.mockito.ArgumentMatchers.any(Attribute.class))).thenReturn(armorInstance);
+
+		double returnedToVanilla = ModifierHandler.calculateArmorPiercingDamage(10.0, target, weapon);
+
+		// Simulate living.damage() re-applying Minecraft's own (1 - normalReduction) = 0.2 multiplier.
+		double normalReduction   = 0.8;
+		double actualDamageDealt = returnedToVanilla * (1 - normalReduction);
+
+		// Intended: baseDamage=10, armorBypass=0.5 -> piercingDamage = 10 * (1 - 0.4) = 6.0.
+		assertEquals(6.0, actualDamageDealt, 0.0001,
+				"the old additive formula landed only 2.8 here — barely more than the 2.0 no-AP baseline");
 	}
 
 	@Test

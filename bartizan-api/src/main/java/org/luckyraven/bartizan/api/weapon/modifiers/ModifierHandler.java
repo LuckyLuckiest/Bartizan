@@ -55,12 +55,14 @@ public class ModifierHandler {
 		double normalReduction   = Math.min(20, armor) / 25.0;
 		double piercingReduction = Math.min(20, effectiveArmor) / 25.0;
 
-		// Calculate the damage difference
-		double normalDamage   = baseDamage * (1 - normalReduction);
 		double piercingDamage = baseDamage * (1 - piercingReduction);
 
-		// Return the piercing damage (will be reduced again by Minecraft, so we compensate)
-		return baseDamage + (piercingDamage - normalDamage);
+		// living.damage() will apply Minecraft's own (1 - normalReduction) reduction on top of whatever we return
+		// here, so the inverse of that — dividing rather than adding — is what actually lands piercingDamage on
+		// the target (BZ-RT-16: the old additive `baseDamage + (piercingDamage - normalDamage)` under-delivered,
+		// worse as armor climbed). normalReduction is capped at 0.8 (min(20, armor)/25), so this never divides by
+		// zero.
+		return piercingDamage / (1 - normalReduction);
 	}
 
 	/**
