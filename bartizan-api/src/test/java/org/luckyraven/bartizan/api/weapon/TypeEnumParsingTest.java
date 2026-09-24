@@ -1,11 +1,21 @@
 package org.luckyraven.bartizan.api.weapon;
 
+import org.bukkit.Material;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.luckyraven.bartizan.api.ammo.Ammunition;
+import org.luckyraven.bartizan.api.weapon.dto.AmmunitionData;
+import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
+import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
+import org.luckyraven.bartizan.api.weapon.reload.Reload;
 import org.luckyraven.bartizan.api.weapon.reload.ReloadType;
+
+import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Covers the four config-string parsing enums the weapons.md audit's Test Surface groups together under one
@@ -17,9 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertSame;
  * <p>Pins Observation #30 (weapons.md): an unrecognised {@code Category} silently falls through to
  * {@link WeaponType#OTHER} rather than failing loudly.
  *
- * <p>Pins Observation #16 (weapons.md): {@link ReloadType#amount} is a mutable field on the shared enum
- * constant, not per-weapon state — two weapons parsed with different {@code num-N} amounts collide on whichever
- * loaded last.
+ * <p>BZ-WM-03 (fixed): {@code ReloadType} used to carry {@code amount} as a mutable field on the shared enum
+ * constant, so two weapons parsed with different {@code num-N} amounts collided on whichever loaded last. The
+ * amount is now per-weapon state on {@link org.luckyraven.bartizan.api.weapon.dto.ReloadData}, passed explicitly
+ * into {@link ReloadType#createInstance}.
  */
 @DisplayName("Type-parsing enums — WeaponType / ProjectileType / ThrowableType / ReloadType")
 class TypeEnumParsingTest {
@@ -80,19 +91,37 @@ class TypeEnumParsingTest {
 	}
 
 	@Test
-	@DisplayName("ReloadType.amount is a shared mutable field on the enum constant (Observation #16, weapons.md)")
-	void reloadType_amountIsSharedMutableState() {
-		// Simulates AmmunitionSectionParser.parse: `reloadType.setAmount(typeAmount)` for two different weapon
-		// files that both use "num-N" reloads with different N.
-		ReloadType.NUM.setAmount(3);
-		assertEquals(3, ReloadType.NUM.getAmount());
+	@DisplayName("BZ-WM-03: two weapons with different num-N amounts don't collide on a shared enum field")
+	void reloadType_numAmount_isPerWeapon_notSharedState() {
+		// Two weapon files, both `Reload: {Type: num-N}` with different N — simulates
+		// AmmunitionSectionParser.parse building each weapon's own ReloadData.amount, then Weapon's constructor
+		// wiring reloadData.getType().createInstance(weapon, ammoType, reloadData.getAmount()) (Weapon.java).
+		GunWeapon first  = gunWeaponWithNumAmount(3);
+		GunWeapon second = gunWeaponWithNumAmount(7);
 
-		ReloadType.NUM.setAmount(7);
+		Reload firstReload = first.getReloadData().getType().createInstance(
+				first, first.getAmmunitionData().getAmmoType(), first.getReloadData().getAmount());
+		Reload secondReload = second.getReloadData().getType().createInstance(
+				second, second.getAmmunitionData().getAmmoType(), second.getReloadData().getAmount());
 
-		// The first weapon's amount is gone — every holder of ReloadType.NUM (including the first weapon's
-		// already-constructed Reload instance, which read this field at construction time) now shares 7.
-		assertEquals(7, ReloadType.NUM.getAmount(), "the enum constant has exactly one 'amount' — "
-		                                            + "later parses silently overwrite earlier ones");
+		// createInstance reads the amount off the explicit parameter — not off any state living on the shared
+		// ReloadType.NUM enum constant, so building a second Reload with a different amount never mutates the
+		// first one already handed to some other weapon.
+		assertTrue(firstReload.toString().contains("amount=3"), firstReload.toString());
+		assertTrue(secondReload.toString().contains("amount=7"), secondReload.toString());
+	}
+
+	private static GunWeapon gunWeaponWithNumAmount(int amount) {
+		ProjectileData projectile = ProjectileData.builder()
+				.speed(3.0).type(ProjectileType.BULLET).damage(5.0).consumed(1).perShot(1).cooldown(4)
+				.distance(60).particle(false).gravity(0.0).build();
+		Ammunition ammo = new Ammunition("test_ammo", "&7test_ammo", Material.COAL, 0, List.of());
+		AmmunitionData ammoData = new AmmunitionData(ammo, 10, 1, 10);
+		ReloadData reloadData = ReloadData.builder().cooldown(20).type(ReloadType.NUM).amount(amount).build();
+
+		return new GunWeapon(UUID.randomUUID(), "test_gun", "&fTest Gun", WeaponType.GUN, Material.IRON_HOE, 0,
+		                     (short) 100, List.of(), false, null, SelectiveFire.SINGLE, 0, projectile, reloadData,
+		                     ammoData);
 	}
 
 }

@@ -50,12 +50,17 @@ public class AmmunitionSectionParser {
 		// [Types] alternative to Ammo_Type: a list of ammo ids: reload consumes the first the player carries, in
 		// this list's order. Setting both Ammo_Type and Types is a config error.
 		List<String> typesList      = ammo.get("Types").asList().ofStrings().orEmpty();
-		int          capacity       = ammo.get("Capacity").asInt().min(0).orDefault(0);
+		// BZ-CF-04: Capacity and Restore both feed a NumberedReload divisor (leftToInsert / restore); a floor of 0
+		// let a `Restore: 0` (or an unset Capacity defaulting Restore to 0) config load cleanly and then throw
+		// ArithmeticException on the player's first reload. Floor of 1, same pattern as every other divisor-bound
+		// numeric field in these parsers.
+		int          capacity       = ammo.get("Capacity").asInt().min(1).orDefault(1);
 		int          consume        = ammo.get("Consume").asInt().min(0).orDefault(1);
-		int          restore        = ammo.get("Restore").asInt().min(0).orDefault(capacity);
+		int          restore        = ammo.get("Restore").asInt().min(1).orDefault(capacity);
 
 		int              cooldown              = 0;
 		ReloadType       reloadType            = ReloadType.getType("instant");
+		int              reloadAmount          = 1;
 		boolean          unloadAmmoOnReload    = false;
 		int              shootDelayAfterReload = 0;
 		boolean          autoReloadWhenEmpty   = false;
@@ -67,17 +72,33 @@ public class AmmunitionSectionParser {
 
 			cooldown = reload.get("Cooldown").asInt().min(0).orDefault(0);
 
-			String typeStr    = reload.get("Type").asString().orDefault("instant");
+			String rawTypeStr = reload.get("Type").asString().orDefault("instant");
+			String typeStr    = rawTypeStr;
 			int    typeAmount = 1;
 			if (typeStr.contains("-")) {
 				String[] parts = typeStr.split("-");
 				typeStr = parts[0];
+				// BZ-CF-04: a `numbered-0` (or unparsable/missing) amount used to flow straight into
+				// NumberedReload.executeReload's `numberOfAmmunition / amount` divide with no floor, throwing
+				// ArithmeticException on the player's first reload. Clamp to 1 and warn instead.
+				String amountToken = parts.length > 1 ? parts[1] : "";
 				try {
-					typeAmount = Integer.parseInt(parts[1]);
-				} catch (NumberFormatException ignored) { }
+					typeAmount = Integer.parseInt(amountToken);
+					if (typeAmount < 1) {
+						report.add(Severity.WARNING, reloadSection.location(), "Reload.Type",
+						           "Reload.Type '" + rawTypeStr + "' amount must be at least 1 — using 1",
+						           "reload.type_amount_too_low");
+						typeAmount = 1;
+					}
+				} catch (NumberFormatException exception) {
+					report.add(Severity.WARNING, reloadSection.location(), "Reload.Type",
+					           "Reload.Type '" + rawTypeStr + "' has a non-numeric amount — using 1",
+					           "reload.type_amount_malformed");
+					typeAmount = 1;
+				}
 			}
-			reloadType = ReloadType.getType(typeStr);
-			reloadType.setAmount(typeAmount);
+			reloadType   = ReloadType.getType(typeStr);
+			reloadAmount = typeAmount;
 
 			unloadAmmoOnReload    = reload.get("Unload_Ammo_On_Reload").asBool().orDefault(false);
 			shootDelayAfterReload = reload.get("Shoot_Delay_After_Reload").asInt().min(0).orDefault(0);
@@ -88,6 +109,7 @@ public class AmmunitionSectionParser {
 		ReloadData reloadData = ReloadData.builder()
 				.cooldown(cooldown)
 				.type(reloadType)
+				.amount(reloadAmount)
 				.unloadAmmoOnReload(unloadAmmoOnReload)
 				.shootDelayAfterReload(shootDelayAfterReload)
 				.autoReloadWhenEmpty(autoReloadWhenEmpty)

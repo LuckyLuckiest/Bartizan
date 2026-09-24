@@ -11,6 +11,13 @@ public class ReloadData {
 	private final int        cooldown;
 	private final ReloadType type;
 	/**
+	 * {@code Reload.Type: one}/{@code num-N}: how many shells one insertion consumes/restores. Defaults to
+	 * {@code 1} (matches {@code one} and a bare {@code num} with no {@code -N} suffix). Captured per-weapon here
+	 * instead of on the shared {@link ReloadType} enum constant (BZ-WM-03).
+	 */
+	@Builder.Default
+	private final int        amount = 1;
+	/**
 	 * {@code Reload.Unload_Ammo_On_Reload}: when {@code true} and the magazine isn't already empty, a reload first
 	 * returns {@code floor(currentMag / restore)} ammo items to the player before reloading from empty. Skipped
 	 * for NPCs and {@code Ammo_Type: none}.
