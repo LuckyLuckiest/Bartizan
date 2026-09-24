@@ -240,7 +240,11 @@ public class StatusEffectService implements BeanLifecycle {
 		Entity       entity = Bukkit.getEntity(status.getVictimId());
 		LivingEntity victim = entity instanceof LivingEntity living ? living : null;
 
-		EffectContext ctx = EffectContext.builder().weapon(status.getWeapon()).victim(victim)
+		// Resolved by entity, not Bukkit#getPlayer, so a mob shooter is found too; an offline shooter stays null.
+		Entity       shooterEntity = status.getShooterId() != null ? Bukkit.getEntity(status.getShooterId()) : null;
+		LivingEntity shooter       = shooterEntity instanceof LivingEntity living ? living : null;
+
+		EffectContext ctx = EffectContext.builder().weapon(status.getWeapon()).source(shooter).victim(victim)
 		                                .level(status.getLevel()).build();
 		effectRunner.run(status.getWeapon(), EffectHook.ON_STATUS_EXPIRE, ctx);
 
@@ -287,6 +291,9 @@ public class StatusEffectService implements BeanLifecycle {
 
 		bar.setProgress(progress);
 		bar.setTitle(formatBossBarText(statusData, status, now));
+		// Re-derived like the title: a re-stack by a different weapon swaps statusData (BZ-EF-03).
+		bar.setColor(parseEnum(BarColor.class, statusData.getBossBar().color(), BarColor.WHITE));
+		bar.setStyle(parseEnum(BarStyle.class, statusData.getBossBar().style(), BarStyle.SOLID));
 	}
 
 	private String formatBossBarText(StatusData statusData, ActiveStatus status, long now) {

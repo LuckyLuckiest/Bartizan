@@ -8,6 +8,7 @@ import org.luckyraven.bartizan.api.weapon.dto.EffectSpec;
 import org.luckyraven.bartizan.api.weapon.dto.EffectsData;
 import org.luckyraven.bartizan.effect.impl.*;
 import org.luckyraven.bartizan.file.BartizanSettings;
+import org.luckyraven.keystone.bean.BeanLifecycle;
 
 import java.util.HashMap;
 import java.util.List;
@@ -22,7 +23,7 @@ import java.util.Set;
  * the rest.
  */
 @CustomLog
-public class EffectRunner {
+public class EffectRunner implements BeanLifecycle {
 
 	/**
 	 * Lowercase effect-type keys every {@code Effects:} entry's {@code Type} must resolve to (case-insensitively).
@@ -84,6 +85,17 @@ public class EffectRunner {
 		List<EffectSpec> specs = effects.forHook(hook);
 		if (specs.isEmpty()) specs = BartizanSettings.getDefaultEffects().forHook(hook);
 		runSpecs(specs, hook, ownerName, ctx);
+	}
+
+	/**
+	 * The effects are built inline, not as beans, so this runner forwards disable to any that hold live state
+	 * (e.g. {@link BossBarHookEffect}'s still-showing bars — BZ-EF-02).
+	 */
+	@Override
+	public void onShutdown() {
+		for (Effect effect : registry.values()) {
+			if (effect instanceof BeanLifecycle lifecycle) lifecycle.onShutdown();
+		}
 	}
 
 	private void runSpecs(List<EffectSpec> specs, EffectHook hook, String ownerName, EffectContext ctx) {

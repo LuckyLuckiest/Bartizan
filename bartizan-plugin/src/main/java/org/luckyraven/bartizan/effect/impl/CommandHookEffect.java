@@ -3,12 +3,12 @@ package org.luckyraven.bartizan.effect.impl;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.jetbrains.annotations.Nullable;
 import org.luckyraven.bartizan.api.weapon.dto.EffectSpec;
 import org.luckyraven.bartizan.effect.Effect;
 import org.luckyraven.bartizan.effect.EffectContext;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * {@code Command}: {@code Command, As (console|player, console), Target (source)} with {@code %player%}/
@@ -39,9 +39,19 @@ public class CommandHookEffect implements Effect {
 	}
 
 	private String substitute(String command, EffectContext ctx) {
-		Map<String, String> placeholders = ctx.placeholders();
-		return command.replace("%player%", placeholders.getOrDefault("%player%", ""))
-		              .replace("%victim%", placeholders.getOrDefault("%victim%", ""));
+		return command.replace("%player%", commandArg(ctx.getSource()))
+		              .replace("%victim%", commandArg(ctx.getVictim()));
+	}
+
+	/**
+	 * A player's name is Mojang-restricted to {@code [A-Za-z0-9_]}, but any other entity's name is its
+	 * player-settable custom name (a name tag) — substituted verbatim it could expand to a selector like {@code @a}
+	 * or smuggle in extra arguments. Non-players are referenced by UUID instead, which is still a valid entity
+	 * argument for vanilla commands (BZ-EF-04).
+	 */
+	private static String commandArg(@Nullable LivingEntity entity) {
+		if (entity == null) return "";
+		return entity instanceof Player player ? player.getName() : entity.getUniqueId().toString();
 	}
 
 }

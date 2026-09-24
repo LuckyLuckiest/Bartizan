@@ -58,7 +58,7 @@ Shoot:
    # hook. With no Feedback: block at all, a default hit-marker sound is still lowered into On_Status_Apply.
    # Feedback.Victim.Title/Subtitle/Message_Expire and Feedback.Shooter.Action_Bar accept %status%/%icon% (baked in
    # at load time) and %shooter% (rewritten to %player% at load time, then resolved at fire time to the shooter's
-   # name — empty on Message_Expire, since no shooter is known at expiry), plus the runtime %victim%/%weapon%/
+   # name — empty on Message_Expire only when the shooter is offline by then), plus the runtime %victim%/%weapon%/
    # %level% placeholders. Feedback.Shooter.Message_Spread is different: it is never lowered into an Effects: hook
    # (the contagion roll formats and sends it directly) and accepts only %victim%/%carrier%.
    Feedback:

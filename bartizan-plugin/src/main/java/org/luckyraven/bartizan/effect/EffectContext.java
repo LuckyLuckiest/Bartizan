@@ -7,9 +7,12 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.Nullable;
+import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
+import org.luckyraven.bartizan.weapon.DamageRules;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -77,8 +80,8 @@ public class EffectContext {
 	 */
 	public Map<String, String> placeholders() {
 		Map<String, String> map = new LinkedHashMap<>();
-		map.put("%player%", source != null ? source.getName() : "");
-		map.put("%victim%", victim != null ? victim.getName() : "");
+		map.put("%player%", entityName(source));
+		map.put("%victim%", entityName(victim));
 		map.put("%weapon%", weapon != null ? weapon.getDisplayName() : (ownerName != null ? ownerName : ""));
 		map.put("%damage%", String.format(Locale.ROOT, "%.1f", damage));
 		map.put("%distance%", String.format(Locale.ROOT, "%.1f", distance));
@@ -88,6 +91,14 @@ public class EffectContext {
 		map.put("%deny_reason%", denyReason != null ? denyReason : "");
 		map.put("%zone%", zone != null ? zone : "");
 		return map;
+	}
+
+	/**
+	 * A mob's name is its player-settable custom name (a name tag), so {@code &} is stripped — otherwise a mob named
+	 * e.g. {@code &4[Server]} would inject colour codes into Message/Title/Boss_Bar text through {@link #format}.
+	 */
+	private static String entityName(@Nullable LivingEntity entity) {
+		return entity != null ? entity.getName().replace("&", "") : "";
 	}
 
 	/**
@@ -126,7 +137,8 @@ public class EffectContext {
 
 	/**
 	 * Resolves a target key: {@code source | victim | nearby}. {@code nearby} collects living entities within
-	 * {@code radius} of {@link #at}{@code ("impact")}, falling back to the source's location.
+	 * {@code radius} of {@link #at}{@code ("impact")}, falling back to the source's location, minus any entity the
+	 * weapon's {@code Owner_Immunity}/{@code Ignore_Teams} protects (BZ-EF-06).
 	 */
 	public List<LivingEntity> targets(@Nullable String key, double radius) {
 		if (key == null) return List.of();
@@ -146,9 +158,23 @@ public class EffectContext {
 
 		List<LivingEntity> found = new ArrayList<>();
 		for (Entity entity : center.getWorld().getNearbyEntities(center, radius, radius, radius)) {
-			if (entity instanceof LivingEntity living) found.add(living);
+			if (entity instanceof LivingEntity living && !isProtected(living)) found.add(living);
 		}
 		return found;
+	}
+
+	/**
+	 * The same {@link DamageRules} skip every real damage path applies — a gun's {@code Damage:} rules, a
+	 * throwable's {@code Throw:} rules. Any other weapon (or a wearable context with no weapon) has no such rules.
+	 */
+	private boolean isProtected(LivingEntity candidate) {
+		if (weapon instanceof GunWeapon gun && gun.getDamageData() != null) {
+			return DamageRules.isProtected(gun.getDamageData(), source, candidate);
+		}
+		if (weapon instanceof ThrowableWeapon throwable && throwable.getThrowableData() != null) {
+			return DamageRules.isProtected(throwable.getThrowableData(), source, candidate);
+		}
+		return false;
 	}
 
 }
