@@ -524,7 +524,6 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 		// --- Default damage application (LivingEntity only) ---
 		if (hit instanceof LivingEntity living) {
 			living.setNoDamageTicks(0);
-			living.setInvulnerable(false);
 
 			double healthBefore = living.getHealth();
 
@@ -535,7 +534,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 
 			WeaponRaytracer.setRaytraceDamageInProgress(true);
 			try {
-				living.damage(event.getDamage(), shooter);
+				damageIgnoringInvulnerability(living, event.getDamage(), shooter);
 			} finally {
 				WeaponRaytracer.setRaytraceDamageInProgress(false);
 			}
@@ -611,6 +610,24 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 					effectRunner.run(weapon, EffectHook.ON_BACK, effectCtx);
 				}
 			}
+		}
+	}
+
+	/**
+	 * Applies {@code living.damage(amount, shooter)} while temporarily clearing invulnerability — a weapon hit must
+	 * land even on an entity currently flagged invulnerable by vanilla/another plugin — then restores whatever the
+	 * flag was set to beforehand (BZ-RT-04). Previously the flag was cleared and never restored, so the first
+	 * weapon shot to ever touch a deliberately-invulnerable entity (an admin in god mode, a spawn-protected mob, an
+	 * NPC inside a plugin-driven invulnerability window) permanently cleared it. Package-private static so it's
+	 * directly unit-testable with a mocked {@link LivingEntity}.
+	 */
+	static void damageIgnoringInvulnerability(LivingEntity living, double amount, @Nullable LivingEntity shooter) {
+		boolean wasInvulnerable = living.isInvulnerable();
+		living.setInvulnerable(false);
+		try {
+			living.damage(amount, shooter);
+		} finally {
+			living.setInvulnerable(wasInvulnerable);
 		}
 	}
 
