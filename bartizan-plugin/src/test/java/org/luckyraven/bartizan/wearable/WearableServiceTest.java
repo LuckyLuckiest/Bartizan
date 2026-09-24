@@ -18,6 +18,7 @@ import java.util.NavigableMap;
 import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -269,6 +270,33 @@ class WearableServiceTest {
 		double result = service.applyWearableReduction(100, targetWithEquipment(equipment), false);
 
 		assertEquals(100.0, result, 1e-9);
+	}
+
+	@Test
+	@DisplayName("BZ-WE-08: a Set tier's own REACTIVE level can nullify a hit, same as a per-piece REACTIVE level")
+	void applyWearableReduction_setReactiveTrait_canNullifyHit() {
+		FakeWearableService service   = new FakeWearableService();
+		EntityEquipment     equipment = emptyEquipment();
+		// Two plain pieces (no base reduction, no own traits) worn as a 2-piece Set - neither rolls reactive itself.
+		service.wear(equipment, EquipmentSlot.CHEST, wearable(0, Map.of(), "test_set"));
+		service.wear(equipment, EquipmentSlot.HEAD, wearable(0, Map.of(), "test_set"));
+
+		NavigableMap<Integer, WearableService.SetTier> tiers = new TreeMap<>();
+		// REACTIVE's max level (3) once the Set is active: 3 * 2% = 6% nullify chance per hit.
+		tiers.put(2, new WearableService.SetTier(Map.of("reactive", 3), java.util.List.of()));
+		service.registerSet("test_set", tiers);
+
+		LivingEntity target = targetWithEquipment(equipment);
+
+		// Pre-fix the set-tier loop never rolls reactive at all, so this reliably never nullifies no matter how
+		// many trials run; post-fix, a 6%-per-trial roll fails to nullify even once in 5,000 tries with
+		// probability 0.94^5000 (~10^-134) - deterministic in practice both ways.
+		boolean everNullified = false;
+		for (int i = 0; i < 5_000 && !everNullified; i++) {
+			if (service.applyWearableReduction(100, target, false) == 0) everNullified = true;
+		}
+
+		assertTrue(everNullified, "a Set tier's own REACTIVE level must be able to proc, same as a per-piece level");
 	}
 
 	@Test
