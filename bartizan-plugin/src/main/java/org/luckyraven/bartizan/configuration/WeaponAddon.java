@@ -315,7 +315,15 @@ public class WeaponAddon {
 		weapon.getSpreadData().setChangeBase(change.get("Base").asDouble().orDefault(0.0));
 
 		MappingNode boundSection = change.get("Bounds").asMapping().orNull();
-		if (boundSection == null) return;
+		if (boundSection == null) {
+			// BZ-WM-09: SpreadData's bounds now default to unbounded (no more silent collapse to 0), but a
+			// Change.Base with no matching Bounds block is still very likely an authoring oversight — the spread
+			// will now simply grow/shrink forever instead of being clamped anywhere. Worth flagging.
+			report.add(Severity.WARNING, change.mapping().location(), "Spread.Change.Bounds",
+			           "Spread.Change.Base is configured but Change.Bounds is not — spread will never be clamped",
+			           "spread.change_without_bounds");
+			return;
+		}
 
 		NodeReader bounds = NodeReader.of(boundSection, report);
 		weapon.getSpreadData().setResetOnBound(bounds.get("Reset_On_Bound").asBool().orDefault(false));

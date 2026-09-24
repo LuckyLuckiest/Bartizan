@@ -151,6 +151,25 @@ class SpreadManagerTest {
 	}
 
 	@Test
+	@DisplayName("BZ-WM-09: a freshly-constructed SpreadData (Bounds unconfigured) does not clamp spread to 0")
+	void freshSpreadData_unconfiguredBounds_doesNotCollapseToZero() {
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+		SpreadData data  = new SpreadData();
+		data.setStart(0.05);
+		data.setResetTime(Integer.MAX_VALUE);
+		data.setChangeBase(0.02);
+		// Bounds deliberately left unconfigured, as when a weapon YAML sets Spread.Change.Base with no nested
+		// Bounds block — boundMinimum/boundMaximum must default to "unbounded", not the old 0.0.
+		weapon.setSpreadData(data);
+		SpreadManager manager = new SpreadManager(weapon);
+
+		manager.applySpread(new Vector(0, 0, 1));
+
+		assertEquals(0.07, manager.getCurrentSpread(), 0.0001,
+		             "spread must accumulate normally (0.05 + 0.02), not clamp to the old default of 0");
+	}
+
+	@Test
 	@DisplayName("resetSpread manually restores Starting_Spread")
 	void resetSpread_restoresStart() {
 		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
