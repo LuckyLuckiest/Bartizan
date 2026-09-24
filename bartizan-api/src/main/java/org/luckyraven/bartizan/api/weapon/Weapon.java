@@ -71,6 +71,9 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	// Defaults to an empty (all-null/empty-list) instance so a weapon YAML with no `Modifiers:` section still
 	// gives every hasXxx()/getXxx() caller a safe, non-null object instead of an NPE (BZ-WM-01).
 	private       ModifiersData          modifiersData = new ModifiersData();
+	// null when the weapon YAML has no Shoot.Recoil: section (BZ-WM-11) — every caller (applyPush,
+	// RecoilManager.applyRecoil) must guard it, same as reloadData/ammunitionData/muzzleOffsetData above.
+	@Nullable
 	private       RecoilData             recoilData;
 	private       ScopeData              scopeData;
 	private       SpreadData             spreadData;
@@ -705,6 +708,12 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	}
 
 	public void applyPush(Player player) {
+		// recoilData is unset for a weapon with no Shoot.Recoil: section configured (BZ-WM-11) — checked first,
+		// matching RecoilManager.applyRecoil's own guard, before touching the player at all.
+		if (recoilData == null) {
+			return;
+		}
+
 		// Never apply push if player is not on solid ground
 		if (!isPlayerGrounded(player)) {
 			return;
