@@ -11,6 +11,7 @@ import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.weapon.WeaponService;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -38,6 +39,12 @@ public final class GunFireDispatcher {
 	 * concern that still lives there.
 	 */
 	private static final Map<UUID, Long> pressLockUntilTick = new ConcurrentHashMap<>();
+
+	/**
+	 * Weapons with a pending {@code Weapon_Consumed.Time} countdown (BZ-EV-06): the first shot starts it, later shots
+	 * while it runs don't stack another one. The countdown drops its own entry when it ends.
+	 */
+	private static final Set<UUID> consumeCountdowns = ConcurrentHashMap.newKeySet();
 
 	private GunFireDispatcher() {
 	}
@@ -111,8 +118,13 @@ public final class GunFireDispatcher {
 		int consumeOnTime = weapon.getDurabilityData().getConsumeOnTime();
 		if (consumeOnTime <= -1) return;
 
-		CountdownTimer timer = new CountdownTimer(plugin, 0L, 0L, consumeOnTime, null, null,
-		                                          time -> weaponService.replaceHeldWeapon(player, weapon, null));
+		UUID weaponUuid = weapon.getUuid();
+		if (!consumeCountdowns.add(weaponUuid)) return;
+
+		CountdownTimer timer = new CountdownTimer(plugin, 0L, 0L, consumeOnTime, null, null, time -> {
+			consumeCountdowns.remove(weaponUuid);
+			weaponService.replaceHeldWeapon(player, weapon, null);
+		});
 
 		timer.start(false);
 	}
