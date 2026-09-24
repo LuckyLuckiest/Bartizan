@@ -77,8 +77,8 @@ public class EffectContext {
 	 */
 	public Map<String, String> placeholders() {
 		Map<String, String> map = new LinkedHashMap<>();
-		map.put("%player%", source != null ? source.getName() : "");
-		map.put("%victim%", victim != null ? victim.getName() : "");
+		map.put("%player%", entityName(source));
+		map.put("%victim%", entityName(victim));
 		map.put("%weapon%", weapon != null ? weapon.getDisplayName() : (ownerName != null ? ownerName : ""));
 		map.put("%damage%", String.format(Locale.ROOT, "%.1f", damage));
 		map.put("%distance%", String.format(Locale.ROOT, "%.1f", distance));
@@ -88,6 +88,14 @@ public class EffectContext {
 		map.put("%deny_reason%", denyReason != null ? denyReason : "");
 		map.put("%zone%", zone != null ? zone : "");
 		return map;
+	}
+
+	/**
+	 * A mob's name is its player-settable custom name (a name tag), so {@code &} is stripped — otherwise a mob named
+	 * e.g. {@code &4[Server]} would inject colour codes into Message/Title/Boss_Bar text through {@link #format}.
+	 */
+	private static String entityName(@Nullable LivingEntity entity) {
+		return entity != null ? entity.getName().replace("&", "") : "";
 	}
 
 	/**
