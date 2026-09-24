@@ -1,9 +1,11 @@
 package org.luckyraven.bartizan.listener;
 
 import org.bukkit.Bukkit;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -23,9 +25,19 @@ import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.scope.SpyglassScopeTask;
 import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponService;
+import org.luckyraven.bartizan.api.support.WeaponFixtures;
+import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.api.weapon.dto.DurabilityData;
+import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
+import org.luckyraven.bartizan.weapon.action.GunAction;
+import org.luckyraven.bartizan.weapon.action.GunFireDispatcher;
+import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
@@ -94,6 +106,49 @@ class WeaponInteractInputTest {
 		listener.onPlayerInteract(event);
 
 		assertEquals(Event.Result.DEFAULT, event.useItemInHand());
+	}
+
+	// BZ-EV-14
+
+	private GunWeapon gun(HandlingData.Trigger trigger) {
+		GunWeapon gun      = WeaponFixtures.gunWeapon(30, 1);
+		HandlingData handling = new HandlingData();
+		handling.setTrigger(trigger);
+		gun.setHandlingData(handling);
+		gun.setCurrentMagCapacity(30);
+		DurabilityData durability = new DurabilityData();
+		durability.setConsumeOnTime(-1);
+		gun.setDurabilityData(durability);
+		when(weaponService.isWeapon(item)).thenReturn(true);
+		when(weaponService.validateAndGetWeapon(player, item)).thenReturn(gun);
+		return gun;
+	}
+
+	@Test
+	@DisplayName("right-clicking an entity with a left_click-trigger gun does not fire it")
+	void entityRightClick_leftClickTriggerGun_doesNotFire() {
+		GunWeapon gun = gun(HandlingData.Trigger.LEFT_CLICK);
+
+		PlayerInteractEntityEvent event = new PlayerInteractEntityEvent(player, mock(Entity.class));
+		try (MockedConstruction<GunAction> shots = mockConstruction(GunAction.class)) {
+			listener.onPlayerInteractWithEntity(event);
+
+			assertTrue(shots.constructed().isEmpty());
+		}
+		assertFalse(GunFireDispatcher.isLocked(gun.getUuid()));
+		assertTrue(event.isCancelled());
+	}
+
+	@Test
+	@DisplayName("right-clicking an entity with a right_click-trigger gun still fires it")
+	void entityRightClick_rightClickTriggerGun_fires() {
+		gun(HandlingData.Trigger.RIGHT_CLICK);
+
+		try (MockedConstruction<GunAction> shots = mockConstruction(GunAction.class)) {
+			listener.onPlayerInteractWithEntity(new PlayerInteractEntityEvent(player, mock(Entity.class)));
+
+			assertEquals(1, shots.constructed().size());
+		}
 	}
 
 }

@@ -191,8 +191,8 @@ public class WeaponInteract implements Listener {
 
 		// Shoot.Trigger: left_click (guns only) swaps which click fires and which toggles scope. Every other WM
 		// trigger type is deliberately unsupported.
-		// ponytail: PlayerInteractEntityEvent (right-click-on-entity firing) is not swapped — a left_click gun
-		// aimed at a mob keeps firing through EntityDamageByEntityEvent's melee-only path, i.e. it doesn't fire.
+		// A right click on an entity arrives as PlayerInteractEntityEvent, which never fires a left_click gun (see
+		// onPlayerInteractWithEntity); the USE_ITEM that follows it lands here and scopes.
 		boolean gunLeftTrigger = weapon instanceof GunWeapon && isLeftClickTrigger(weapon);
 		boolean scopeClick     = gunLeftTrigger ? rightClick : leftClick;
 		boolean fireClick      = gunLeftTrigger ? leftClick : rightClick;
@@ -307,6 +307,11 @@ public class WeaponInteract implements Listener {
 
 		// non-GUN types: no right-click-on-entity behavior
 		if (!(weapon instanceof GunWeapon gunWeapon)) return;
+
+		// Shoot.Trigger: left_click - right click is the scope input, never a shot (BZ-EV-14). Not scoped here: the
+		// client follows up with a USE_ITEM that reaches onPlayerInteract as RIGHT_CLICK_AIR and scopes there, and
+		// cycleScope toggles, so scoping in both handlers would scope straight back out.
+		if (isLeftClickTrigger(gunWeapon)) return;
 
 		if (gunWeapon.isReloading()) {
 			return;
