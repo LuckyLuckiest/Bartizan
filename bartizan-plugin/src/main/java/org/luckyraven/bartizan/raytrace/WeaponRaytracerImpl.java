@@ -13,6 +13,7 @@ import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.util.ParticleUtil;
+import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
@@ -191,8 +192,9 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 
 	/**
 	 * Runs the full hitscan loop for a single ray, synchronously, until the ray stops (no more penetration, no more
-	 * ricochet, no more distance). The supplied request must carry an origin already at the muzzle position — see
-	 * {@code WeaponMuzzle#compute}.
+	 * ricochet, no more distance). The supplied request's origin is expected to be the shooter's eye location (for
+	 * crosshair accuracy), not the muzzle — the muzzle offset ({@code WeaponMuzzle#compute}) only positions the
+	 * rendered tracer/visuals, never the hit-detection ray itself (BZ-RT-08).
 	 *
 	 * @return {@code true} if a living entity took the hit — {@code ctx.isHitEntity()}, set by
 	 * 		{@link #handleEntityImpact} just before it fires {@code ON_HIT} (or, for a custom impact handler, as soon
@@ -336,13 +338,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 		RayTraceResult entityHit = world.rayTraceEntities(
 				ctx.getCurrentOrigin(), ctx.getCurrentDir(), scanDist,
 				request.getHitboxExpansion(),
-				e -> e != shooter
-				     && !(e instanceof ItemFrame || e instanceof ArmorStand)
-				     // Damage.Owner_Immunity / Ignore_Teams (gate HF, §4): a protected entity is skipped and the
-				     // ray continues past it rather than stopping on it. Guns only — DamageData lives on GunWeapon.
-				     && !(request.getWeapon() instanceof GunWeapon gun && e instanceof LivingEntity candidate
-				          && DamageRules.isProtected(gun.getDamageData(), shooter, candidate))
-				     && request.getEntityFilter().test(e));
+				e -> isEligibleTarget(e, shooter, request));
 
 		// Discard hits on entities that are behind or exactly beside the ray origin — these are
 		// caught only because hitboxExpansion inflates the detection sphere at the start point.
@@ -433,6 +429,35 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 				ctx.getCurrentOrigin().clone().add(ctx.getCurrentDir().clone().multiply(scanDist)));
 		ctx.setRemaining(0);
 		return false;
+	}
+
+	/**
+	 * The {@code advanceRay} entity-scan predicate: not the shooter, not an {@code ItemFrame}/{@code ArmorStand},
+	 * not protected under {@code Damage.Owner_Immunity}/{@code Ignore_Teams} (guns only — {@code DamageData} lives
+	 * on {@code GunWeapon}), not a {@code Player} {@link CombatEligibility} has ruled un-hittable for ANY weapon
+	 * type, and passing the request's own {@code entityFilter}.
+	 * <p>
+	 * BZ-RT-03 (fix round 1): {@code CombatEligibility} was only ever consulted through the {@code GunWeapon}
+	 * branch below (via {@code DamageRules.isProtected}), so {@code BeamAction}/{@code IncendiaryAction}/
+	 * {@code MeleeAction}/{@code BiologicalAction} — which all call {@code fireInstant} with a non-{@code GunWeapon}
+	 * — never honoured it. The clause is now weapon-agnostic, outside the {@code GunWeapon} branch, so it applies
+	 * to every {@code fireInstant}/{@code advanceSegment} caller regardless of weapon type.
+	 */
+	static boolean isEligibleTarget(Entity candidate, LivingEntity shooter, RaytraceRequest request) {
+		if (candidate == shooter) {
+			return false;
+		}
+		if (candidate instanceof ItemFrame || candidate instanceof ArmorStand) {
+			return false;
+		}
+		if (request.getWeapon() instanceof GunWeapon gun && candidate instanceof LivingEntity livingCandidate
+				&& DamageRules.isProtected(gun.getDamageData(), shooter, livingCandidate)) {
+			return false;
+		}
+		if (candidate instanceof Player player && !CombatEligibility.resolve().canBeHit(player)) {
+			return false;
+		}
+		return request.getEntityFilter().test(candidate);
 	}
 
 	// ------------------------------------------------------------------
@@ -871,11 +896,15 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 	                            Particle.DustOptions options, int fixedPointCount) {
 		Particle dustParticle = XParticle.DUST.get();
 
-		// BZ-RT-08: the first leg starts at the same point the ray itself started (request.getOrigin(), the
-		// shooter's eye) instead of a separately-recomputed muzzle offset — the two used to disagree, drawing a
-		// visible kink from the muzzle to the ray's actual first hit point that didn't match the path the shot
-		// took. Subsequent legs already follow the actual ray.
-		Location previous = ctx.getRequest().getOrigin().clone();
+		// BZ-RT-08 (fix round 1): starting the first leg at request.getOrigin() (the shooter's eye) put tracer
+		// particles inside the shooter's own camera and along the crosshair on every shot — ParticleUtil.spawnLine
+		// draws its first point exactly at 'from'. The muzzle offset exists specifically to keep visuals off the
+		// eye (see WeaponMuzzle's javadoc: the ray still raytraces from the eye for crosshair accuracy, only the
+		// rendered visuals move to the muzzle), so the first leg goes back to starting there. Subsequent legs
+		// already follow the actual ray; the resulting kink at penetration/ricochet points is the same minor one
+		// that predates BZ-RT-08.
+		Location previous = WeaponMuzzle.compute(ctx.getRequest().getShooter(), ctx.getRequest().getDirection(),
+		                                         ctx.getRequest().getWeapon());
 		for (Location point : segments) {
 			if (previous.getWorld() == null || !previous.getWorld().equals(point.getWorld())) {
 				previous = point;

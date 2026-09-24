@@ -51,49 +51,67 @@ class ModifierHandlerTest {
 	}
 
 	@Test
-	@DisplayName("calculateArmorPiercingDamage pre-compensates for Minecraft's own armor reduction")
-	void calculateArmorPiercingDamage_withModifier_preCompensates() {
+	@DisplayName("calculateArmorPiercingDamage: full diamond (armor 20, toughness 8), bypass 0.5 — after "
+			+ "Minecraft's REAL (toughness-aware) armor formula re-applies, the target lands the intended "
+			+ "piercing-adjusted damage (BZ-RT-16: a flat-model division overcorrected here to ~48, not ~16)")
+	void calculateArmorPiercingDamage_diamondArmorWithToughness_landsIntendedDamage() {
 		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
 		ModifiersData modifiers = new ModifiersData();
 		modifiers.setArmorPiercing(new ArmorPiercingModifier(0.5)); // bypasses half the target's armor
 		weapon.setModifiersData(modifiers);
 
-		LivingEntity target = mock(LivingEntity.class);
-		AttributeInstance armorInstance = mock(AttributeInstance.class);
-		when(armorInstance.getValue()).thenReturn(20.0); // capped armor value
-		when(target.getAttribute(org.mockito.ArgumentMatchers.any(Attribute.class))).thenReturn(armorInstance);
+		LivingEntity target = mockTarget(20.0, 8.0);
 
-		// normalReduction = min(20,20)/25 = 0.8; effectiveArmor = 20*(1-0.5) = 10; piercingReduction = 10/25 = 0.4
-		// piercingDamage = 20*(1-0.4) = 12; result = piercingDamage / (1 - normalReduction) = 12 / 0.2 = 60
-		// (BZ-RT-16: living.damage() re-applies (1 - normalReduction), so 60 * 0.2 lands exactly the intended 12).
-		double result = ModifierHandler.calculateArmorPiercingDamage(20.0, target, weapon);
+		double returnedToVanilla = ModifierHandler.calculateArmorPiercingDamage(20.0, target, weapon);
+		double actualDamageDealt = vanillaDamageAfterArmor(returnedToVanilla, 20.0, 8.0);
 
-		assertEquals(60.0, result, 0.0001);
+		// Intended: baseDamage=20, effectiveArmor=10, toughness=8 -> vanilla(20, 10, 8) = 16.0.
+		assertEquals(16.0, actualDamageDealt, 0.01,
+				"the flat-model division formula landed ~48 here, roughly 3x the intended amount");
 	}
 
 	@Test
-	@DisplayName("calculateArmorPiercingDamage: after Minecraft's own armor reduction is re-applied, the target "
-			+ "actually takes the piercing-adjusted damage, not the un-pierced amount (BZ-RT-16)")
-	void calculateArmorPiercingDamage_afterVanillaReduction_landsIntendedDamage() {
+	@DisplayName("calculateArmorPiercingDamage: iron armor (armor 15, toughness 0), bypass 0.5 — real formula "
+			+ "round-trips to the intended damage the same way at low toughness (BZ-RT-16)")
+	void calculateArmorPiercingDamage_ironArmorNoToughness_landsIntendedDamage() {
 		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
 		ModifiersData modifiers = new ModifiersData();
 		modifiers.setArmorPiercing(new ArmorPiercingModifier(0.5)); // bypasses half the target's armor
 		weapon.setModifiersData(modifiers);
 
-		LivingEntity target = mock(LivingEntity.class);
-		AttributeInstance armorInstance = mock(AttributeInstance.class);
-		when(armorInstance.getValue()).thenReturn(20.0); // full diamond, capped armor value
-		when(target.getAttribute(org.mockito.ArgumentMatchers.any(Attribute.class))).thenReturn(armorInstance);
+		LivingEntity target = mockTarget(15.0, 0.0);
 
 		double returnedToVanilla = ModifierHandler.calculateArmorPiercingDamage(10.0, target, weapon);
+		double actualDamageDealt = vanillaDamageAfterArmor(returnedToVanilla, 15.0, 0.0);
 
-		// Simulate living.damage() re-applying Minecraft's own (1 - normalReduction) = 0.2 multiplier.
-		double normalReduction   = 0.8;
-		double actualDamageDealt = returnedToVanilla * (1 - normalReduction);
+		// Intended: baseDamage=10, effectiveArmor=7.5, toughness=0 -> vanilla(10, 7.5, 0) = 9.0.
+		assertEquals(9.0, actualDamageDealt, 0.01);
+	}
 
-		// Intended: baseDamage=10, armorBypass=0.5 -> piercingDamage = 10 * (1 - 0.4) = 6.0.
-		assertEquals(6.0, actualDamageDealt, 0.0001,
-				"the old additive formula landed only 2.8 here — barely more than the 2.0 no-AP baseline");
+	/** Mocks a target whose ARMOR and ARMOR_TOUGHNESS attribute instances resolve independently. */
+	private static LivingEntity mockTarget(double armor, double toughness) {
+		LivingEntity target = mock(LivingEntity.class);
+
+		AttributeInstance armorInstance = mock(AttributeInstance.class);
+		when(armorInstance.getValue()).thenReturn(armor);
+		when(target.getAttribute(Attribute.GENERIC_ARMOR)).thenReturn(armorInstance);
+
+		AttributeInstance toughnessInstance = mock(AttributeInstance.class);
+		when(toughnessInstance.getValue()).thenReturn(toughness);
+		when(target.getAttribute(Attribute.GENERIC_ARMOR_TOUGHNESS)).thenReturn(toughnessInstance);
+
+		return target;
+	}
+
+	/**
+	 * Minecraft's real post-1.9 armor formula, independently re-implemented here (not a call into production
+	 * code) so this test actually pins vanilla behaviour rather than re-asserting whatever
+	 * {@code ModifierHandler} computes internally.
+	 */
+	private static double vanillaDamageAfterArmor(double damage, double armor, double toughness) {
+		double f = 2.0 + toughness / 4.0;
+		double g = Math.max(armor * 0.2, Math.min(armor - damage / f, 20.0));
+		return damage * (1.0 - g / 25.0);
 	}
 
 	@Test
