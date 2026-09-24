@@ -865,6 +865,14 @@ public final class WmWeaponImporter {
 					report.dropped(wmPath + ": '" + entry + "' - delayBeforePlay dropped, no per-effect delay");
 				}
 			}
+			// Push/Leap{speed=..., height=...} both translate their WM arg onto the single Bartizan Strength key
+			// (WmMechanicsTranslator's "push","leap" case) - PushHookEffect has no separate vertical component, so
+			// the second copy() call silently overwrites the first. Reported here, not redesigned: there's no
+			// evidence this combination is common enough to justify a model change.
+			if ("push".equals(result.type()) && value(parsed, "speed") != null && value(parsed, "height") != null) {
+				report.approximated(wmPath + ": '" + entry + "' - Push/Leap has both speed and height; only one "
+				                     + "is kept as Strength");
+			}
 
 			Map<String, Object> spec = new LinkedHashMap<>();
 			spec.put("Type", capitalizeType(result.type()));
