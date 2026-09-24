@@ -90,14 +90,44 @@ public class WeaponAddon {
 
 		String displayName = information.get("Name").asString().required().orNull();
 
-		String     categoryString = information.get("Category").asString().required().orNull();
-		WeaponType category       = WeaponType.getType(Objects.requireNonNull(categoryString));
+		// categoryString/materialString: a bare Objects.requireNonNull used to turn a missing key into a
+		// message-less NullPointerException that escapes WeaponLoader's `catch (InvalidConfigurationException)`
+		// entirely (BZ-CF-11) - matches the explicit null check + clean exception two lines above for a missing
+		// Information: block, instead of displayName's deliberately non-throwing `.required().orNull()` read.
+		String categoryString = information.get("Category").asString().required().orNull();
+		if (categoryString == null) {
+			throw new InvalidConfigurationException("Information.Category not found for '" + fileName + "'");
+		}
+		WeaponType category = WeaponType.getType(categoryString);
+		// An unrecognised Category silently routed through WeaponType.getType's `default -> OTHER`, dispatching
+		// like a GUN with no diagnostic at all (BZ-CF-06).
+		if (category == WeaponType.OTHER && !categoryString.trim().equalsIgnoreCase("other")) {
+			ConfigNode categoryNode = information.get("Category").node();
+			report.add(Severity.WARNING,
+			           categoryNode != null ? categoryNode.location() : information.mapping().location(),
+			           "Information.Category",
+			           "weapon '" + fileName + "' has an unrecognised Category '" + categoryString +
+			           "' - treating as OTHER (dispatches like GUN)", "weapon.unknown_category");
+		}
 
-		String              materialString    = information.get("Material").asString().required().orNull();
-		Optional<XMaterial> xMaterialOptional = XMaterial.matchXMaterial(Objects.requireNonNull(materialString));
+		String materialString = information.get("Material").asString().required().orNull();
+		if (materialString == null) {
+			throw new InvalidConfigurationException("Information.Material not found for '" + fileName + "'");
+		}
+		Optional<XMaterial> xMaterialOptional = XMaterial.matchXMaterial(materialString);
 		Material            material;
-		if (xMaterialOptional.isPresent()) material = xMaterialOptional.get().get();
-		else material = XMaterial.FEATHER.get();
+		if (xMaterialOptional.isPresent()) {
+			material = xMaterialOptional.get().get();
+		} else {
+			// An unresolvable Material silently fell back to FEATHER with no diagnostic at all (BZ-CF-06).
+			material = XMaterial.FEATHER.get();
+			ConfigNode materialNode = information.get("Material").node();
+			report.add(Severity.WARNING,
+			           materialNode != null ? materialNode.location() : information.mapping().location(),
+			           "Information.Material",
+			           "weapon '" + fileName + "' has an unrecognised Material '" + materialString +
+			           "' - using FEATHER", "weapon.unknown_material");
+		}
 
 		int customModelData = information.get("Custom_Model_Data").asInt().min(0).orDefault(0);
 

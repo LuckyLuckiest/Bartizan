@@ -88,6 +88,10 @@ public class AmmunitionAddon implements FileInitializer {
 
 			var xMaterialOptional = XMaterial.matchXMaterial(materialString);
 			var xMaterial         = xMaterialOptional.orElse(XMaterial.IRON_PICKAXE);
+			if (xMaterialOptional.isEmpty()) {
+				log.warn("ammunition '{}' has an unrecognised Material '{}' - using IRON_PICKAXE", key,
+				         materialString);
+			}
 
 			int          customModelData = section.getInt("Custom_Model_Data", 0);
 			List<String> lore            = section.getStringList("Lore");
