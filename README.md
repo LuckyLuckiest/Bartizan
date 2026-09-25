@@ -98,7 +98,7 @@ bartizan-plugin org.luckyraven.bartizan                       Bartizan, Bartizan
                                                                 .command instead - see that row)
                                        .item                   converters, serializers, refreshers, WeaponItemApiImpl, BartizanItemVocabulary
                                        .listener(.*)           WeaponInteract, ScopeJumpListener, WeaponCraftingListener,
-                                                                WeaponSprintListener,
+                                                                WeaponSprintListener, BlockDamageUnloadListener (BZ-RT-15),
                                                                 death/fire/player/projectile (gains CosmeticTag,
                                                                 BZ-RT-18/FA-13)/reload/selective/wearable
                                        .npc                    NpcWeaponControllerImpl, NpcWeaponFactoryImpl

@@ -61,9 +61,11 @@ public class WeaponQuitCleanupListener implements Listener {
 		stopReloadingIfActive(weapon, player);
 		weapon.unScope(player, true);
 
-		// WeaponInteract's eight per-weapon tracking maps (continuousFire, equipDelayUntil, pressHoldState,
-		// releaseCallbacks, autoTasks, activeTasks, meleeCooldowns, lastMeleeSwingMs) are only ever cleared on a
-		// hotbar swap - a player who disconnects mid-AUTO-fire or mid-throwable-charge would otherwise leave its
+		// WeaponInteract's per-weapon tracking maps (continuousFire, equipDelayUntil, pressHoldState,
+		// releaseCallbacks, autoTasks, activeTasks, lastMeleeSwingMs) are only ever cleared on a hotbar swap -
+		// meleeCooldowns is deliberately kept everywhere (it is the Melee.Cooldown gate itself; a stale entry only
+		// gates that weapon's next swing for its Cooldown ticks) - a player who disconnects mid-AUTO-fire or
+		// mid-throwable-charge would otherwise leave its
 		// FullAutoTask/RepeatingTimer running and calling Bukkit Player APIs against an offline Player until its
 		// own watchdog times out (bug docket BZ-EV-01). WeaponInteract isn't reachable through the bean graph from
 		// here (see WeaponInteract#get()), so this can be null if it somehow never got constructed.
