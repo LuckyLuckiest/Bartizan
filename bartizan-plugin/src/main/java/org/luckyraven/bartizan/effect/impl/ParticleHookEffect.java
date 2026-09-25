@@ -29,9 +29,21 @@ public class ParticleHookEffect implements Effect {
 		int      count  = spec.intArg("Count", 1);
 		double[] offset = parseOffset(spec.arg("Offset", "0 0 0"));
 		double   speed  = spec.doubleArg("Speed", 0);
-		Object   data   = particle.getDataType() == Particle.DustOptions.class ? dustOptions(spec) : null;
+		Object   data   = resolveData(particle.getDataType(), spec);
 
 		location.getWorld().spawnParticle(particle, location, count, offset[0], offset[1], offset[2], speed, data);
+	}
+
+	/**
+	 * Kept pure and keyed on the raw {@code Class<?>} (rather than a {@code Particle} instance) so it's unit
+	 * -testable without a real particle enum constant that only exists on newer servers — e.g. {@code FLASH}'s
+	 * data type is {@code Void} on the 1.16.5 API floor this compiles against but becomes {@link Color} on
+	 * 1.21.9+.
+	 */
+	Object resolveData(Class<?> dataType, EffectSpec spec) {
+		if (dataType == Particle.DustOptions.class) return dustOptions(spec);
+		if (dataType == Color.class) return parseColor(spec.arg("Color", "#FFFFFF"));
+		return null;
 	}
 
 	private double[] parseOffset(String raw) {
