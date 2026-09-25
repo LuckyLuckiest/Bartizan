@@ -845,9 +845,11 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 	}
 
 	/**
-	 * Health plus absorption hearts - what a hit actually has to reduce to have landed.
+	 * Health plus absorption hearts - what a hit actually has to reduce to have landed. Shared by every
+	 * "damageBlocked" check (raytracer, explosion, melee, incendiary), so a hit fully soaked by absorption still
+	 * counts as landed everywhere.
 	 */
-	static double effectiveHealth(LivingEntity living) {
+	public static double effectiveHealth(LivingEntity living) {
 		return living.getHealth() + living.getAbsorptionAmount();
 	}
 

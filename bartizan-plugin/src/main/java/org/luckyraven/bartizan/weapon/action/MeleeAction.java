@@ -19,6 +19,7 @@ import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.raytrace.WeaponRaytracerImpl;
 import org.luckyraven.bartizan.wearable.WearableService;
 import org.luckyraven.bartizan.weapon.WeaponService;
 
@@ -184,7 +185,7 @@ public class MeleeAction {
 		if (!hitInThisSwing.add(target.getUniqueId())) return;
 
 		Player player = event.getShooter() instanceof Player p ? p : null;
-		double healthBefore = target.getHealth();
+		double healthBefore = WeaponRaytracerImpl.effectiveHealth(target);
 
 		if (ap != null && ap.armorBypass() > 0) {
 			double armoredDmg = baseDmg * (1.0 - ap.armorBypass());
@@ -197,9 +198,10 @@ public class MeleeAction {
 			dealPendingDamage(target, baseDmg, player);
 		}
 
-		// If health didn't decrease, a protection plugin blocked the damage (same "damageBlocked" shape as
-		// WeaponRaytracerImpl.handleEntityImpact) — the hit didn't land, so skip the event below.
-		boolean damageBlocked = target.isValid() && !target.isDead() && target.getHealth() >= healthBefore;
+		// If health + absorption didn't decrease, a protection plugin blocked the damage (same "damageBlocked" shape
+		// as WeaponRaytracerImpl.handleEntityImpact) — the hit didn't land, so skip the event below.
+		boolean damageBlocked = target.isValid() && !target.isDead()
+		                        && WeaponRaytracerImpl.effectiveHealth(target) >= healthBefore;
 
 		// HK: canonical WeaponEntityDamageEvent (MELEE) after damage is applied — no per-zone data (melee's cone
 		// swing has no single impact point/direction to run HitZone.of against), player shooters only.

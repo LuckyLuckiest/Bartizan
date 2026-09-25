@@ -27,6 +27,7 @@ import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.listener.WeaponInteract;
 import org.luckyraven.bartizan.api.raytrace.RaytraceRequest;
 import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
+import org.luckyraven.bartizan.raytrace.WeaponRaytracerImpl;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 import org.luckyraven.bartizan.api.weapon.IncendiaryWeapon;
@@ -225,12 +226,13 @@ public class IncendiaryAction {
 			target.setFireTicks(data.getFireDuration());
 			double attributed = flatBonus > 0 ? flatBonus : 0.001;
 			target.setNoDamageTicks(0);
-			double healthBefore = target.getHealth();
+			double healthBefore = WeaponRaytracerImpl.effectiveHealth(target);
 			dealPendingDamage(target, attributed, event.getShooter());
 
-			// If health didn't decrease, a protection plugin blocked the damage (same "damageBlocked" shape as
-			// WeaponRaytracerImpl.handleEntityImpact) — skip the event below.
-			boolean damageBlocked = target.isValid() && !target.isDead() && target.getHealth() >= healthBefore;
+			// If health + absorption didn't decrease, a protection plugin blocked the damage (same "damageBlocked"
+			// shape as WeaponRaytracerImpl.handleEntityImpact) — skip the event below.
+			boolean damageBlocked = target.isValid() && !target.isDead()
+			                        && WeaponRaytracerImpl.effectiveHealth(target) >= healthBefore;
 
 			// HK: canonical WeaponEntityDamageEvent (FIRE) after damage is applied, player shooters only — the
 			// cone spray has no single travel direction to run HitZone.of against, so zone stays null.

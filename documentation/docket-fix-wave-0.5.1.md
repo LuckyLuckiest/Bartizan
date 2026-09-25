@@ -294,3 +294,13 @@ resolve to one XMaterial each (`BZ-RT-09`). `BZ-RT-08` stays by design (tracer f
 
 After this round `mvn -o -q test` runs 749 tests (177 in `bartizan-api`, 572 in `bartizan-plugin`), all green —
 counted from the surefire reports; the 1,628 figure above does not match a surefire count.
+
+### Round 2
+
+- `BZ-RT-19` — the absorption fix now also covers melee and the flamethrower: `MeleeAction` and `IncendiaryAction`
+  compare health plus absorption (the shared `WeaponRaytracerImpl.effectiveHealth`), so a knife hit or spray tick
+  soaked by absorption hearts fires its `MELEE`/`FIRE` event and `On_Hit_Taken`, and a later burn death credits the
+  flamethrower. New tests pin all three call sites (melee, incendiary, raytracer default path). User-visible (stats,
+  `On_Hit_Taken`, burn-death credit).
+
+After round 2 `mvn -o -q test` runs 752 tests (177 in `bartizan-api`, 575 in `bartizan-plugin`), all green.
