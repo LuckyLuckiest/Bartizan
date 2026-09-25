@@ -57,6 +57,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -176,6 +177,23 @@ class WeaponInteractInputTest {
 
 			assertEquals(1, shots.constructed().size());
 		}
+	}
+
+	@Test
+	@DisplayName("right-clicking a Citizens NPC with a gun does not fire and leaves the event uncancelled")
+	void entityRightClick_npc_doesNotFireAndUncancels() {
+		gun(HandlingData.Trigger.RIGHT_CLICK);
+		WeaponInteract spyListener = spy(listener);
+		Entity         npc         = mock(Entity.class);
+		doReturn(true).when(spyListener).isNpc(npc);
+
+		PlayerInteractEntityEvent event = new PlayerInteractEntityEvent(player, npc);
+		try (MockedConstruction<GunAction> shots = mockConstruction(GunAction.class)) {
+			spyListener.onPlayerInteractWithEntity(event);
+
+			assertTrue(shots.constructed().isEmpty());
+		}
+		assertFalse(event.isCancelled());
 	}
 
 	// BZ-EV-03
