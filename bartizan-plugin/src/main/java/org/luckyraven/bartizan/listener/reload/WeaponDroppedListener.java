@@ -80,8 +80,12 @@ public class WeaponDroppedListener implements Listener {
 			return;
 		}
 
-		// check if the item is available (or it was creative) and start the reload
-		if (!weaponService.tryReload(plugin, player, weapon)) return;
+		// check if the item is available (or it was creative) and start the reload; refuse the drop the same way
+		// the magazine-full branch above does when there's no usable ammo to reload with either
+		if (!weaponService.tryReload(plugin, player, weapon)) {
+			event.setCancelled(true);
+			return;
+		}
 
 		// don't drop the weapon — a reload just started
 		event.setCancelled(true);
