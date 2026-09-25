@@ -54,13 +54,13 @@ class WearableGiveCommand extends SubArgument {
 		OptionalArgument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			Player player = (Player) sender;
 
-			String  itemName = args[2];
-			boolean gave     = giveWearable(player, itemName, 1);
+			String itemName = args[2];
+			int    given    = giveWearable(player, itemName, 1);
 
-			if (gave) {
+			if (given > 0) {
 				player.sendMessage(BartizanMessages.WEARABLE_GAVE.toString()
 				                                                 .replace("%name%", itemName)
-				                                                 .replace("%amount%", "1"));
+				                                                 .replace("%amount%", String.valueOf(given)));
 			} else {
 				player.sendMessage(BartizanMessages.WEARABLE_INVALID.toString().replace("%name%", itemName));
 			}
@@ -83,12 +83,12 @@ class WearableGiveCommand extends SubArgument {
 				return;
 			}
 
-			boolean gave = giveWearable(player, itemName, itemAmount);
+			int given = giveWearable(player, itemName, itemAmount);
 
-			if (gave) {
+			if (given > 0) {
 				player.sendMessage(BartizanMessages.WEARABLE_GAVE.toString()
 				                                                 .replace("%name%", itemName)
-				                                                 .replace("%amount%", String.valueOf(itemAmount)));
+				                                                 .replace("%amount%", String.valueOf(given)));
 			} else {
 				player.sendMessage(BartizanMessages.WEARABLE_INVALID.toString().replace("%name%", itemName));
 			}
@@ -101,11 +101,15 @@ class WearableGiveCommand extends SubArgument {
 		this.addSubArgument(name);
 	}
 
-	private boolean giveWearable(Player player, String name, int amount) {
+	/**
+	 * @return how many were actually handed over (the amount clamped to {@code [1, MAX_AMOUNT]}), or {@code 0} for an
+	 * 		unknown or external wearable - the success message reports this, never the raw argument (BZ-CM-01).
+	 */
+	private int giveWearable(Player player, String name, int amount) {
 		Wearable wearable = wearableAddon.getWearable(name);
 
 		// An external (WS7-D4) entry was never built through Bartizan - the registrant's own give path handles it.
-		if (wearable == null || wearable.isExternal()) return false;
+		if (wearable == null || wearable.isExternal()) return 0;
 
 		amount = Math.max(1, Math.min(amount, MAX_AMOUNT));
 
@@ -136,7 +140,7 @@ class WearableGiveCommand extends SubArgument {
 			player.getWorld().dropItemNaturally(player.getLocation(), item);
 		}
 
-		return true;
+		return amount;
 	}
 
 }

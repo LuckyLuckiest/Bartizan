@@ -89,11 +89,11 @@ class WeaponGetCommand extends SubArgument {
 	}
 
 	private void handle(Player player, String weaponName, int amount) {
-		boolean gave = WeaponGiveHelper.give(weaponManager, player, weaponName.toLowerCase(), amount);
+		int given = WeaponGiveHelper.give(weaponManager, player, weaponName.toLowerCase(), amount);
 
-		if (gave) {
+		if (given > 0) {
 			String receivedWeapon = BartizanMessages.RECEIVED_WEAPON.toString();
-			player.sendMessage(receivedWeapon.replace("%weapon%", weaponName).replace("%amount%", String.valueOf(amount)));
+			player.sendMessage(receivedWeapon.replace("%weapon%", weaponName).replace("%amount%", String.valueOf(given)));
 		} else {
 			String invalidWeapon = BartizanMessages.INVALID_WEAPON.toString();
 			player.sendMessage(invalidWeapon.replace("%args%", weaponName));

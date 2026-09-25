@@ -17,6 +17,7 @@ import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent.DamageKind;
 import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
+import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.effect.EffectContext;
@@ -52,8 +53,8 @@ import java.util.concurrent.ThreadLocalRandom;
  * pipeline also fires this event with {@code DamageKind.DIRECT} on every gun hit, so {@link #onWeaponEntityDamage}
  * only records a claim for {@code DamageKind.EXPLOSION}/{@code DamageKind.FIRE} — otherwise a gun hit would
  * override the killer's actually-held weapon for the whole {@link #THROWABLE_CLAIM_TTL_MS} window. (BZ-EV-19) A
- * {@code FIRE} claim is only ever consulted when the victim's last damage cause is the burn itself — see
- * {@link #claimedWeaponName}.
+ * {@code FIRE} claim (an incendiary spray, or a gun hit with {@code Damage.Fire_Ticks}) is only ever consulted when
+ * the victim's last damage cause is the burn itself — see {@link #claimedWeaponName}.
  *
  * <p>{@code EventPriority.HIGH} is deliberate (§1.6(4)): Gangland's {@code PlayerDeathListener.onPlayerDeath} runs
  * at {@code EventPriority.LOWEST}, so this handler runs <b>after</b> it and this class's
@@ -76,7 +77,12 @@ public class WeaponDeathListener implements Listener {
 	private final EffectRunner        effectRunner;
 	private final StatusEffectService statusService;
 
-	/** {@code victimUuid -> (weaponName, recordedAtMillis)}. Private to this listener — never a static. */
+	/**
+	 * {@code victimUuid -> (weaponName, kind, shooter, recordedAtMillis)}. Private to this listener — never a static.
+	 * One slot per victim, shared by {@code EXPLOSION} and {@code FIRE} claims (BZ-EV-19): a later claim of either
+	 * kind replaces an earlier one of the other kind within {@link #THROWABLE_CLAIM_TTL_MS} — accepted, the overlap
+	 * window is a few seconds.
+	 */
 	private final Map<UUID, RecordedKill> recentThrowableKills = new ConcurrentHashMap<>();
 
 	public WeaponDeathListener(WeaponManager weaponManager, EffectRunner effectRunner,
@@ -101,11 +107,20 @@ public class WeaponDeathListener implements Listener {
 		recentThrowableKills.values().removeIf(this::isExpired);
 
 		DamageKind kind = event.kind();
+		// a gun hit with Damage.Fire_Ticks sets the victim alight: a later burn death belongs to that gun (BZ-EV-19)
+		if (kind == DamageKind.DIRECT && event.getWeapon() instanceof GunWeapon gun
+		    && gun.getDamageData() != null && gun.getDamageData().getFireTicks() > 0) {
+			kind = DamageKind.FIRE;
+		}
 		if (kind != DamageKind.EXPLOSION && kind != DamageKind.FIRE) return;
 		if (!(event.getEntity() instanceof LivingEntity victim)) return;
+		// the event fires after the damage lands, so a fatal hit's death has already been credited (through
+		// FatalDamageAttribution) - a claim recorded now would outlive it and misattribute the next death
+		if (victim.isDead()) return;
 
+		UUID shooter = event.getShooter() != null ? event.getShooter().getUniqueId() : null;
 		recentThrowableKills.put(victim.getUniqueId(),
-				new RecordedKill(event.weaponName(), kind, System.currentTimeMillis()));
+				new RecordedKill(event.weaponName(), kind, shooter, System.currentTimeMillis()));
 	}
 
 	/**
@@ -147,12 +162,13 @@ public class WeaponDeathListener implements Listener {
 		}
 
 		// BZ-EV-19: the weapon actually dealing the fatal blow, when it is known — set synchronously by
-		// WeaponRaytracerImpl around the living.damage() call that is, right now, still on this thread's stack
-		// triggering this very PlayerDeathEvent. Takes priority over both the recorded claim below and the killer's
-		// currently-held item because it names the true fatal weapon regardless of what the killer has swapped to.
-		String throwableName = FatalDamageAttribution.get();
+		// WeaponRaytracerImpl/ExplosionHandler around the damage() call that is, right now, still on this thread's
+		// stack triggering this very PlayerDeathEvent. Takes priority over both the recorded claim below and the
+		// killer's currently-held item because it names the true fatal weapon regardless of what the killer has
+		// swapped to - but only when the killer fired it (getKiller() is merely the last player to land any hit).
+		String throwableName = FatalDamageAttribution.weaponFiredBy(killer);
 		if (throwableName == null) {
-			throwableName = claimedWeaponName(recorded, victim);
+			throwableName = claimedWeaponName(recorded, victim, killer);
 		}
 
 		Weapon weapon = throwableName != null ? weaponManager.getWeaponTemplate(throwableName) : null;
@@ -200,9 +216,9 @@ public class WeaponDeathListener implements Listener {
 		Player killer = victim.getKiller();
 		if (killer == null) return;
 
-		String weaponName = FatalDamageAttribution.get();
+		String weaponName = FatalDamageAttribution.weaponFiredBy(killer);
 		if (weaponName == null) {
-			weaponName = claimedWeaponName(recorded, victim);
+			weaponName = claimedWeaponName(recorded, victim, killer);
 		}
 
 		Weapon weapon = weaponName != null ? weaponManager.getWeaponTemplate(weaponName) : null;
@@ -293,16 +309,18 @@ public class WeaponDeathListener implements Listener {
 
 	/**
 	 * BZ-EV-19: resolves a still-live recorded claim to the weapon name it should credit, or {@code null} if none
-	 * applies. An {@code EXPLOSION} claim applies unconditionally (as before this fix) — its
-	 * {@code WeaponEntityDamageEvent} fires before the fatal {@code living.damage()} call, so it is already known to
-	 * be the actual killing blow whenever it survives to this point. A {@code FIRE} claim only applies when the
+	 * applies. A claim only ever credits the killer who fired it. The {@code WeaponEntityDamageEvent} that records a
+	 * claim fires after its damage lands, so a fatal blast/hit is credited through {@link FatalDamageAttribution}
+	 * instead and never reaches here; a surviving {@code EXPLOSION} claim is an earlier non-fatal blast, credited
+	 * whatever finished the victim off inside the TTL (as before this fix). A {@code FIRE} claim only applies when the
 	 * victim's last damage cause is the ongoing burn itself: the spray hit that lit them may have happened seconds
 	 * ago and well before a later, unrelated finishing blow, which must still credit whatever the killer swung/fired
 	 * last instead.
 	 */
 	@Nullable
-	private String claimedWeaponName(@Nullable RecordedKill recorded, LivingEntity victim) {
+	private String claimedWeaponName(@Nullable RecordedKill recorded, LivingEntity victim, Player killer) {
 		if (recorded == null || isExpired(recorded)) return null;
+		if (recorded.shooter() == null || !recorded.shooter().equals(killer.getUniqueId())) return null;
 		if (recorded.kind() == DamageKind.EXPLOSION) return recorded.weaponName();
 		if (recorded.kind() == DamageKind.FIRE && isFireDeath(victim)) return recorded.weaponName();
 		return null;
@@ -322,7 +340,7 @@ public class WeaponDeathListener implements Listener {
 		return messages.get(ThreadLocalRandom.current().nextInt(messages.size()));
 	}
 
-	private record RecordedKill(String weaponName, DamageKind kind, long recordedAtMillis) {
+	private record RecordedKill(String weaponName, DamageKind kind, @Nullable UUID shooter, long recordedAtMillis) {
 	}
 
 }

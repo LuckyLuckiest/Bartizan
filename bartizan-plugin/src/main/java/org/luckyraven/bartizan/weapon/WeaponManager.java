@@ -48,7 +48,8 @@ public class WeaponManager extends WeaponService implements BeanLifecycle {
 	/**
 	 * Stops every in-flight reload ({@code Reload#stopReloading} unscopes the reloader and fires the interrupted
 	 * completion event - on a reload, not on shutdown, where Bukkit no longer delivers events to this disabled
-	 * plugin), then unscopes each online player's held live weapon. {@code unScope(player, false)} only acts on a weapon this plugin scoped, never on a potion effect from
+	 * plugin), then unscopes each online player's held live weapon.
+	 * {@code unScope(player, false)} only acts on a weapon this plugin scoped, never on a potion effect from
 	 * elsewhere.
 	 */
 	private void releaseWeapons() {

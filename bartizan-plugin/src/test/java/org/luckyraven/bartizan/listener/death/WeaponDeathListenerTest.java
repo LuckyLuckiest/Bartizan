@@ -16,8 +16,10 @@ import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
+import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.BiologicalData;
+import org.luckyraven.bartizan.api.weapon.dto.DamageData;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.StatusData;
 import org.luckyraven.bartizan.effect.EffectContext;
@@ -49,6 +51,9 @@ import static org.mockito.Mockito.when;
  */
 @DisplayName("WeaponDeathListener")
 class WeaponDeathListenerTest {
+
+	/** The one player who both fired the claimed/attributed weapon and is the victim's getKiller(). */
+	private static final UUID KILLER_ID = UUID.randomUUID();
 
 	@BeforeEach
 	void primeMoneySymbol() throws ReflectiveOperationException {
@@ -96,7 +101,8 @@ class WeaponDeathListenerTest {
 		when(event.getEntity()).thenReturn(victim);
 		when(event.getDeathMessage()).thenReturn("Victim died");
 
-		FatalDamageAttribution.set("rocket");
+		when(killer.getUniqueId()).thenReturn(UUID.randomUUID());
+		FatalDamageAttribution.set("rocket", killer);
 		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
 			PluginManager pluginManager = mock(PluginManager.class);
 			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
@@ -122,10 +128,14 @@ class WeaponDeathListenerTest {
 		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
 		when(victim.getName()).thenReturn("Victim");
 
+		Player igniter = mock(Player.class);
+		when(igniter.getUniqueId()).thenReturn(KILLER_ID);
+
 		WeaponEntityDamageEvent fireHit = mock(WeaponEntityDamageEvent.class);
 		when(fireHit.getEntity()).thenReturn(victim);
 		when(fireHit.weaponName()).thenReturn("flamethrower");
 		when(fireHit.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.FIRE);
+		when(fireHit.getShooter()).thenReturn(igniter);
 		listener.onWeaponEntityDamage(fireHit);
 
 		Player          killer    = mock(Player.class);
@@ -134,6 +144,7 @@ class WeaponDeathListenerTest {
 		when(killer.getInventory()).thenReturn(inventory);
 		when(inventory.getItemInMainHand()).thenReturn(heldItem);
 		when(killer.getName()).thenReturn("Killer");
+		when(killer.getUniqueId()).thenReturn(KILLER_ID);
 		when(victim.getKiller()).thenReturn(killer);
 
 		Weapon heldWeapon = mock(Weapon.class);
@@ -172,14 +183,19 @@ class WeaponDeathListenerTest {
 		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
 		when(victim.getName()).thenReturn("Victim");
 
+		Player igniter = mock(Player.class);
+		when(igniter.getUniqueId()).thenReturn(KILLER_ID);
+
 		WeaponEntityDamageEvent fireHit = mock(WeaponEntityDamageEvent.class);
 		when(fireHit.getEntity()).thenReturn(victim);
 		when(fireHit.weaponName()).thenReturn("flamethrower");
 		when(fireHit.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.FIRE);
+		when(fireHit.getShooter()).thenReturn(igniter);
 		listener.onWeaponEntityDamage(fireHit);
 
 		Player killer = mock(Player.class);
 		when(killer.getName()).thenReturn("Killer");
+		when(killer.getUniqueId()).thenReturn(KILLER_ID);
 		when(victim.getKiller()).thenReturn(killer);
 
 		Weapon flamethrower = mock(Weapon.class);
@@ -700,13 +716,18 @@ class WeaponDeathListenerTest {
 		UUID         mobId = UUID.randomUUID();
 		when(mob.getUniqueId()).thenReturn(mobId);
 
+		Player thrower = mock(Player.class);
+		when(thrower.getUniqueId()).thenReturn(KILLER_ID);
+
 		WeaponEntityDamageEvent explosionHit = mock(WeaponEntityDamageEvent.class);
 		when(explosionHit.getEntity()).thenReturn(mob);
 		when(explosionHit.weaponName()).thenReturn("grenade");
 		when(explosionHit.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.EXPLOSION);
+		when(explosionHit.getShooter()).thenReturn(thrower);
 		listener.onWeaponEntityDamage(explosionHit);
 
 		Player killer = mock(Player.class);
+		when(killer.getUniqueId()).thenReturn(KILLER_ID);
 		when(mob.getKiller()).thenReturn(killer);
 
 		Weapon grenade = mock(Weapon.class);
@@ -728,6 +749,173 @@ class WeaponDeathListenerTest {
 
 		// Never even consulted the killer's held item — the recorded claim won outright.
 		verify(weaponManager, never()).validateAndGetWeapon(any(), any());
+	}
+
+	// BZ-EV-19 review: getKiller() is only the last player to land ANY hit - a weapon is credited only to its shooter
+
+	private static Player killerHolding(WeaponManager weaponManager, String heldName) {
+		Player          killer    = mock(Player.class);
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		ItemStack       heldItem  = mock(ItemStack.class);
+		when(killer.getInventory()).thenReturn(inventory);
+		when(inventory.getItemInMainHand()).thenReturn(heldItem);
+		when(killer.getName()).thenReturn("Killer");
+		when(killer.getUniqueId()).thenReturn(KILLER_ID);
+
+		Weapon held = mock(Weapon.class);
+		when(held.getDisplayName()).thenReturn(heldName);
+		when(held.pickDeathMessage()).thenReturn(Optional.of("%killer% killed %victim% with %item%"));
+		when(weaponManager.validateAndGetWeapon(eq(killer), eq(heldItem))).thenReturn(held);
+		return killer;
+	}
+
+	private static PlayerDeathEvent deathOf(Player victim) {
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(victim);
+		when(event.getDeathMessage()).thenReturn("Victim died");
+		return event;
+	}
+
+	private static Player victim() {
+		Player victim = mock(Player.class);
+		when(victim.getUniqueId()).thenReturn(UUID.randomUUID());
+		when(victim.getName()).thenReturn("Victim");
+		return victim;
+	}
+
+	@Test
+	@DisplayName("a fatal hit fired by someone else (an NPC) is not credited to the player who merely grazed the victim")
+	void onPlayerDeath_attributionFiredBySomeoneElse_fallsBackToKillersHeldWeapon() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
+
+		Player victim = victim();
+		Player killer = killerHolding(weaponManager, "Knife");
+		when(victim.getKiller()).thenReturn(killer);
+
+		LivingEntity npc = mock(LivingEntity.class);
+		when(npc.getUniqueId()).thenReturn(UUID.randomUUID());
+
+		PlayerDeathEvent event = deathOf(victim);
+		FatalDamageAttribution.set("npc_rifle", npc);
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			bukkit.when(Bukkit::getPluginManager).thenReturn(mock(PluginManager.class));
+
+			listener.onPlayerDeath(event);
+		} finally {
+			FatalDamageAttribution.clear();
+		}
+
+		verify(weaponManager, never()).getWeaponTemplate("npc_rifle");
+		verify(event).setDeathMessage("Killer killed Victim with Knife");
+	}
+
+	@Test
+	@DisplayName("a FIRE claim recorded for another player's flamethrower is not credited to the killer")
+	void onPlayerDeath_claimBySomeoneElse_fallsBackToKillersHeldWeapon() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
+
+		Player victim = victim();
+		Player igniter = mock(Player.class);
+		when(igniter.getUniqueId()).thenReturn(UUID.randomUUID());
+
+		WeaponEntityDamageEvent fireHit = mock(WeaponEntityDamageEvent.class);
+		when(fireHit.getEntity()).thenReturn(victim);
+		when(fireHit.weaponName()).thenReturn("flamethrower");
+		when(fireHit.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.FIRE);
+		when(fireHit.getShooter()).thenReturn(igniter);
+		listener.onWeaponEntityDamage(fireHit);
+
+		Player killer = killerHolding(weaponManager, "Knife");
+		when(victim.getKiller()).thenReturn(killer);
+		EntityDamageEvent lastDamage = mock(EntityDamageEvent.class);
+		when(lastDamage.getCause()).thenReturn(EntityDamageEvent.DamageCause.FIRE_TICK);
+		when(victim.getLastDamageCause()).thenReturn(lastDamage);
+
+		PlayerDeathEvent event = deathOf(victim);
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			bukkit.when(Bukkit::getPluginManager).thenReturn(mock(PluginManager.class));
+
+			listener.onPlayerDeath(event);
+		}
+
+		verify(weaponManager, never()).getWeaponTemplate("flamethrower");
+		verify(event).setDeathMessage("Killer killed Victim with Knife");
+	}
+
+	@Test
+	@DisplayName("a WeaponEntityDamageEvent for an already-dead victim records no claim for its next death")
+	void onWeaponEntityDamage_deadVictim_recordsNoClaim() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
+
+		Player victim = victim();
+		Player killer = killerHolding(weaponManager, "Knife");
+
+		// the blast event fires after the fatal damage() - the victim is already dead when it arrives
+		when(victim.isDead()).thenReturn(true);
+		WeaponEntityDamageEvent lateBlast = mock(WeaponEntityDamageEvent.class);
+		when(lateBlast.getEntity()).thenReturn(victim);
+		when(lateBlast.weaponName()).thenReturn("grenade");
+		when(lateBlast.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.EXPLOSION);
+		when(lateBlast.getShooter()).thenReturn(killer);
+		listener.onWeaponEntityDamage(lateBlast);
+
+		// respawned and killed again inside the claim's TTL
+		when(victim.isDead()).thenReturn(false);
+		when(victim.getKiller()).thenReturn(killer);
+		PlayerDeathEvent event = deathOf(victim);
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			bukkit.when(Bukkit::getPluginManager).thenReturn(mock(PluginManager.class));
+
+			listener.onPlayerDeath(event);
+		}
+
+		verify(weaponManager, never()).getWeaponTemplate("grenade");
+		verify(event).setDeathMessage("Killer killed Victim with Knife");
+	}
+
+	@Test
+	@DisplayName("a gun hit with Damage.Fire_Ticks claims a later burn death for that gun")
+	void onPlayerDeath_burnFromFireTicksGun_creditsTheGun() {
+		WeaponManager       weaponManager = mock(WeaponManager.class);
+		WeaponDeathListener listener      = new WeaponDeathListener(weaponManager, mock(EffectRunner.class), mock(StatusEffectService.class));
+
+		Player victim = victim();
+		Player killer = killerHolding(weaponManager, "Knife");
+		when(victim.getKiller()).thenReturn(killer);
+
+		DamageData damageData = new DamageData();
+		damageData.setFireTicks(100);
+		GunWeapon incendiaryRounds = mock(GunWeapon.class);
+		when(incendiaryRounds.getDamageData()).thenReturn(damageData);
+
+		WeaponEntityDamageEvent gunHit = mock(WeaponEntityDamageEvent.class);
+		when(gunHit.getEntity()).thenReturn(victim);
+		when(gunHit.getWeapon()).thenReturn(incendiaryRounds);
+		when(gunHit.weaponName()).thenReturn("dragon_breath");
+		when(gunHit.kind()).thenReturn(WeaponEntityDamageEvent.DamageKind.DIRECT);
+		when(gunHit.getShooter()).thenReturn(killer);
+		listener.onWeaponEntityDamage(gunHit);
+
+		EntityDamageEvent lastDamage = mock(EntityDamageEvent.class);
+		when(lastDamage.getCause()).thenReturn(EntityDamageEvent.DamageCause.FIRE_TICK);
+		when(victim.getLastDamageCause()).thenReturn(lastDamage);
+
+		Weapon gunTemplate = mock(Weapon.class);
+		when(gunTemplate.getDisplayName()).thenReturn("Dragon Breath");
+		when(gunTemplate.pickDeathMessage()).thenReturn(Optional.of("%killer% killed %victim% with %item%"));
+		when(weaponManager.getWeaponTemplate("dragon_breath")).thenReturn(gunTemplate);
+
+		PlayerDeathEvent event = deathOf(victim);
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			bukkit.when(Bukkit::getPluginManager).thenReturn(mock(PluginManager.class));
+
+			listener.onPlayerDeath(event);
+		}
+
+		verify(event).setDeathMessage("Killer killed Victim with Dragon Breath");
 	}
 
 }

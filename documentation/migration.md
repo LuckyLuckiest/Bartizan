@@ -147,7 +147,8 @@ and `Block_Regeneration.*` (unchanged from the old section) — plus a `Debug.En
 | `/glw item wearable …` | `/bartizan wearable …` |
 | `/glw debug weapon …` | `/bartizan debug …` |
 
-`/bartizan` has aliases `/btz` and `/weapon`.
+`/bartizan` has alias `/btz` (the old `/weapon` alias was removed in 0.5.1 — use `/bartizan weapon …` or
+`/btz weapon …`).
 
 ## 8. Signs
 
@@ -334,6 +335,11 @@ checklist.
   fire from breaking blocks inside it, if the region plugin's own rules say so.
 - **`Armor_Piercing` values changed twice this wave** (first under-delivering, then over-correcting on toughness
   armor, now toughness-aware) — re-check any `Armor_Piercing` tuning against diamond/netherite-armored targets.
+- **Spread bloom now actually accumulates.** `Shoot.Spread.Time`'s reset window is now honoured in ticks as
+  documented (it was misread as milliseconds, so spread reset to `Starting_Spread` on nearly every shot), so any
+  weapon with a non-zero `Spread.Change.Base` blooms further under sustained fire than it did in 0.5.0 — the
+  shipped automatics (`minigun`, `mp5`, `rifle`, `golden_ak47`, `steyr_aug`, …) included. Re-tune `Time`/
+  `Change.Base`/`Change.Bounds` if the old always-reset feel was relied on (`BZ-WM-02`).
 - **`CombatEligibility` is now enforced for the victim**, not just the shooter, on every weapon damage path (guns,
   beams, incendiary, melee, biological, explosions). A consumer already registering `CombatEligibility` for
   downed-player gating gets it enforced for free with no code change; nothing to do unless you relied on the

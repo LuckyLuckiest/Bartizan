@@ -92,10 +92,9 @@ public class WeaponDroppedListener implements Listener {
 	 * that lets the drop proceed uncancelled - a plain Q drop leaks the same way the off-hand swap does (bug
 	 * docket BZ-EV-09): without this, a scoped weapon dropped normally (not sneaking, no {@code Cancel.Drop_Item})
 	 * left the player permanently slowed with no cleanup path. Registered at {@link EventPriority#MONITOR} and
-	 * keyed off {@code event.isCancelled()} directly, mirroring
-	 * {@code WeaponSelectiveFireChangeListener#onSwapHandScopeCleanup} - one guard for every current and future
-	 * uncancelled exit instead of one patched into each. {@code Weapon#unScope} is a no-op unless the weapon is
-	 * actually scoped.
+	 * keyed off {@code event.isCancelled()} directly (the F-swap counterpart is {@code WeaponInteract#onSwapHands})
+	 * - one guard for every current and future uncancelled exit instead of one patched into each.
+	 * {@code Weapon#unScope} is a no-op unless the weapon is actually scoped.
 	 */
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void onPlayerDropScopeCleanup(PlayerDropItemEvent event) {

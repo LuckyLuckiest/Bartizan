@@ -167,7 +167,10 @@ public class WearableEffectsService implements BeanLifecycle {
 	 * <p>BZ-WE-10: {@code Player.removePotionEffect(type)} clears whatever effect of that type is currently active,
 	 * regardless of source, so a type that drops out is only actually removed when the player's live effect still
 	 * looks like the wearable's own grant ({@link #isStillTheWornGrant}) — otherwise it's a stronger/longer effect
-	 * an unrelated source applied on top, and is left alone.
+	 * an unrelated source applied on top, and is left alone. Known limit: when the worn grant has amplifier > 0 and
+	 * another source applied a weaker but longer effect of the same type, vanilla keeps that effect hidden beneath
+	 * the grant, and {@code removePotionEffect(type)} clears the hidden one too. Bukkit exposes no hidden-effect API,
+	 * so this is accepted (the shipped hazmat Slowness is amplifier 0).
 	 */
 	private void removeDroppedWornEffects(Player player, Map<EquipmentSlot, Wearable> worn) {
 		Map<PotionEffectType, Integer> currentGrants = new HashMap<>();

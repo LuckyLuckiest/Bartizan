@@ -121,6 +121,10 @@ public class WeaponVisualSpawner {
 			case ARMOR_STAND -> spawnArmorStand(world, spawnLocation, visual);
 			case PRIMED_TNT -> spawnTnt(world, spawnLocation);
 		};
+		// never saved with its chunk: an unload mid-flight would otherwise leave it behind under a fresh entity id
+		// this spawner no longer tracks - a DROPPED_ITEM visual a hopper can then collect (BZ-RT-18), or an orphaned
+		// ARMOR_STAND/PRIMED_TNT
+		entity.setPersistent(false);
 
 		registerCosmetic(entity.getEntityId());
 		spawnedEntities.put(entity.getEntityId(), entity);

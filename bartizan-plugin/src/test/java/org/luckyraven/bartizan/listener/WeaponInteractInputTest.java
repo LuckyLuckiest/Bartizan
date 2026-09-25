@@ -5,6 +5,8 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
@@ -29,6 +31,7 @@ import org.luckyraven.bartizan.scope.SpyglassScopeTask;
 import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.support.WeaponFixtures;
+import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.IncendiaryWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
@@ -41,10 +44,15 @@ import org.luckyraven.bartizan.weapon.action.MeleeAction;
 import org.luckyraven.bartizan.api.weapon.dto.DurabilityData;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
+import org.luckyraven.bartizan.api.weapon.dto.ScopeData;
 import org.luckyraven.bartizan.weapon.action.GunAction;
 import org.luckyraven.bartizan.weapon.action.GunFireDispatcher;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
+
+import java.lang.reflect.Field;
+import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -57,6 +65,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -325,6 +334,104 @@ class WeaponInteractInputTest {
 		}
 
 		assertNoAsyncTimer();
+	}
+
+	// BZ-EV-01 review: clearWeaponState runs on every swap, and must not reset the Melee.Cooldown gate
+
+	@Test
+	@DisplayName("a hotbar swap away from a melee weapon and back keeps its Melee.Cooldown")
+	@SuppressWarnings("unchecked")
+	void hotbarSwap_keepsMeleeCooldown() throws Exception {
+		MeleeWeapon melee = WeaponFixtures.meleeWeapon(1);
+		when(weaponService.validateAndGetWeapon(player, item)).thenReturn(melee);
+		when(inventory.getItem(0)).thenReturn(item);
+
+		Field field = WeaponInteract.class.getDeclaredField("meleeCooldowns");
+		field.setAccessible(true);
+		Map<UUID, Long> cooldowns = (Map<UUID, Long>) field.get(listener);
+		cooldowns.put(melee.getUuid(), System.currentTimeMillis());
+
+		listener.onWeaponHeld(new PlayerItemHeldEvent(player, 0, 1));
+		listener.onWeaponHeld(new PlayerItemHeldEvent(player, 1, 0));
+
+		assertTrue(cooldowns.containsKey(melee.getUuid()), "the swap must not let the next swing skip Cooldown");
+	}
+
+	// BZ-EV-15 review + BZ-EV-09: an F swap or an inventory click unscopes only what this plugin scoped
+
+	private ScopeData scopeOn(GunWeapon gun, boolean scoped) {
+		ScopeData scope = new ScopeData();
+		scope.setScoped(scoped);
+		gun.setScopeData(scope);
+		return scope;
+	}
+
+	/**
+	 * {@code unScope(player, true)} strips SLOWNESS whether or not this plugin applied it - a flashbang's included.
+	 * Pinned on the call, since this test environment resolves no {@code PotionEffectType} to observe the removal.
+	 */
+	@Test
+	@DisplayName("F-swapping a gun out of the main hand never force-unscopes it (a flashbang's SLOWNESS stays)")
+	void swapOut_gun_neverForceUnscopes() {
+		GunWeapon gun = spy(gun(HandlingData.Trigger.RIGHT_CLICK));
+		scopeOn(gun, false);
+		when(weaponService.validateAndGetWeapon(player, item)).thenReturn(gun);
+
+		listener.onSwapHands(new PlayerSwapHandItemsEvent(player, null, item));
+
+		verify(gun).unScope(player, false);
+		verify(gun, never()).unScope(player, true);
+	}
+
+	@Test
+	@DisplayName("F-swapping a scoped gun out of the main hand unscopes it")
+	void swapOut_scopedGun_unscopes() {
+		ScopeData scope = scopeOn(gun(HandlingData.Trigger.RIGHT_CLICK), true);
+
+		listener.onSwapHands(new PlayerSwapHandItemsEvent(player, null, item));
+
+		assertFalse(scope.isScoped(), "a scoped weapon moved off-hand kept the player slowed (BZ-EV-09)");
+	}
+
+	@Test
+	@DisplayName("an inventory click unscopes the scoped weapon in the main hand")
+	void inventoryClick_unscopesMainHandWeapon() {
+		ScopeData scope = scopeOn(gun(HandlingData.Trigger.RIGHT_CLICK), true);
+
+		InventoryClickEvent click = mock(InventoryClickEvent.class);
+		when(click.getWhoClicked()).thenReturn(player);
+		listener.onInventoryClick(click);
+
+		assertFalse(scope.isScoped(), "clicking the scoped weapon out of the held slot left it scoped");
+	}
+
+	@Test
+	@DisplayName("an inventory drag unscopes the scoped weapon in the main hand")
+	void inventoryDrag_unscopesMainHandWeapon() {
+		ScopeData scope = scopeOn(gun(HandlingData.Trigger.RIGHT_CLICK), true);
+
+		InventoryDragEvent drag = mock(InventoryDragEvent.class);
+		when(drag.getWhoClicked()).thenReturn(player);
+		listener.onInventoryDrag(drag);
+
+		assertFalse(scope.isScoped());
+	}
+
+	// BZ-FA-06: On_Shot now wears a biological/beam weapon down, so a worn-out one must be refused like a gun
+
+	@Test
+	@DisplayName("a worn-out biological weapon starts no charge")
+	void brokenBiological_startsNoCharge() {
+		BiologicalWeapon biological = WeaponFixtures.biologicalWeapon(10);
+		equipByHotbar(biological, 0);
+		biological.setCurrentDurability((short) 0);
+
+		try (MockedConstruction<ChargeController> charges = mockConstruction(ChargeController.class)) {
+			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
+
+			verify(charges.constructed().get(0), never()).start(player);
+		}
+		verify(effectRunner).run(eq(biological), eq(EffectHook.ON_EMPTY), any());
 	}
 
 }

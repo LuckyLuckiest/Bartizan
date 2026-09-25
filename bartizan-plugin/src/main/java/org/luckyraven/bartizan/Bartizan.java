@@ -8,6 +8,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.luckyraven.bartizan.bootstrap.BartizanContext;
 import org.luckyraven.bartizan.configuration.WeaponAddon;
 import org.luckyraven.bartizan.hud.PlaceholderApiSupport;
+import org.luckyraven.keystone.nms.PacketBridge;
 
 @Getter
 @CustomLog
@@ -42,14 +43,15 @@ public final class Bartizan extends JavaPlugin {
 		// Symmetric teardown (gate-GG review B2): the WeaponRaytracer, BartizanApi and ItemVocabulary providers are
 		// registered at bean construction, so a disable/enable cycle must not leave dead providers behind.
 		//
-		// Deliberately does NOT call PacketBridge.reset() (BZ-NU-01): on the documented deployment floor
-		// (Keystone 1.9.0, pom.xml keystone.version - README.md/migration.md tell admins to deploy
-		// Keystone-1.9.0.jar) PacketBridge.reset() is `adapter = NoOpAdapter.INSTANCE`, a single server-global
-		// field shared by every Keystone-powered plugin on the shared classloader - Bartizan disabling/reloading
-		// would silently downgrade recoil and packet handling to a no-op for every OTHER plugin still running.
-		// The adapter itself is stateless reflection (KernelConfig.packetAdapter()), so leaving Bartizan's install
-		// live after disable is harmless. (A newer Keystone scopes reset() to the caller's own install, but
-		// Bartizan cannot rely on that against the version it compiles/ships against.)
+		// PacketBridge.reset() only where it is scoped to the caller's own install (BZ-NU-01): on the documented
+		// deployment floor (Keystone 1.9.0, pom.xml keystone.version) it is `adapter = NoOpAdapter.INSTANCE`, a single
+		// server-global field shared by every Keystone-powered plugin - resetting it would downgrade recoil and packet
+		// handling to a no-op for every OTHER plugin still running, while leaving Bartizan's stateless install live
+		// is harmless. Keystone 1.11.2+ keeps one install per plugin classloader instead, and there skipping the
+		// reset pins this dead PluginClassLoader (and every Bartizan static) for good on each disable/enable.
+		if (packetBridgeResetIsOwnerScoped()) {
+			PacketBridge.reset();
+		}
 		getServer().getServicesManager().unregisterAll(this);
 		PlaceholderApiSupport.unregisterIfPresent();
 
@@ -62,6 +64,21 @@ public final class Bartizan extends JavaPlugin {
 			log.error("Bartizan bean shutdown failed; clearing the container anyway", t);
 		} finally {
 			context.getContainer().clear();
+		}
+	}
+
+	/**
+	 * {@code true} on a Keystone whose {@code PacketBridge} keeps a per-owner install list (1.11.2+), where
+	 * {@code reset()} removes only the caller's own install.
+	 * <p>
+	 * // ponytail: probes the private field name; swap for a version check once the pom pins Keystone 1.11.2+.
+	 */
+	static boolean packetBridgeResetIsOwnerScoped() {
+		try {
+			PacketBridge.class.getDeclaredField("installs");
+			return true;
+		} catch (NoSuchFieldException absent) {
+			return false;
 		}
 	}
 

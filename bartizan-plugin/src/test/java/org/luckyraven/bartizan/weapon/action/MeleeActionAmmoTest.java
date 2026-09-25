@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -80,6 +82,34 @@ class MeleeActionAmmoTest {
 
 		assertEquals(0, weapon.getCurrentMagCapacity(), "no Ammunition: section — never tracked in the first place");
 		verify(weaponService, never()).persistHeldWeapon(weapon, player);
+	}
+
+	/**
+	 * BZ-FA-06: {@code applyOnHitDurability} wears a melee weapon down to 0, but nothing refused a swing once it got
+	 * there - a worn-out knife kept swinging at full damage while a gun in the same state is refused.
+	 */
+	@Test
+	@DisplayName("a worn-out melee weapon refuses the swing")
+	void swing_broken_refused() {
+		MeleeWeapon weapon = WeaponFixtures.meleeWeapon(5);
+		weapon.setModifiersData(new ModifiersData());
+		weapon.setCurrentDurability((short) 0);
+
+		WeaponService weaponService = mock(WeaponService.class);
+		Player        player        = mockPlayer();
+		PluginManager pluginManager = mock(PluginManager.class);
+
+		boolean hit;
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			bukkit.when(Bukkit::getPluginManager).thenReturn(pluginManager);
+
+			hit = new MeleeAction(weapon, mock(WeaponRaytracer.class), new HashMap<>(), mock(EffectRunner.class),
+			                      weaponService).activate(player);
+		}
+
+		assertFalse(hit);
+		assertEquals(5, weapon.getCurrentMagCapacity(), "a refused swing consumes nothing");
+		verify(pluginManager, never()).callEvent(any());
 	}
 
 	private static Player mockPlayer() {

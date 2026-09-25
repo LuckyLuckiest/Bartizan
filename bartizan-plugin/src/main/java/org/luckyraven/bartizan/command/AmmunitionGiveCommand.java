@@ -49,12 +49,12 @@ class AmmunitionGiveCommand extends SubArgument {
 		OptionalArgument name = new OptionalArgument(bartizan, tree, (argument, sender, args) -> {
 			Player player = (Player) sender;
 
-			String  ammoName       = args[2];
-			boolean giveAmmunition = giveAmmunition(player, ammoName.toLowerCase(), 1);
+			String ammoName = args[2];
+			int    given    = giveAmmunition(player, ammoName.toLowerCase(), 1);
 
-			if (giveAmmunition) {
+			if (given > 0) {
 				String gaveAmmo = BartizanMessages.RECEIVED_AMMO.toString();
-				player.sendMessage(gaveAmmo.replace("%ammo%", ammoName).replace("%amount%", "1"));
+				player.sendMessage(gaveAmmo.replace("%ammo%", ammoName).replace("%amount%", String.valueOf(given)));
 			} else {
 				String invalidAmmo = BartizanMessages.INVALID_AMMO.toString();
 				player.sendMessage(invalidAmmo.replace("%args%", ammoName));
@@ -77,11 +77,11 @@ class AmmunitionGiveCommand extends SubArgument {
 				return;
 			}
 
-			boolean giveAmmunition = giveAmmunition(player, ammoName.toLowerCase(), ammoAmount);
+			int given = giveAmmunition(player, ammoName.toLowerCase(), ammoAmount);
 
-			if (giveAmmunition) {
+			if (given > 0) {
 				String gaveAmmo = BartizanMessages.RECEIVED_AMMO.toString();
-				player.sendMessage(gaveAmmo.replace("%ammo%", ammoName).replace("%amount%", String.valueOf(ammoAmount)));
+				player.sendMessage(gaveAmmo.replace("%ammo%", ammoName).replace("%amount%", String.valueOf(given)));
 			} else {
 				String invalidAmmo = BartizanMessages.INVALID_AMMO.toString();
 				player.sendMessage(invalidAmmo.replace("%args%", ammoName));
@@ -95,10 +95,14 @@ class AmmunitionGiveCommand extends SubArgument {
 		this.addSubArgument(name);
 	}
 
-	private boolean giveAmmunition(Player player, String name, int amount) {
+	/**
+	 * @return how many were actually handed over (the amount clamped to {@code [1, MAX_AMOUNT]}), or {@code 0} for an
+	 * 		unknown ammunition - the success message reports this, never the raw argument (BZ-CM-01).
+	 */
+	private int giveAmmunition(Player player, String name, int amount) {
 		Ammunition ammunition = ammunitionManager.getAmmunition(name);
 
-		if (ammunition == null) return false;
+		if (ammunition == null) return 0;
 
 		amount = Math.max(1, Math.min(amount, MAX_AMOUNT));
 
@@ -130,7 +134,7 @@ class AmmunitionGiveCommand extends SubArgument {
 			player.getWorld().dropItemNaturally(player.getLocation(), item);
 		}
 
-		return true;
+		return amount;
 	}
 
 }

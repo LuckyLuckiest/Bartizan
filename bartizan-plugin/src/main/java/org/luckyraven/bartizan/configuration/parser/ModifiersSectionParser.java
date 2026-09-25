@@ -73,7 +73,10 @@ public final class ModifiersSectionParser {
 	private static void applyBreakBlocks(NodeReader modifiers, Weapon weapon, ConfigReport report) {
 		for (String entry : modifiers.get("Break_Blocks").asList().ofStrings().orEmpty()) {
 			String[] parts = entry.split("-");
-			if (parts.length != 2 && parts.length != 3) continue;
+			if (parts.length != 2 && parts.length != 3) {
+				warnMalformed(modifiers, report, "Break_Blocks", entry);
+				continue;
+			}
 			try {
 				Set<Material> materials = BlockGroupResolver.resolve(parts[0].trim());
 				if (materials.isEmpty()) continue;
@@ -98,7 +101,9 @@ public final class ModifiersSectionParser {
 				}
 
 				weapon.getModifiersData().addBreakBlock(new BlockBreakModifier(materials, hits, mode));
-			} catch (NumberFormatException ignored) { }
+			} catch (NumberFormatException exception) {
+				warnMalformed(modifiers, report, "Break_Blocks", entry);
+			}
 		}
 	}
 

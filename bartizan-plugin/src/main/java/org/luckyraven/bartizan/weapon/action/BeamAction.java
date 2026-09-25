@@ -9,6 +9,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
@@ -108,9 +109,10 @@ public class BeamAction {
 	public void fire(Player player, int level) {
 		if (level <= 0) return;
 
-		// the release watchdog (or Auto_Fire_At_Max) can land after the weapon left both hands - dropped or moved
-		// into a container mid-charge: no shot then, and nothing to consume (BZ-EV-13)
-		if (weaponService.getHeldHand(player, weapon.getUuid()) == null) return;
+		// the release watchdog (or Auto_Fire_At_Max) can land after the weapon left the main hand - dropped, moved
+		// into a container or into the off-hand slot mid-charge: no shot then, and nothing to consume (BZ-EV-13;
+		// off-hand weapons are inert)
+		if (weaponService.getHeldHand(player, weapon.getUuid()) != EquipmentSlot.HAND) return;
 
 		BeamData beamData     = weapon.getBeam();
 		int      ammoPerLevel = beamData.getAmmoPerLevel();

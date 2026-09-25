@@ -5,8 +5,10 @@ import lombok.Getter;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.Nullable;
+import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
@@ -165,9 +167,12 @@ public class EffectContext {
 
 	/**
 	 * The same {@link DamageRules} skip every real damage path applies — a gun's {@code Damage:} rules, a
-	 * throwable's {@code Throw:} rules. Any other weapon (or a wearable context with no weapon) has no such rules.
+	 * throwable's {@code Throw:} rules. Any other weapon (or a wearable context with no weapon) has no such rules,
+	 * but {@link CombatEligibility} is weapon-agnostic, exactly like the raytrace's own target filter.
 	 */
 	private boolean isProtected(LivingEntity candidate) {
+		if (candidate instanceof Player player && !CombatEligibility.resolve().canBeHit(player)) return true;
+
 		if (weapon instanceof GunWeapon gun && gun.getDamageData() != null) {
 			return DamageRules.isProtected(gun.getDamageData(), source, candidate);
 		}

@@ -15,7 +15,6 @@ import java.util.HashMap;
 import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -39,7 +38,7 @@ class WeaponGiveHelperTest {
 		WeaponManager manager  = managerBuilding(WeaponType.GUN, 64); // stackable material, e.g. BLAZE_ROD
 		Player        receiver = receiver();
 
-		assertTrue(WeaponGiveHelper.give(manager, receiver, "flamethrower", 3));
+		assertEquals(3, WeaponGiveHelper.give(manager, receiver, "flamethrower", 3));
 
 		ItemStack[] given = givenItems(receiver);
 		assertEquals(3, given.length);
@@ -56,12 +55,27 @@ class WeaponGiveHelperTest {
 		WeaponManager manager  = managerBuilding(WeaponType.THROWABLE, 16);
 		Player        receiver = receiver();
 
-		assertTrue(WeaponGiveHelper.give(manager, receiver, "grenade", 20));
+		assertEquals(20, WeaponGiveHelper.give(manager, receiver, "grenade", 20));
 
 		ItemStack[] given = givenItems(receiver);
 		assertEquals(2, given.length);
 		verify(given[0]).setAmount(16);
 		verify(given[1]).setAmount(4);
+	}
+
+	@Test
+	@DisplayName("give reports the clamped amount it handed over, which the success message quotes (BZ-CM-01)")
+	void give_reportsClampedAmount() {
+		WeaponManager manager = managerBuilding(WeaponType.THROWABLE, 64);
+
+		assertEquals(1, WeaponGiveHelper.give(manager, receiver(), "grenade", -100));
+		assertEquals(2304, WeaponGiveHelper.give(manager, receiver(), "grenade", 999_999_999));
+	}
+
+	@Test
+	@DisplayName("give reports 0 for an unknown weapon")
+	void give_unknownWeapon_reportsZero() {
+		assertEquals(0, WeaponGiveHelper.give(mock(WeaponManager.class), receiver(), "nope", 3));
 	}
 
 	private static WeaponManager managerBuilding(WeaponType category, int maxStackSize) {

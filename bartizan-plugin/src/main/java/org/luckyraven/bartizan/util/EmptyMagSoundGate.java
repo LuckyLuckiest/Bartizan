@@ -7,6 +7,7 @@ import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.effect.EffectContext;
 import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.listener.WeaponInteract;
 
 import java.util.Map;
 import java.util.Set;
@@ -40,7 +41,10 @@ public final class EmptyMagSoundGate {
 	}
 
 	public static void play(JavaPlugin plugin, Player player, Weapon weapon, EffectRunner effectRunner) {
-		UUID uuid = weapon.getUuid();
+		// the same key WeaponInteract refreshes the gate with: a throwable's uuid is shared by every holder of its
+		// type, so keyed by that alone one player's empty click muted another's and the refresh never matched
+		// (BZ-WM-06)
+		UUID uuid = WeaponInteract.pressKey(weapon, player);
 		if (!GATE.add(uuid)) {
 			// Gate already active (e.g. AUTO firing empty mag every N ticks) — refresh the watchdog
 			// flag so it doesn't release the gate between fire ticks.

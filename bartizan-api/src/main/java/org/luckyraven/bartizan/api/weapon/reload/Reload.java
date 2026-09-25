@@ -483,7 +483,12 @@ public abstract class Reload implements Cloneable {
 		UUID   uuid          = null;
 
 		if (!(value == null || value.equals("null") || value.isEmpty())) {
-			uuid = UUID.fromString(value);
+			try {
+				uuid = UUID.fromString(value);
+			} catch (IllegalArgumentException malformed) {
+				// a hand-edited/corrupted tag reads as "not a weapon" - thrown here, it escaped the reload's
+				// SequenceTimer body and hung the reload for good (BZ-EV-04). WeaponService already logs the item.
+			}
 		}
 
 		return uuid;

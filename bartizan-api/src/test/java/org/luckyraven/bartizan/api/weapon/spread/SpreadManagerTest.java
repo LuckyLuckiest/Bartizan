@@ -81,8 +81,8 @@ class SpreadManagerTest {
 	@DisplayName("updateSpread clamps at Bounds.Max without resetting when Reset_On_Bound is false")
 	void applySpread_clampsAtMaxWithoutReset() {
 		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
-		// A very large resetTime keeps the millisecond-comparison bug (Observation #8) from firing within this
-		// fast-running test, so the bounds-clamping logic can be exercised in isolation.
+		// A very large resetTime keeps the reset window from elapsing within this test, so the bounds-clamping
+		// logic is exercised in isolation.
 		weapon.setSpreadData(spreadData(0.0, Integer.MAX_VALUE, 1.0, false, 0.0, 0.5));
 		SpreadManager manager = new SpreadManager(weapon);
 

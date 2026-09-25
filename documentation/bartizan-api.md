@@ -358,7 +358,9 @@ the existing `run(Weapon, EffectHook, EffectContext)`, for exactly this non-weap
 ### Events (`org.luckyraven.bartizan.api.event`)
 
 `WeaponEvent`, `WeaponShootEvent`, `WeaponRaytraceImpactEvent` (cancelling suppresses damage only — penetration and
-ricochet counters still advance), `WeaponEntityDamageEvent`, `WeaponKillEntityEvent`, `WeaponAssistEvent` (gate
+ricochet counters still advance; since 0.5.1, `BZ-RT-14`, cancelling it for a block hit also suppresses that
+block's `Break_Blocks` crack/destroy/restore damage — before, the block was already damaged by the time a
+listener could cancel), `WeaponEntityDamageEvent`, `WeaponKillEntityEvent`, `WeaponAssistEvent` (gate
 `HK`), `WeaponReloadEvent` / `WeaponReloadStartEvent` / `WeaponReloadCompleteEvent` / `WeaponReloadStageEvent` (gate
 `HO`), `WeaponChangeSelectiveFireEvent`,
 `WeaponChargeLevelEvent`, `WeaponBeamFireEvent`.
@@ -383,8 +385,9 @@ streams hits one at a time through `RaytraceRequest`'s impact handler rather tha
 before firing, so there is no target list to carry — only `level`, `origin` and `direction` at fire time.
 
 `WeaponChangeSelectiveFireEvent.getHandlerList()` is now `public` (0.5.1, `BZ-EV-08`) — it was `private`, unlike
-every sibling event class in this package, which meant Bukkit's reflection-based listener registration could never
-actually find it; a consumer can now genuinely register a listener for this event for the first time.
+every sibling event class in this package. Listener registration still worked (Bukkit resolves it with
+`getDeclaredMethod` + `setAccessible`), but a consumer could not call `getHandlerList()` directly to unregister or
+inspect handlers.
 
 `WeaponReloadCompleteEvent#isInterrupted()` (new at gate `HA`) is `true` when the completion was raised by a
 swap-cancelled reload (`Reload#endReloading(Player, boolean)`) rather than a normal reload finishing — Bartizan's

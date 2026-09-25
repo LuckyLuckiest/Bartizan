@@ -13,6 +13,7 @@ import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.WeaponType;
 import org.luckyraven.keystone.item.ItemBuilder;
 import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
@@ -319,6 +320,34 @@ class WeaponServiceTest {
 		assertNull(service.getWeapons().get(gun.getUuid()));
 		assertSame(other, service.getWeapons().get(other.getUuid()), "another item's weapon must stay registered");
 		assertSame(grenade, service.getWeapons().get(grenade.getUuid()));
+	}
+
+	/**
+	 * BZ-WM-04 review: items sharing one uuid across players exist (0.5.0's give stamped one uuid on every stack). The
+	 * quitter's own held reload is stopped before forgetWeapons, so an entry still reloading belongs to another
+	 * holder - evicting it let that holder mint a fresh instance and run a second, parallel reload (the BZ-WM-13 dupe).
+	 */
+	@Test
+	@DisplayName("forgetWeapons keeps an entry another holder of the same uuid is still reloading")
+	void forgetWeapons_keepsReloadingEntry() {
+		UUID   uuid      = UUID.randomUUID();
+		Weapon reloading = mock(Weapon.class);
+		when(reloading.getCategory()).thenReturn(WeaponType.GUN);
+		when(reloading.isReloading()).thenReturn(true);
+		service.getWeapons().put(uuid, reloading);
+
+		ItemStack       item      = weaponItem();
+		PlayerInventory inventory = mock(PlayerInventory.class);
+		when(inventory.getContents()).thenReturn(new ItemStack[]{item});
+		Player player = mock(Player.class);
+		when(player.getInventory()).thenReturn(inventory);
+
+		try (MockedConstruction<ItemBuilder> ignored = mockConstruction(ItemBuilder.class, (builder, ctx) ->
+				when(builder.getStringTagData("uuid")).thenReturn(uuid.toString()))) {
+			service.forgetWeapons(player);
+		}
+
+		assertSame(reloading, service.getWeapons().get(uuid));
 	}
 
 	private static MockedConstruction<ItemBuilder> weaponNbt(UUID uuid, int ammoLeft) {

@@ -88,8 +88,8 @@ public class ThrowableAction {
 		// BZ-FA-03 follow-up: consumeAmmoIfTracked() below depletes a configured magazine but nothing ever gated
 		// on it, so a throwable authored with Ammunition:/Reload: kept throwing on an empty magazine. Mirrors
 		// MeleeAction.activate's empty-mag guard (MeleeAction:73), placed before the WeaponShootEvent so a
-		// listener never observes an empty-mag "shot".
-		if (weapon.getReloadData() != null && weapon.isMagazineEmpty()) {
+		// listener never observes an empty-mag "shot". A worn-out throwable is refused the same way (BZ-FA-06).
+		if (weapon.isBroken() || weapon.getReloadData() != null && weapon.isMagazineEmpty()) {
 			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 			return;
 		}
@@ -124,9 +124,7 @@ public class ThrowableAction {
 		ItemStack visual = data.getDisplayItem() != null ?
 		                   data.getDisplayItem().clone() :
 		                   new ItemStack(weapon.getMaterial());
-		Item grenade = world.dropItem(eyeLoc, visual);
-		grenade.setPickupDelay(Integer.MAX_VALUE);
-		CosmeticTag.mark(grenade);
+		Item grenade = spawnGrenadeItem(world, eyeLoc, visual);
 
 		Vector throwVec = eyeLoc.getDirection().normalize().multiply(1.2).add(new Vector(0, 0.2, 0));
 		grenade.setVelocity(throwVec);
@@ -274,6 +272,17 @@ public class ThrowableAction {
 
 		weapon.decreaseDurability(heldWeapon, onShot);
 		weaponService.replaceHeldWeapon(player, weapon, heldWeapon.build());
+	}
+
+	/**
+	 * The thrown grenade's display item: never picked up, and cosmetic-tagged so a hopper can't collect it either
+	 * (BZ-FA-13). Package-private so a unit test pins the tag without the rest of {@link #activate}.
+	 */
+	static Item spawnGrenadeItem(World world, Location eyeLoc, ItemStack visual) {
+		Item grenade = world.dropItem(eyeLoc, visual);
+		grenade.setPickupDelay(Integer.MAX_VALUE);
+		CosmeticTag.mark(grenade);
+		return grenade;
 	}
 
 	/**

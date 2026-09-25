@@ -3,6 +3,7 @@ package org.luckyraven.bartizan.weapon.action;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.luckyraven.keystone.util.ActionBarManager;
@@ -55,9 +56,10 @@ public class BiologicalAction {
 	public void fire(Player player, int level) {
 		if (level <= 0) return;
 
-		// the release watchdog (or Auto_Fire_At_Max) can land after the weapon left both hands - dropped or moved
-		// into a container mid-charge: no shot then, and nothing to consume (BZ-EV-13)
-		if (weaponService.getHeldHand(player, weapon.getUuid()) == null) return;
+		// the release watchdog (or Auto_Fire_At_Max) can land after the weapon left the main hand - dropped, moved
+		// into a container or into the off-hand slot mid-charge: no shot then, and nothing to consume (BZ-EV-13;
+		// off-hand weapons are inert)
+		if (weaponService.getHeldHand(player, weapon.getUuid()) != EquipmentSlot.HAND) return;
 
 		// HK: WeaponShootEvent fired once per trigger pull, before ammo is consumed below - cancelling costs
 		// the caller nothing, matching the "fire before consumption" contract used across the other custom-path

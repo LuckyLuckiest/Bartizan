@@ -9,11 +9,15 @@ import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.Server;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.plugin.RegisteredServiceProvider;
+import org.bukkit.plugin.ServicesManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.bartizan.api.event.WeaponStatusExpireEvent;
 import org.luckyraven.bartizan.api.event.WeaponStatusExpireEvent.Reason;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
@@ -35,6 +39,7 @@ import java.util.Random;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -269,6 +274,61 @@ class StatusEffectServiceTest {
 		BossBar bar = service.activeOn(victim.getUniqueId()).orElseThrow().getBossBar();
 		verify(bar).setColor(BarColor.RED);
 		verify(bar).setStyle(BarStyle.SEGMENTED_10);
+	}
+
+	@Test
+	@DisplayName("a status tick with an unchanged Color/Style resends no boss-bar style packets (BZ-EF-03 review)")
+	void apply_sameStyle_doesNotResetColorOrStyle() {
+		StatusEffectService service = service();
+		Player               victim  = player();
+		BiologicalWeapon      red     = weapon(new StatusData("Infected", "", 200, StatusData.Stacking.REFRESH, 3, 200,
+		                                                   null, new StatusData.CureData(List.of(), null),
+		                                                   new StatusData.BossBarData("%status%", "RED",
+		                                                                              "SEGMENTED_10"),
+		                                                   null, null, 20, null));
+		BossBar bar = mock(BossBar.class);
+		when(bar.getColor()).thenReturn(BarColor.RED);
+		when(bar.getStyle()).thenReturn(BarStyle.SEGMENTED_10);
+
+		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
+			bukkit.when(() -> Bukkit.createBossBar(any(), any(), any())).thenReturn(bar);
+
+			service.apply(victim, player(), red, 1);
+			service.apply(victim, player(), red, 1);
+		}
+
+		verify(bar, never()).setColor(any());
+		verify(bar, never()).setStyle(any());
+	}
+
+	/**
+	 * BZ-RT-20: a contagion spread reaches {@code apply} without ever passing the raytrace's eligibility filter, so a
+	 * player a consumer ruled un-hittable (downed) still caught the status and its DoT.
+	 */
+	@Test
+	@DisplayName("a player CombatEligibility rules un-hittable catches no status")
+	void apply_ineligibleVictim_appliesNothing() {
+		StatusEffectService service = service();
+		Player               victim  = player();
+
+		CombatEligibility downed = player -> false;
+		@SuppressWarnings("unchecked")
+		RegisteredServiceProvider<CombatEligibility> registration = mock(RegisteredServiceProvider.class);
+		when(registration.getProvider()).thenReturn(downed);
+		ServicesManager servicesManager = mock(ServicesManager.class);
+		when(servicesManager.getRegistration(CombatEligibility.class)).thenReturn(registration);
+
+		boolean applied;
+		try (MockedStatic<Bukkit> bukkit = mockBukkit()) {
+			bukkit.when(Bukkit::getServer).thenReturn(mock(Server.class));
+			bukkit.when(Bukkit::getServicesManager).thenReturn(servicesManager);
+
+			applied = service.apply(victim, player(), weapon(StatusData.Stacking.REFRESH, 200, 3), 2);
+		}
+
+		assertFalse(applied);
+		assertTrue(service.activeOn(victim.getUniqueId()).isEmpty());
+		verifyNoInteractions(effectRunner);
 	}
 
 	@Test

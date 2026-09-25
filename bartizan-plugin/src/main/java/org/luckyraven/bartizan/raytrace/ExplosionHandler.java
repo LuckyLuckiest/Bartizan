@@ -142,18 +142,24 @@ public class ExplosionHandler {
 	void damageVictim(Weapon weapon, ExplosionData data, @Nullable LivingEntity shooter, LivingEntity target,
 	                  Vector offset, double damage) {
 		target.setNoDamageTicks(0);
-		double healthBefore = target.getHealth();
+		// absorption counted too: a blast fully soaked by absorption hearts still landed
+		double healthBefore = WeaponRaytracerImpl.effectiveHealth(target);
 
 		// Without this flag, WeaponInteract.onEntityDamage cancels the damage whenever the shooter still holds a
-		// weapon — mirrors the raytracer's own entity-impact guard exactly.
+		// weapon — mirrors the raytracer's own entity-impact guard exactly. FatalDamageAttribution names this weapon
+		// for a death Bukkit fires nested inside a fatal damage() call - the WeaponEntityDamageEvent below only
+		// fires after it, too late to credit the kill (BZ-EV-19 x BZ-RT-19).
 		WeaponRaytracer.setRaytraceDamageInProgress(true);
+		FatalDamageAttribution.set(weapon.getName(), shooter);
 		try {
 			target.damage(damage, shooter);
 		} finally {
+			FatalDamageAttribution.clear();
 			WeaponRaytracer.setRaytraceDamageInProgress(false);
 		}
 
-		boolean damageBlocked = target.isValid() && !target.isDead() && target.getHealth() >= healthBefore;
+		boolean damageBlocked = target.isValid() && !target.isDead()
+		                        && WeaponRaytracerImpl.effectiveHealth(target) >= healthBefore;
 		if (damageBlocked) return;
 
 		if (shooter instanceof Player playerShooter) {

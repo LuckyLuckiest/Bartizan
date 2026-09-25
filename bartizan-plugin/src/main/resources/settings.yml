@@ -27,6 +27,9 @@ Block_Regeneration:
 #
 # Every effect type below also accepts Target (source|victim|nearby) and Radius (blocks, required for
 # Target: nearby) even where not listed per-type.
+# Target: nearby skips every entity the weapon's Owner_Immunity / Ignore_Teams protects - cosmetic
+# effects (Sound without At, Message, Title, Action_Bar, Camera_Shake, Cooldown) included; use Target: source
+# to also reach the shooter.
 #
 # Effect types and keys (Type is required on every entry; an unknown/missing Type is a warning and that entry is
 # skipped):

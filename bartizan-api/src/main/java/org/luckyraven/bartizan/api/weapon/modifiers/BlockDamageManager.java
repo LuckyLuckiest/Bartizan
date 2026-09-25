@@ -139,20 +139,42 @@ public class BlockDamageManager {
 	 */
 	public void clearAll() {
 		for (Map.Entry<Location, BlockDamageState> entry : damagedBlocks.entrySet()) {
-			BlockDamageState state    = entry.getValue();
-			Location         location = entry.getKey();
-			state.cancelRegeneration();
-			// BZ-RT-06: location.getWorld() throws once the world's weak reference is cleared (Spigot 1.16.5+),
-			// it does not return null - isWorldLoaded() is the only safe check before touching the block.
-			if (state.isBroken() && location.isWorldLoaded()) {
-				Block block = location.getBlock();
-				if (block.getType() == Material.AIR) {
-					block.setBlockData(state.getOriginalData());
-				}
-			}
-			clearBlockDamage(location, state.getEntityId());
+			restore(entry.getKey(), entry.getValue());
 		}
 		damagedBlocks.clear();
+	}
+
+	/**
+	 * {@link #clearAll()} for one world, called as it unloads: the unload saves its chunks while a block broken in
+	 * {@code RESTORE} mode is still {@code AIR}, and the pending restore task then finds the world gone and drops the
+	 * restore, so the block would be saved as {@code AIR} for good (BZ-RT-15). Call it before the save — Bukkit's
+	 * {@code WorldUnloadEvent} fires while the world is still loaded.
+	 */
+	public void restoreWorld(World world) {
+		damagedBlocks.entrySet().removeIf(entry -> {
+			Location location = entry.getKey();
+			// BZ-RT-06: getWorld() throws for an entry whose own world is already gone
+			if (!location.isWorldLoaded() || !world.equals(location.getWorld())) return false;
+
+			restore(location, entry.getValue());
+			return true;
+		});
+	}
+
+	/**
+	 * Cancels {@code state}'s pending task, writes a mid-restore block back and clears its crack overlay.
+	 */
+	private void restore(Location location, BlockDamageState state) {
+		state.cancelRegeneration();
+		// BZ-RT-06: location.getWorld() throws once the world's weak reference is cleared (Spigot 1.16.5+),
+		// it does not return null - isWorldLoaded() is the only safe check before touching the block.
+		if (state.isBroken() && location.isWorldLoaded()) {
+			Block block = location.getBlock();
+			if (block.getType() == Material.AIR) {
+				block.setBlockData(state.getOriginalData());
+			}
+		}
+		clearBlockDamage(location, state.getEntityId());
 	}
 
 	/**
@@ -315,14 +337,15 @@ public class BlockDamageManager {
 			if (damagedBlocks.get(location) != state) {
 				return;
 			}
-			// Someone (player or another plugin) filled the gap — leave it alone
-			if (block.getType() != Material.AIR) {
+			// BZ-RT-06: the world unloaded while this block sat mid-restore — abandon cleanly instead of reading or
+			// writing block data in (and starting a regeneration timer against) a location that's gone. Checked
+			// before the getType() read below, which already touches the unloaded world.
+			if (!location.isWorldLoaded()) {
 				damagedBlocks.remove(location);
 				return;
 			}
-			// BZ-RT-06: the world unloaded while this block sat mid-restore — abandon cleanly instead of writing
-			// block data back into (and starting a regeneration timer against) a location that's gone.
-			if (!location.isWorldLoaded()) {
+			// Someone (player or another plugin) filled the gap — leave it alone
+			if (block.getType() != Material.AIR) {
 				damagedBlocks.remove(location);
 				return;
 			}

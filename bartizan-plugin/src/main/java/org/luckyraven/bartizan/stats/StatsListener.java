@@ -11,6 +11,7 @@ import org.luckyraven.bartizan.api.event.WeaponEntityDamageEvent;
 import org.luckyraven.bartizan.api.event.WeaponKillEntityEvent;
 import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
+import org.luckyraven.keystone.npc.NpcSupport;
 
 /**
  * Bukkit-facing wiring for {@link StatsService} (weapons-roadmap.md gate {@code HK}) — mirrors
@@ -61,11 +62,21 @@ public class StatsListener implements Listener {
 	 * PvP, a vanilla/other-plugin mob kill, all the same as a Bartizan weapon kill. {@code MONITOR} runs after
 	 * {@code WeaponDeathListener}'s {@code HIGH}-priority handler (and, nested inside it, this class's own
 	 * {@code onKill} above whenever a weapon claims the kill), so by the time this runs
-	 * {@link StatsService#recordDeath} always observes the final state.
+	 * {@link StatsService#recordDeath} always observes the final state. A Citizens player-NPC raises
+	 * {@code PlayerDeathEvent} too, and is skipped - every dying NPC would otherwise leave a stats file behind.
 	 */
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void onDeath(PlayerDeathEvent event) {
+		if (isNpc(event.getEntity())) return;
+
 		statsService.recordDeath(event.getEntity());
+	}
+
+	/**
+	 * Package-private so a test can stub it: {@code NpcSupport} can't be mocked without Citizens on the classpath.
+	 */
+	boolean isNpc(Player player) {
+		return NpcSupport.isNpc(player);
 	}
 
 	@EventHandler

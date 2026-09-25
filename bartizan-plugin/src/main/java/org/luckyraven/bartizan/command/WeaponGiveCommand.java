@@ -87,22 +87,22 @@ class WeaponGiveCommand extends SubArgument {
 			return;
 		}
 
-		boolean gave = WeaponGiveHelper.give(weaponManager, target, weaponName.toLowerCase(), amount);
-		if (!gave) {
+		int given = WeaponGiveHelper.give(weaponManager, target, weaponName.toLowerCase(), amount);
+		if (given == 0) {
 			sender.sendMessage(BartizanMessages.INVALID_WEAPON.toString().replace("%args%", weaponName));
 			return;
 		}
 
 		target.sendMessage(BartizanMessages.RECEIVED_WEAPON.toString()
 		                                                   .replace("%weapon%", weaponName)
-		                                                   .replace("%amount%", String.valueOf(amount)));
+		                                                   .replace("%amount%", String.valueOf(given)));
 
 		// The target already saw RECEIVED_WEAPON above; a self-give (a player giving themselves the weapon) must
 		// not also get a second, redundant "gave X to Y" line.
 		if (!sender.equals(target)) {
 			sender.sendMessage(BartizanMessages.GAVE_WEAPON.toString()
 			                                                .replace("%weapon%", weaponName)
-			                                                .replace("%amount%", String.valueOf(amount))
+			                                                .replace("%amount%", String.valueOf(given))
 			                                                .replace("%player%", target.getName()));
 		}
 	}

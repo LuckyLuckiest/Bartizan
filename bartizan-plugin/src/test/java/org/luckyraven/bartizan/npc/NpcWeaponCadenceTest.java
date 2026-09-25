@@ -7,11 +7,13 @@ import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.keystone.timer.SequenceTimer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -192,6 +194,28 @@ class NpcWeaponCadenceTest {
 		when(shooter.isValid()).thenReturn(false);
 		assertTrue(controller.isShooterGone(),
 		          "isValid() false (dead, despawned, or destroy()'d) must stop the remaining burst rounds");
+	}
+
+	@Test
+	void burstRound_deadShooter_stopsTheBurstWithoutFiring() {
+		// BZ-NU-04: the guard itself, not just isShooterGone() - deleting it from the scheduled round must fail here
+		LivingEntity shooter = mock(LivingEntity.class);
+		GunWeapon    gun     = mockGun(SelectiveFire.BURST, 3, 4);
+		RecordingController controller =
+				new RecordingController(mock(JavaPlugin.class), shooter, gun, NO_RATE_SCALING, 15.0,
+				                        mock(EffectRunner.class));
+		SequenceTimer timer = mock(SequenceTimer.class);
+
+		when(shooter.isValid()).thenReturn(false);
+		controller.burstRound(gun, timer);
+
+		verify(timer).stop();
+		assertEquals(0, controller.fireRoundCalls, "a dead/destroyed NPC must not fire the rest of its burst");
+
+		when(shooter.isValid()).thenReturn(true);
+		controller.burstRound(gun, mock(SequenceTimer.class));
+
+		assertEquals(1, controller.fireRoundCalls, "a live shooter keeps firing its burst");
 	}
 
 	// ---------------------------------------------------------------------------------------------------------------

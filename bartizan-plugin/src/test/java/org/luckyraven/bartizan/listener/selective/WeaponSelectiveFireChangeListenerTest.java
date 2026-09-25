@@ -78,7 +78,6 @@ class WeaponSelectiveFireChangeListenerTest {
 			shooting.when(() -> WeaponShooting.isHitscan(any())).thenReturn(true);
 
 			listener.onSwapHand(event);
-			listener.onSwapHandScopeCleanup(event);
 		}
 
 		assertTrue(event.isCancelled(), "F must not open the offhand swap while it fires the weapon");
@@ -165,7 +164,6 @@ class WeaponSelectiveFireChangeListenerTest {
 			bukkit.when(Bukkit::getPluginManager).thenReturn(mock(PluginManager.class));
 
 			listener.onSwapHand(event);
-			listener.onSwapHandScopeCleanup(event);
 		}
 
 		assertTrue(event.isCancelled());
@@ -173,33 +171,6 @@ class WeaponSelectiveFireChangeListenerTest {
 		assertEquals(5, weapon.getCurrentMagCapacity(), "sneak + F cycles fire mode, it never fires a shot");
 		assertTrue(weapon.getScopeData().isScoped(),
 		          "BZ-EV-09 guard must not unscope - the weapon never actually leaves the main hand here");
-	}
-
-	@Test
-	@DisplayName("BZ-EV-09: F swap while not sneaking unscopes a SLOWNESS-scoped weapon before it leaves the main hand")
-	void notSneaking_slownessScoped_unscopesBeforeSwapToOffHand() {
-		GunWeapon weapon = slownessScopedGun(5);
-
-		WeaponService weaponService = mock(WeaponService.class);
-		JavaPlugin    plugin        = mock(JavaPlugin.class);
-		Player        player        = mockShooter(weaponService, weapon, false);
-
-		SpyglassScopeTask task = new SpyglassScopeTask(plugin, weaponService, mock(WeaponRaytracer.class),
-		                                               mock(EffectRunner.class));
-		WeaponSelectiveFireChangeListener listener = new WeaponSelectiveFireChangeListener(
-				plugin, weaponService, mock(WeaponRaytracer.class), mock(EffectRunner.class), task);
-
-		PlayerSwapHandItemsEvent event = new PlayerSwapHandItemsEvent(player, mock(ItemStack.class),
-		                                                              mock(ItemStack.class));
-
-		listener.onSwapHand(event);
-		listener.onSwapHandScopeCleanup(event);
-
-		assertFalse(event.isCancelled(), "a plain SLOWNESS-scoped weapon has no Cancel.Swap_Hands - the swap "
-		                                 + "itself still proceeds, only F's own selective-fire cycling is gated");
-		assertFalse(weapon.getScopeData().isScoped(),
-		           "the weapon must be unscoped before it moves off-hand, or SLOWNESS is stuck applied with no "
-		           + "cleanup path (BZ-EV-09)");
 	}
 
 	/**
@@ -226,31 +197,6 @@ class WeaponSelectiveFireChangeListenerTest {
 
 		ScopeData scopeData = new ScopeData();
 		scopeData.setType(ScopeType.SPYGLASS);
-		scopeData.setScoped(true);
-		weapon.setScopeData(scopeData);
-
-		return weapon;
-	}
-
-	/**
-	 * A default {@code Scope.Type: SLOWNESS} {@link GunWeapon} (BZ-EV-09) - the shipped {@code awp.yml} shape, no
-	 * {@code Scope.Type: spyglass} key - already scoped in, with {@code maxMag} rounds loaded.
-	 */
-	private static GunWeapon slownessScopedGun(int maxMag) {
-		ProjectileData projectile = ProjectileData.builder()
-				.speed(3.0).damage(5.0).consumed(1).perShot(1).cooldown(4).distance(60).particle(false).gravity(0.0)
-				.build();
-		ReloadData     reloadData     = ReloadData.builder().cooldown(20).type(ReloadType.getType("instant")).build();
-		AmmunitionData ammunitionData = new AmmunitionData(WeaponFixtures.ammo("50_bmg"), maxMag, 1, maxMag);
-
-		GunWeapon weapon = new GunWeapon(UUID.randomUUID(), "test_awp", "&fTest AWP", WeaponType.GUN,
-		                                 Material.IRON_HOE, 0, (short) 100, List.of(), false, null,
-		                                 SelectiveFire.SINGLE, 0, projectile, reloadData, ammunitionData);
-		DurabilityData durabilityData = new DurabilityData();
-		durabilityData.setConsumeOnTime(-1);
-		weapon.setDurabilityData(durabilityData);
-
-		ScopeData scopeData = new ScopeData(); // type defaults to ScopeType.SLOWNESS
 		scopeData.setScoped(true);
 		weapon.setScopeData(scopeData);
 

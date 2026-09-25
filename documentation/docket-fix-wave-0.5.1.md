@@ -116,12 +116,16 @@ before merge:
    placeholder text (`BZ-EF-04`).
 5. **`Target: nearby` is now filtered through `DamageRules`** — a `Push`/`Potion`/`Ignite`/`Command(As: player)`
    nearby-target effect skips the shooter and teammates, the same as the direct damage paths already did
-   (`BZ-EF-06`).
+   (`BZ-EF-06`). The filter applies to every effect type, cosmetic ones included (a `Sound` without `At`,
+   `Message`, `Title`, `Action_Bar`, `Camera_Shake`, `Cooldown`), so a thrower no longer receives their own
+   `Target: nearby` explosion sound or message.
 6. **The `Firework` effect type is visual-only and deals no damage to anyone** — shooter, teammates or bystanders
    (`BZ-EF-05`).
-7. **Cosmetic projectile visuals and thrown-grenade display items can no longer be hoppered.** `DROPPED_ITEM`
-   cosmetic visuals and a thrown grenade's display `Item` are both PDC-tagged and refused by hopper pickup; the
-   `FALLING_BLOCK` half was deliberately not covered (`BZ-RT-18`, `BZ-FA-13`).
+7. **Cosmetic projectile visuals and thrown-grenade display items can no longer be hoppered.** A thrown grenade's
+   display `Item` is PDC-tagged and a `DROPPED_ITEM` cosmetic visual is tracked by entity id, and hopper pickup
+   refuses both; every cosmetic visual is also non-persistent, so a chunk unload mid-flight can no longer leave one
+   behind under an id nothing tracks. The `FALLING_BLOCK` half was deliberately not covered (`BZ-RT-18`,
+   `BZ-FA-13`).
 8. **PlaceholderAPI placeholders are read-only.** `%bartizan_*%` never registers a weapon or mutates its ammo,
    durability or fire mode from PAPI's own (possibly async) thread; an item unused since boot reads straight off
    its NBT via a new non-minting lookup (`BZ-HU-03`).
@@ -178,6 +182,24 @@ before merge:
 22. **A `Skins.Named` entry literally called `default` is rejected** with a config warning and ignored — `default`
     is the reserved clear-selection keyword in `/bartizan weapon skin <name|default>` and `BartizanApi.setSkin`
     (`BZ-CM-06`).
+23. **Spread bloom now accumulates.** `Shoot.Spread.Time` is now honoured in ticks as documented (it was misread as
+    milliseconds, so spread reset to `Starting_Spread` on nearly every shot); every weapon with a non-zero
+    `Spread.Change.Base` — the shipped `golden_ak47`, `minigun`, `mp5`, `pistol`, `revolver`, `rifle` and
+    `steyr_aug` — now blooms toward `Change.Bounds` under sustained fire. Re-tune `Time`/`Base` if the old
+    always-reset feel was wanted (`BZ-WM-02`).
+24. **A block mid-`RESTORE` is written back on shutdown.** A block a weapon broke in `RESTORE` mode (the default
+    `Break_Blocks` mode) just before `/stop`, `/reload` or a plugin update is restored to its original block data
+    instead of staying `AIR` for good (`BZ-RT-15`).
+25. **Cosmetic `ROCKET`/`FLARE`/cluster visuals deal no damage of their own.** The vanilla fireball/firework impact
+    damage they used to add on top of the weapon's configured explosion is gone (`BZ-RT-17`).
+26. **Scope and reload no longer leave a player stuck.** A scoped weapon moved off-hand with F or dropped with Q is
+    unscoped at once instead of leaving the player slowed (`BZ-EV-09`); a player who dies mid-reload can fire and
+    scope right after respawning instead of staying blocked for up to a full reload stage (`BZ-EV-10`).
+27. **A `left_click`-trigger gun (the shipped `scout`) right-clicked on an entity now scopes instead of firing**,
+    matching `Shoot.Trigger`'s documented contract (`BZ-EV-14`).
+28. **A scopeless melee weapon's plain left-click at air or a block now swings** instead of silently doing nothing;
+    a scopeless gun's left-click on a block no longer denies the block interaction (`Cancel.Break_Blocks`, default
+    `true`, still cancels the break itself) (`BZ-EV-03`).
 
 ## 4. Deferred, partial and not done
 
@@ -202,3 +224,73 @@ and the whole reactor passed on `mvn -o -q test` after every commit in every wor
 review follow-up rounds. Final count: 1,628 tests across `bartizan-api` and `bartizan-plugin`, 0 failures, 0 errors.
 No `.java`, `.yml` or `pom.xml` file changed as part of writing this documentation — the code this record describes
 was already final at `HEAD` before this pass started.
+
+## Final review
+
+A final review of the merged wave found merge seams between the clusters, a few incomplete fixes and some untested
+wiring; this round fixed them. Each line gives the bug ref, what changed, and whether a player/admin can see it.
+
+- `BZ-EV-01` — swapping a melee weapon away and back (hotbar or F) no longer resets its `Melee.Cooldown`
+  (`clearWeaponState` keeps the cooldown map). User-visible (the swap exploit that cut the crowbar's 900 ms swing to
+  ~100 ms is gone).
+- `BZ-EV-19`/`BZ-RT-19` — an explosion's fatal damage now names its weapon for the nested death event, so blast
+  kills (grenade, rocket, cluster, airstrike) credit the exploding weapon again instead of the thrower's current
+  hand; a claim is no longer recorded for an already-dead victim. User-visible (death message, stats kill,
+  `On_Kill`).
+- `BZ-EV-19` — the fatal-hit attribution and recorded claims now carry their shooter and only credit a killer who
+  fired that weapon (an NPC's shot is no longer credited to a player who merely grazed the victim); a gun hit with
+  `Damage.Fire_Ticks` now claims the burn death that follows. User-visible.
+- `BZ-RT-19` — a blast or hit fully soaked by absorption hearts counts as landed (knockback, fire, stats, claim).
+  User-visible.
+- `BZ-EV-15`/`BZ-EV-09` — an F swap (and a hotbar swap) unscopes only what Bartizan scoped, so a flashbang's
+  `SLOWNESS` survives it; the duplicate F-swap scope cleanup in `WeaponSelectiveFireChangeListener` is gone
+  (`holster()` owns it). User-visible.
+- `BZ-EV-09` — clicking or dragging in the inventory unscopes the main-hand weapon, so moving a scoped weapon out
+  of the held slot no longer leaves the player slowed. User-visible.
+- `BZ-FA-06` — a worn-out (durability 0) biological, beam, throwable or melee weapon is refused like a broken gun.
+  User-visible (only for configs with `On_Shot > 0`; the shipped knife/machete/crowbar wear per landed hit).
+- `BZ-EV-13` — a charge release or flamethrower spray is refused once the weapon sits in the off-hand slot, not
+  only once it left both hands. User-visible.
+- `BZ-WM-04` — quitting no longer evicts a registry entry another online holder of the same uuid is still
+  reloading (closes a parallel-reload ammo dupe for legacy shared-uuid items). User-visible (dupe closed).
+- `BZ-WM-06` — the empty-magazine click gate keys a throwable per player, so one player's empty click no longer
+  mutes another's. User-visible (sound only).
+- `BZ-EV-04` — `Reload`'s own uuid reader (bartizan-api) skips a malformed uuid tag instead of hanging the reload.
+  User-visible.
+- `BZ-RT-15` — a world unload restores that world's mid-`RESTORE` blocks before its chunks are saved (new
+  `BlockDamageManager.restoreWorld(World)`, additive). User-visible.
+- `BZ-RT-06` — the restore task checks the world is loaded before reading the block. Not user-visible.
+- `BZ-RT-18` — cosmetic projectile visuals are non-persistent, so a chunk unload mid-flight leaves nothing behind
+  a hopper could collect; the §3 item 7 wording is corrected. User-visible.
+- `BZ-RT-20` — a contagion spread (and any status application) skips a player `CombatEligibility` rules
+  un-hittable. User-visible for consumers that register one.
+- `BZ-EF-06` — `Target: nearby` honours `CombatEligibility` for every weapon type, not only guns and throwables;
+  the cosmetic-effect scope of the filter is documented in `settings.yml` and §3 item 5. User-visible.
+- `BZ-EF-03` — the status boss bar resends its color/style only when they change. Not user-visible (fewer
+  packets).
+- `BZ-HU-04` — a Citizens player-NPC's death is no longer counted or given a stats file. User-visible (stats).
+- `BZ-CM-01` — give commands report the clamped amount they actually handed over. User-visible (chat message).
+- `BZ-CF-14` — an unknown `Selective_Fire` is warned once, not twice, per non-throwable weapon. User-visible (log).
+- `BZ-CF-13` — a `Break_Blocks` entry with non-numeric hits or the wrong number of parts now warns. User-visible
+  (log).
+- `BZ-EV-18` — a weapon that fails to load releases its `HUD.Reload_Item_Cooldown` Material claim, so no false
+  collision warning names it. User-visible (log).
+- `BZ-NU-01` — `onDisable` calls `PacketBridge.reset()` only on a Keystone that scopes it per plugin (1.11.2+),
+  so a disable/enable no longer pins the dead classloader there; the 1.9.0 floor keeps §3 item 20's behaviour.
+  Not user-visible.
+- `BZ-NU-04`, `BZ-FA-03`, `BZ-FA-06`, `BZ-FA-13`, `BZ-RT-01`, `BZ-RT-14`, `BZ-EV-12`, `BZ-EF-06`, `BZ-EV-19` —
+  tests now drive the real call sites (burst round guard, throwable/biological helper wiring, grenade tagging,
+  raytrace and explosion block damage, flamethrower write-back, throwable `Target: nearby`, nested fatal-blast
+  credit). Not user-visible.
+- `BZ-WM-02`, `BZ-RT-14`, `BZ-RT-15`, `BZ-RT-17`, `BZ-EV-09`/`10`, `BZ-EV-14`, `BZ-EV-03`, `BZ-EV-08`, `BZ-CM-02`
+  — documentation only (§3 items 23–28, `migration.md`, `bartizan-api.md`). `BZ-WE-10`, `BZ-EV-19`, `BZ-EV-06`,
+  `BZ-WM-12` — javadoc only.
+
+Left for a product decision: a throwable type's one shared registry instance can carry a reload across players
+once its magazine depletes (`BZ-FA-03`/`BZ-WM-06`); a non-player NPC shooter still breaks protected blocks
+unchecked (`BZ-RT-01`); an explosion still fires one `BlockBreakEvent` per block, and a shooterless blast none
+(`BZ-RT-01`, the single-`BlockExplodeEvent` fix needs a constructor that changed on 1.21); `GRASS`/`STAINED_CLAY`
+resolve to one XMaterial each (`BZ-RT-09`). `BZ-RT-08` stays by design (tracer from the muzzle, ray from the eye).
+
+After this round `mvn -o -q test` runs 749 tests (177 in `bartizan-api`, 572 in `bartizan-plugin`), all green —
+counted from the surefire reports; the 1,628 figure above does not match a surefire count.

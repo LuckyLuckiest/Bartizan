@@ -9,6 +9,9 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryInteractEvent;
 import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -438,11 +441,36 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
+	 * An inventory click or drag can move a scoped weapon out of the main hand without a held-slot change or an F
+	 * swap (BZ-EV-09), which left it scoped and the player slowed. Opening the inventory to click at all is the
+	 * scope-out point: MONITOR runs before the click is applied, so the main hand still holds the weapon here, and
+	 * {@code unScope(player, false)} is a no-op for an unscoped one.
+	 */
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onInventoryClick(InventoryClickEvent event) {
+		unScopeMainHand(event);
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onInventoryDrag(InventoryDragEvent event) {
+		unScopeMainHand(event);
+	}
+
+	private void unScopeMainHand(InventoryInteractEvent event) {
+		if (!(event.getWhoClicked() instanceof Player player)) return;
+
+		Weapon weapon = weaponService.validateAndGetWeapon(player, player.getInventory().getItemInMainHand());
+		if (weapon != null) weapon.unScope(player, false);
+	}
+
+	/**
 	 * A weapon left the main hand: cleanup + ON_HOLSTER.
 	 */
 	private void holster(Player player, Weapon previousWeapon) {
-		// unscoped and reset recoil for any weapon type
-		previousWeapon.unScope(player, true);
+		// unscoped and reset recoil for any weapon type. bypass=false: only a scope/reload SLOWNESS this plugin applied
+		// (scope() sets scoped=true) is removed - never a flashbang's or another plugin's SLOWNESS on an unscoped
+		// weapon, which a single F press would otherwise strip since BZ-EV-15 routed F through here
+		previousWeapon.unScope(player, false);
 		previousWeapon.getRecoil().resetRecoilPattern();
 
 		clearWeaponState(player, previousWeapon);
@@ -468,7 +496,8 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
-	 * Drops {@code weapon}'s entry from all eight per-weapon tracking maps, stopping any live
+	 * Drops {@code weapon}'s entry from the per-weapon tracking maps (all but {@code meleeCooldowns}, the
+	 * {@code Melee.Cooldown} gate itself), stopping any live
 	 * {@link FullAutoTask}/{@link RepeatingTimer} it finds along the way. Shared by {@link #holster} (a hotbar
 	 * or F swap) and {@code WeaponQuitCleanupListener} (bug docket BZ-EV-01) — without this on quit, a player
 	 * who disconnects mid-AUTO-fire or mid-throwable-charge leaves the task running and calling Bukkit
@@ -486,9 +515,10 @@ public class WeaponInteract implements Listener {
 		equipDelayUntil.remove(weaponUuid);
 		pressHoldState.remove(weaponUuid);
 
-		// drop the melee dedup/cooldown timestamps so a later re-equip doesn't carry stale gating
+		// drop the melee dedup timestamp. meleeCooldowns stays: it is the Melee.Cooldown gate itself, and clearing
+		// it here let a hotbar or F swap skip the cooldown (BZ-EV-01 review); a stale entry only gates the same
+		// weapon's next swing for at most its Cooldown ticks
 		lastMeleeSwingMs.remove(weaponUuid);
-		meleeCooldowns.remove(weaponUuid);
 
 		if (weapon instanceof GunWeapon) {
 			// cancel any active auto fire — removed here rather than left to FullAutoTask#stop's own onCancel
@@ -596,11 +626,12 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
-	 * Empty-magazine gate shared by the biological and beam charge-then-release triggers — both only touch
+	 * Broken/empty-magazine gate shared by the biological and beam charge-then-release triggers — both only touch
 	 * {@link Weapon} members, so one helper covers both weapon categories.
 	 */
 	private boolean startCharge(Weapon weapon, Player player, ChargeController controller) {
-		if (weapon.getAmmunitionData() != null && weapon.isMagazineEmpty()) {
+		// worn out: refused like a broken gun (BZ-FA-06 - On_Shot now wears biological weapons down)
+		if (weapon.isBroken() || weapon.getAmmunitionData() != null && weapon.isMagazineEmpty()) {
 			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);
 			return false;
 		}
@@ -786,7 +817,7 @@ public class WeaponInteract implements Listener {
 	 * players (WeaponService#mintUuid, so the items stack) - keyed by that alone, one player's throw would press-lock
 	 * every other player holding that type (BZ-WM-06), so a throwable's key also folds in the player.
 	 */
-	private static UUID pressKey(Weapon weapon, Player player) {
+	public static UUID pressKey(Weapon weapon, Player player) {
 		UUID weaponUuid = weapon.getUuid();
 		if (!(weapon instanceof ThrowableWeapon)) return weaponUuid;
 

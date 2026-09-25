@@ -190,6 +190,44 @@ class ModifiersSectionParserTest {
 				         && issue.code().equals("modifiers.break_blocks.malformed")));
 	}
 
+	@Test
+	@DisplayName("BZ-CF-13: a Break_Blocks entry with a non-numeric hits value warns instead of vanishing")
+	void breakBlocksNonNumericHits_warns() {
+		ConfigReport report = new ConfigReport();
+		NodeReader   root   = rootReaderFor(report, """
+				Modifiers:
+				   Break_Blocks:
+				      - "GLASS-abc"
+				""");
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+
+		ModifiersSectionParser.apply(root, weapon, report);
+
+		assertTrue(weapon.getModifiersData().getBreakBlocks().isEmpty());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("modifiers.break_blocks.malformed")));
+	}
+
+	@Test
+	@DisplayName("BZ-CF-13: a Break_Blocks entry with the wrong number of parts warns instead of vanishing")
+	void breakBlocksWrongPartCount_warns() {
+		ConfigReport report = new ConfigReport();
+		NodeReader   root   = rootReaderFor(report, """
+				Modifiers:
+				   Break_Blocks:
+				      - "GLASS"
+				""");
+		GunWeapon weapon = WeaponFixtures.gunWeapon(30, 1);
+
+		ModifiersSectionParser.apply(root, weapon, report);
+
+		assertTrue(weapon.getModifiersData().getBreakBlocks().isEmpty());
+		assertTrue(report.issues().stream().anyMatch(
+				issue -> issue.severity() == Severity.WARNING
+				         && issue.code().equals("modifiers.break_blocks.malformed")));
+	}
+
 	private NodeReader rootReaderFor(ConfigReport report, String yaml) {
 		ConfigDocument doc = new ConfigParser().parse(FIXTURE, new StringReader(yaml), report);
 		return NodeReader.of(doc.root(), report);

@@ -14,6 +14,7 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
+import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.bartizan.api.event.WeaponStatusApplyEvent;
 import org.luckyraven.bartizan.api.event.WeaponStatusExpireEvent;
 import org.luckyraven.bartizan.api.event.WeaponStatusExpireEvent.Reason;
@@ -93,6 +94,10 @@ public class StatusEffectService implements BeanLifecycle {
 		int    sealed         = wearableTrait != null ? wearableService.traitLevel(victim, wearableTrait) : 0;
 		int    effectiveLevel = level - sealed;
 		if (effectiveLevel <= 0) return false;
+
+		// a player a consumer ruled un-hittable (downed, ...) catches nothing - a contagion spread reaches here
+		// without ever passing the raytrace's own eligibility filter (BZ-RT-20). Resolved lazily at each use.
+		if (victim instanceof Player player && !CombatEligibility.resolve().canBeHit(player)) return false;
 
 		WeaponStatusApplyEvent event = new WeaponStatusApplyEvent(weapon, shooter, victim, effectiveLevel);
 		Bukkit.getPluginManager().callEvent(event);
@@ -291,9 +296,12 @@ public class StatusEffectService implements BeanLifecycle {
 
 		bar.setProgress(progress);
 		bar.setTitle(formatBossBarText(statusData, status, now));
-		// Re-derived like the title: a re-stack by a different weapon swaps statusData (BZ-EF-03).
-		bar.setColor(parseEnum(BarColor.class, statusData.getBossBar().color(), BarColor.WHITE));
-		bar.setStyle(parseEnum(BarStyle.class, statusData.getBossBar().style(), BarStyle.SOLID));
+		// Re-derived like the title: a re-stack by a different weapon swaps statusData (BZ-EF-03). Only set on a
+		// change - CraftBossBar resends a style packet on every setColor/setStyle, and this runs every status tick.
+		BarColor color = parseEnum(BarColor.class, statusData.getBossBar().color(), BarColor.WHITE);
+		BarStyle style = parseEnum(BarStyle.class, statusData.getBossBar().style(), BarStyle.SOLID);
+		if (bar.getColor() != color) bar.setColor(color);
+		if (bar.getStyle() != style) bar.setStyle(style);
 	}
 
 	private String formatBossBarText(StatusData statusData, ActiveStatus status, long now) {

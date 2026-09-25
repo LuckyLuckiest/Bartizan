@@ -209,6 +209,9 @@ public class WeaponAddon {
 		// that loaded before keeps loading.
 		List<ConfigIssue> fatalIssues = fatalIssues(report);
 		if (!fatalIssues.isEmpty()) {
+			// never registered - release its BZ-EV-18 Material claim, or a later weapon on the same Material warns
+			// about a collision with a weapon that never loaded
+			reloadCooldownMaterials.remove(weapon.getMaterial(), weapon.getName());
 			String errors = fatalIssues.stream().map(ConfigIssue::render).collect(Collectors.joining("; "));
 			throw new InvalidConfigurationException("weapon '" + fileName + "' has configuration errors: " + errors);
 		}
@@ -287,7 +290,8 @@ public class WeaponAddon {
 			// SelectiveFireSectionParser.parse, kept under the same "selectiveFire.unknown_mode" code.
 			Optional<SelectiveFire> selectiveFire = SelectiveFire.fromKey(selectiveFireString);
 			weapon.setCurrentSelectiveFire(selectiveFire.orElse(SelectiveFire.AUTO));
-			if (selectiveFire.isEmpty()) {
+			// every other category's parser already warned via SelectiveFireSectionParser.parse
+			if (selectiveFire.isEmpty() && weapon.getCategory() == WeaponType.THROWABLE) {
 				ConfigNode node = shoot.get("Selective_Fire").node();
 				report.add(Severity.WARNING, node != null ? node.location() : shoot.mapping().location(),
 				           "Shoot.Selective_Fire",

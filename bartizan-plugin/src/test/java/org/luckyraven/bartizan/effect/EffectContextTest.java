@@ -13,8 +13,16 @@ import org.bukkit.scoreboard.Team;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.bukkit.Server;
+import org.bukkit.plugin.RegisteredServiceProvider;
+import org.bukkit.plugin.ServicesManager;
+import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
+import org.luckyraven.bartizan.api.weapon.MeleeWeapon;
+import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
+import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.DamageData;
+import org.luckyraven.bartizan.api.weapon.dto.ThrowableData;
 import org.mockito.MockedStatic;
 
 import java.util.List;
@@ -62,13 +70,30 @@ class EffectContextTest {
 	 * Resolves {@code Target: nearby} for a context around a mocked world holding {@code shooter}, {@code teammate}
 	 * and {@code stranger}, with {@code shooter} and {@code teammate} on one scoreboard team.
 	 */
-	private static List<LivingEntity> nearby(@Nullable GunWeapon weapon, Player shooter, Player teammate,
+	private static List<LivingEntity> nearby(@Nullable Weapon weapon, Player shooter, Player teammate,
 	                                         Zombie stranger) {
+		return nearby(weapon, shooter, teammate, stranger, null);
+	}
+
+	/**
+	 * As above, with {@code eligibility} registered as the consumer's {@link CombatEligibility} when non-null.
+	 */
+	private static List<LivingEntity> nearby(@Nullable Weapon weapon, Player shooter, Player teammate,
+	                                         Zombie stranger, @Nullable CombatEligibility eligibility) {
 		World    world  = mock(World.class);
 		Location impact = new Location(world, 0, 64, 0);
 		when(world.getNearbyEntities(impact, 4.0, 4.0, 4.0)).thenReturn(List.<Entity>of(shooter, teammate, stranger));
 
 		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			if (eligibility != null) {
+				@SuppressWarnings("unchecked")
+				RegisteredServiceProvider<CombatEligibility> registration = mock(RegisteredServiceProvider.class);
+				when(registration.getProvider()).thenReturn(eligibility);
+				ServicesManager servicesManager = mock(ServicesManager.class);
+				when(servicesManager.getRegistration(CombatEligibility.class)).thenReturn(registration);
+				bukkit.when(Bukkit::getServer).thenReturn(mock(Server.class));
+				bukkit.when(Bukkit::getServicesManager).thenReturn(servicesManager);
+			}
 			ScoreboardManager manager    = mock(ScoreboardManager.class);
 			Scoreboard        scoreboard = mock(Scoreboard.class);
 			Team              team       = mock(Team.class);
@@ -105,6 +130,37 @@ class EffectContextTest {
 		List<LivingEntity> all = List.of(shooter, teammate, stranger);
 		assertEquals(all, nearby(null, shooter, teammate, stranger));
 		assertEquals(all, nearby(gun(false, false), shooter, teammate, stranger));
+	}
+
+	@Test
+	@DisplayName("Target: nearby applies a throwable's Owner_Immunity/Ignore_Teams too (BZ-EF-06)")
+	void nearby_throwable_filtersThroughDamageRules() {
+		Player shooter  = player("Alice");
+		Player teammate = player("Bob");
+		Zombie stranger = mock(Zombie.class);
+		when(stranger.getUniqueId()).thenReturn(UUID.randomUUID());
+
+		ThrowableData data = new ThrowableData();
+		data.setOwnerImmunity(true);
+		data.setIgnoreTeams(true);
+		ThrowableWeapon grenade = mock(ThrowableWeapon.class);
+		when(grenade.getThrowableData()).thenReturn(data);
+
+		assertEquals(List.of(stranger), nearby(grenade, shooter, teammate, stranger));
+	}
+
+	@Test
+	@DisplayName("Target: nearby skips a player CombatEligibility rules un-hittable, for every weapon type (BZ-EF-06)")
+	void nearby_meleeWeapon_skipsIneligiblePlayer() {
+		Player shooter  = player("Alice");
+		Player downed   = player("Bob");
+		Zombie stranger = mock(Zombie.class);
+		when(stranger.getUniqueId()).thenReturn(UUID.randomUUID());
+
+		CombatEligibility notBob = player -> player != downed;
+
+		assertEquals(List.of(shooter, stranger),
+		             nearby(mock(MeleeWeapon.class), shooter, downed, stranger, notBob));
 	}
 
 }

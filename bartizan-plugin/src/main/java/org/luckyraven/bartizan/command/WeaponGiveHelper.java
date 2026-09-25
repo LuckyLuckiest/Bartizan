@@ -29,12 +29,14 @@ final class WeaponGiveHelper {
 	 * @param name weapon file name (already lower-cased by the caller).
 	 * @param amount clamped to {@code [1, MAX_AMOUNT]} before use.
 	 *
-	 * @return {@code false} when {@code name} is not a configured weapon; the receiver's inventory is untouched.
+	 * @return how many were actually handed over (the clamped amount) - what the success message must report
+	 * 		(BZ-CM-01); {@code 0} when {@code name} is not a configured weapon, and the receiver's inventory is
+	 * 		untouched.
 	 */
-	static boolean give(WeaponManager weaponManager, Player receiver, String name, int amount) {
+	static int give(WeaponManager weaponManager, Player receiver, String name, int amount) {
 		// never registered here - validateAndGetWeapon registers each item under its own uuid on first use
 		Weapon weapon = weaponManager.createTransientWeapon(name);
-		if (weapon == null) return false;
+		if (weapon == null) return 0;
 
 		amount = Math.max(1, Math.min(amount, MAX_AMOUNT));
 
@@ -68,7 +70,7 @@ final class WeaponGiveHelper {
 			receiver.getWorld().dropItemNaturally(receiver.getLocation(), item);
 		}
 
-		return true;
+		return amount;
 	}
 
 }

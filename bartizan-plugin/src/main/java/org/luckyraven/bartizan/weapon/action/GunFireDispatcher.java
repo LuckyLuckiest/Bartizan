@@ -42,7 +42,9 @@ public final class GunFireDispatcher {
 
 	/**
 	 * Weapons with a pending {@code Weapon_Consumed.Time} countdown (BZ-EV-06): the first shot starts it, later shots
-	 * while it runs don't stack another one. The countdown drops its own entry when it ends.
+	 * while it runs don't stack another one. The countdown drops its own entry when it ends. Removal is held-only:
+	 * the end callback removes the weapon only if it is still in a hand ({@code replaceHeldWeapon}); a weapon moved
+	 * out of both hands by then is kept, and its next shot starts a fresh countdown.
 	 */
 	private static final Set<UUID> consumeCountdowns = ConcurrentHashMap.newKeySet();
 

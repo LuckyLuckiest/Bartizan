@@ -8,6 +8,7 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 import org.luckyraven.keystone.item.ItemBuilder;
@@ -69,9 +70,10 @@ public class IncendiaryAction {
 	 * magazine empties.
 	 */
 	public boolean fireOnce(Player player) {
-		// the flamethrower left both hands (dropped, moved into a container): no spray, and false stops the AUTO
-		// loop instead of letting it run on until the release watchdog notices (BZ-EV-13)
-		if (weaponService.getHeldHand(player, weapon.getUuid()) == null) return false;
+		// the flamethrower left the main hand (dropped, moved into a container or into the off-hand slot): no spray,
+		// and false stops the AUTO loop instead of letting it run on until the release watchdog notices (BZ-EV-13;
+		// off-hand weapons are inert)
+		if (weaponService.getHeldHand(player, weapon.getUuid()) != EquipmentSlot.HAND) return false;
 
 		if (weapon.isBroken()) {
 			EmptyMagSoundGate.play(plugin, player, weapon, effectRunner);

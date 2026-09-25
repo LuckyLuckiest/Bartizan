@@ -160,24 +160,30 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 		for (int i = 0; i < perShot; i++) {
 			int interval = i == 0 ? 0 : cooldown;
 
-			burstTimer.addIntervalTaskPair(interval, timer -> {
-				// bug docket BZ-NU-04: the shooter may have died or been destroy()'d between rounds of this same
-				// burst - stop here instead of firing against a dead/removed entity. Safe to call from inside the
-				// body: SequenceTimer runs it outside its monitor (see that class's javadoc).
-				if (isShooterGone()) {
-					timer.stop();
-					return;
-				}
-
-				fireRound(gun);
-
-				if (weapon.isMagazineEmpty()) {
-					triggerReload();
-				}
-			});
+			burstTimer.addIntervalTaskPair(interval, timer -> burstRound(gun, timer));
 		}
 
 		burstTimer.start(false);
+	}
+
+	/**
+	 * One scheduled round of {@link #scheduleBurst}. Package-private so {@code NpcWeaponCadenceTest} pins the
+	 * dead-shooter guard without a live scheduler.
+	 */
+	void burstRound(GunWeapon gun, SequenceTimer timer) {
+		// bug docket BZ-NU-04: the shooter may have died or been destroy()'d between rounds of this same burst -
+		// stop here instead of firing against a dead/removed entity. Safe to call from inside the body:
+		// SequenceTimer runs it outside its monitor (see that class's javadoc).
+		if (isShooterGone()) {
+			timer.stop();
+			return;
+		}
+
+		fireRound(gun);
+
+		if (weapon.isMagazineEmpty()) {
+			triggerReload();
+		}
 	}
 
 	/**

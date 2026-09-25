@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,10 +42,11 @@ import static org.mockito.Mockito.when;
 class WeaponInteractTest {
 
 	private static final List<String> TRACKING_MAP_FIELDS = List.of("continuousFire", "equipDelayUntil",
-			"pressHoldState", "releaseCallbacks", "autoTasks", "activeTasks", "meleeCooldowns", "lastMeleeSwingMs");
+			"pressHoldState", "releaseCallbacks", "autoTasks", "activeTasks", "lastMeleeSwingMs");
 
 	@Test
-	@DisplayName("clearWeaponState drops the weapon's entry from all eight maps and stops its live tasks")
+	@DisplayName("clearWeaponState drops the weapon's entry from the tracking maps and stops its live tasks, "
+			+ "but keeps its Melee.Cooldown entry")
 	void clearWeaponState_removesEntryFromEveryMapAndStopsLiveTasks() throws Exception {
 		WeaponInteract interact = newInteract();
 
@@ -70,6 +72,9 @@ class WeaponInteractTest {
 			assertFalse(mapField(interact, fieldName).containsKey(weaponUuid),
 			           fieldName + " must no longer track the quitting player's weapon");
 		}
+		// meleeCooldowns is the Melee.Cooldown gate itself, and clearWeaponState also runs on every hotbar/F swap -
+		// clearing it let a swap skip the cooldown (BZ-EV-01 review)
+		assertTrue(mapField(interact, "meleeCooldowns").containsKey(weaponUuid));
 
 		verify(autoTask).stop();
 		verify(activeTask).stop();

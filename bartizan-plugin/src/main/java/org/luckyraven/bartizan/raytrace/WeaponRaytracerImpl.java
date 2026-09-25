@@ -556,7 +556,8 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 		if (hit instanceof LivingEntity living) {
 			living.setNoDamageTicks(0);
 
-			double healthBefore = living.getHealth();
+			// absorption counted too: a hit fully soaked by absorption hearts still landed (BZ-RT-19 review)
+			double healthBefore = effectiveHealth(living);
 
 			// Damage.Knockback (gate HF, §6): saved before living.damage() so a configured value of 0 can
 			// override vanilla knockback back to zero; absent (null) leaves vanilla knockback untouched.
@@ -567,7 +568,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 			// BZ-EV-19: names the weapon dealing this specific damage() call for any PlayerDeathEvent Bukkit fires
 			// synchronously nested inside it — the only way to attribute a slow rocket/flare's fatal hit correctly
 			// once the shooter has swapped weapons since firing (the WeaponEntityDamageEvent below fires too late).
-			FatalDamageAttribution.set(weapon.getName());
+			FatalDamageAttribution.set(weapon.getName(), shooter);
 			try {
 				damageIgnoringInvulnerability(living, event.getDamage(), shooter);
 			} finally {
@@ -578,7 +579,7 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 			// If health didn't decrease, the damage was blocked (e.g. Citizens spawn protection).
 			// Skip all post-damage effects — the hit didn't land.
 			boolean damageBlocked = living.isValid() && !living.isDead()
-			                        && living.getHealth() >= healthBefore;
+			                        && effectiveHealth(living) >= healthBefore;
 			if (damageBlocked) {
 				return;
 			}
@@ -841,6 +842,13 @@ public class WeaponRaytracerImpl implements WeaponRaytracer, BeanLifecycle {
 
 		Vector closest = a.clone().add(ab.multiply(t));
 		return point.distance(closest);
+	}
+
+	/**
+	 * Health plus absorption hearts - what a hit actually has to reduce to have landed.
+	 */
+	static double effectiveHealth(LivingEntity living) {
+		return living.getHealth() + living.getAbsorptionAmount();
 	}
 
 	private void applyBlockBreak(Block block, Weapon weapon, @Nullable LivingEntity shooter) {

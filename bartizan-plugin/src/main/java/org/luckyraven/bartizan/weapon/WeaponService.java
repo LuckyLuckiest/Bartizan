@@ -226,9 +226,10 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	/**
 	 * The shared, read-only catalogue entry for {@code type} exactly as it was parsed from its YAML file.
 	 * <p/>
-	 * Unlike {@link #getWeapon(Player, UUID, String, boolean)} this never mints a uuid and never registers anything, so it is the correct
-	 * lookup for every read-only caller (display names, death messages, sign validation). The returned instance is
-	 * shared — never hand it to a player and never mutate it; use {@link #createTransientWeapon(String)} for that.
+	 * Unlike {@link #getWeapon(Player, UUID, String, boolean)} this never mints a uuid and never
+	 * registers anything, so it is the correct lookup for every read-only caller (display names, death messages,
+	 * sign validation). The returned instance is shared — never hand it to a player and never mutate it; use
+	 * {@link #createTransientWeapon(String)} for that.
 	 *
 	 * @param type weapon file name.
 	 *
@@ -393,15 +394,18 @@ public abstract class WeaponService implements Comparator<Weapon>, WeaponCatalog
 	 * Drops the registry entry of every weapon item in {@code player}'s inventory, so a player who left stops pinning
 	 * their weapons for the rest of the uptime (BZ-WM-04); a rejoin rebuilds each from its NBT on first use. Called
 	 * on quit after the quit cleanup has stopped the held weapon's reload and unscoped it. A throwable's entry is
-	 * kept: its uuid is shared per type by every holder (see {@link #mintUuid}), so it is bounded anyway.
+	 * kept: its uuid is shared per type by every holder (see {@link #mintUuid}), so it is bounded anyway. So is an
+	 * entry still reloading: the quitter's own held reload was already stopped, so that reload belongs to another
+	 * online holder of the same uuid (legacy items, 0.5.0's give stamped one uuid on every stack) - evicting it let
+	 * that holder mint a fresh instance and run a second, parallel reload (the BZ-WM-13 ammo dupe).
 	 */
 	public void forgetWeapons(Player player) {
 		for (ItemStack item : player.getInventory().getContents()) {
 			UUID uuid = getWeaponUUID(item);
 			if (uuid == null) continue;
 
-			weapons.computeIfPresent(uuid,
-			                         (key, weapon) -> weapon.getCategory() == WeaponType.THROWABLE ? weapon : null);
+			weapons.computeIfPresent(uuid, (key, weapon) ->
+					weapon.getCategory() == WeaponType.THROWABLE || weapon.isReloading() ? weapon : null);
 		}
 	}
 

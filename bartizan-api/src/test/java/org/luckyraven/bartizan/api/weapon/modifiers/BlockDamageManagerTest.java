@@ -16,6 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.testsupport.BukkitRegistryFixture;
 import org.luckyraven.bartizan.api.weapon.modifiers.action.BlockBreakModifier;
+import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
 
 import java.util.Collections;
@@ -26,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -240,6 +242,77 @@ class BlockDamageManagerTest {
 			assertDoesNotThrow(manager::clearAll);
 			verify(location, never()).getBlock();
 		}
+	}
+
+	/** Breaks {@code block} in RESTORE mode, returning the pending restore task the scheduler was handed. */
+	private Runnable breakForRestore(BlockDamageManager manager, Block block, MockedStatic<org.bukkit.Bukkit> bukkit) {
+		bukkit.when(org.bukkit.Bukkit::getPluginManager).thenReturn(mock(PluginManager.class));
+		BukkitScheduler scheduler = mock(BukkitScheduler.class);
+		bukkit.when(org.bukkit.Bukkit::getScheduler).thenReturn(scheduler);
+		when(scheduler.runTaskLater(any(), any(Runnable.class), anyLong())).thenReturn(mock(BukkitTask.class));
+
+		BlockBreakModifier modifier = new BlockBreakModifier(Set.of(block.getType()), 1, BreakMode.RESTORE);
+		assertTrue(manager.applyDamage(block, modifier, mock(Player.class)));
+
+		ArgumentCaptor<Runnable> restoreTask = ArgumentCaptor.forClass(Runnable.class);
+		verify(scheduler).runTaskLater(any(), restoreTask.capture(), anyLong());
+		return restoreTask.getValue();
+	}
+
+	@Test
+	@DisplayName("BZ-RT-15: restoreWorld writes a mid-restore block back before its world unloads")
+	void restoreWorld_writesBrokenBlockBack() {
+		BlockDamageManager manager = manager();
+		Block              block   = block(Material.GLASS);
+		Location           location = block.getLocation();
+		World              world    = location.getWorld();
+		BlockData          original = block.getBlockData();
+
+		try (MockedStatic<org.bukkit.Bukkit> bukkit = mockStatic(org.bukkit.Bukkit.class)) {
+			breakForRestore(manager, block, bukkit);
+		}
+		// the break set it to AIR; the unload is about to save that
+		when(block.getType()).thenReturn(Material.AIR);
+		when(location.getBlock()).thenReturn(block);
+
+		manager.restoreWorld(world);
+
+		verify(block).setBlockData(original);
+	}
+
+	@Test
+	@DisplayName("BZ-RT-15: restoreWorld leaves another world's mid-restore block alone")
+	void restoreWorld_otherWorld_untouched() {
+		BlockDamageManager manager = manager();
+		Block              block   = block(Material.GLASS);
+
+		try (MockedStatic<org.bukkit.Bukkit> bukkit = mockStatic(org.bukkit.Bukkit.class)) {
+			breakForRestore(manager, block, bukkit);
+		}
+
+		manager.restoreWorld(mock(World.class));
+
+		verify(block, never()).setBlockData(any());
+	}
+
+	@Test
+	@DisplayName("BZ-RT-06: the restore task checks the world is loaded before reading the block")
+	void restoreTask_unloadedWorld_neverReadsBlock() {
+		BlockDamageManager manager  = manager();
+		Block              block    = block(Material.GLASS);
+		Location           location = block.getLocation();
+
+		Runnable restoreTask;
+		try (MockedStatic<org.bukkit.Bukkit> bukkit = mockStatic(org.bukkit.Bukkit.class)) {
+			restoreTask = breakForRestore(manager, block, bukkit);
+		}
+
+		when(location.isWorldLoaded()).thenReturn(false);
+		clearInvocations(block);
+		restoreTask.run();
+
+		verify(block, never()).getType();
+		verify(block, never()).setBlockData(any());
 	}
 
 }

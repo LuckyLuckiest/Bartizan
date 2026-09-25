@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -37,12 +36,24 @@ import static org.mockito.Mockito.when;
  */
 class WearableGiveCommandTest {
 
+	/** What the helper reported handing over on the last {@link #give} - the amount the success message quotes. */
+	private int reported;
+
 	@Test
 	@DisplayName("a negative amount is clamped instead of throwing NegativeArraySizeException")
 	void negativeAmount_isClampedNotThrown() throws Exception {
 		ItemStack[] given = give(-100);
 
 		assertEquals(1, given.length, "a clamped negative amount must still hand over one stack");
+		assertEquals(1, reported, "the success message must quote the clamped amount, not -100 (BZ-CM-01)");
+	}
+
+	@Test
+	@DisplayName("a huge amount reports the clamped amount actually handed over")
+	void hugeAmount_reportsClampedAmount() throws Exception {
+		give(2_000_000_000);
+
+		assertEquals(2304, reported, "the success message must quote the clamped amount (BZ-CM-01)");
 	}
 
 	@Test
@@ -91,8 +102,7 @@ class WearableGiveCommandTest {
 					.getDeclaredMethod("giveWearable", Player.class, String.class, int.class);
 			giveWearable.setAccessible(true);
 
-			boolean gave = (boolean) giveWearable.invoke(command, player, "chestplate", amount);
-			assertTrue(gave);
+			reported = (int) giveWearable.invoke(command, player, "chestplate", amount);
 
 			ArgumentCaptor<ItemStack[]> captor = ArgumentCaptor.forClass(ItemStack[].class);
 			verify(inventory).addItem(captor.capture());

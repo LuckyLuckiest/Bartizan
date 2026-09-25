@@ -228,6 +228,63 @@ class WeaponAddonTest {
 	}
 
 	/**
+	 * BZ-EV-18 review: the Material claim is recorded while parsing, before the fatal ammo check - a weapon that then
+	 * failed to load kept it, and the next weapon on that Material was warned about a collision with a weapon that
+	 * never loaded.
+	 */
+	@Test
+	@DisplayName("registerWeapon: a weapon that fails to load releases its HUD.Reload_Item_Cooldown Material claim")
+	void registerWeapon_failedLoad_releasesReloadCooldownMaterialClaim() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+		WeaponAddon       weaponAddon       = new WeaponAddon(null);
+
+		File broken = writeWeaponFile("broken_claim.yml", """
+				Information:
+				   Name: "&7Broken&r"
+				   Category: melee
+				   Material: IRON_HOE
+				   Durability:
+				      Base: 100
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+
+				Ammunition:
+				   Capacity: 6
+				   Ammo_Type: "does_not_exist"
+
+				HUD:
+				   Reload_Item_Cooldown: true
+				""");
+		File loaded = writeWeaponFile("loaded_claim.yml", """
+				Information:
+				   Name: "&7Loaded&r"
+				   Category: melee
+				   Material: IRON_HOE
+				   Durability:
+				      Base: 100
+
+				Attack:
+				   Damage: 5.0
+				   Range: 2.5
+
+				HUD:
+				   Reload_Item_Cooldown: true
+				""");
+
+		FileHandler brokenHandler = new FileHandler(plugin, broken);
+		assertThrows(InvalidConfigurationException.class,
+		             () -> weaponAddon.registerWeapon(ammunitionManager, brokenHandler));
+		ConfigReport report = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, loaded));
+
+		assertFalse(report.issues().stream().anyMatch(
+				            issue -> issue.code().equals("hud.reload_item_cooldown_material_collision")),
+		            "a weapon that never loaded must not hold the Material claim");
+	}
+
+	/**
 	 * Gate {@code BZ-CF-02}: {@code registerWeapon} used to return immediately once a {@code Config_Version} key
 	 * was present - before any section was parsed, before the {@link ConfigReport} was logged, and before the
 	 * weapon was put into the catalogue map. An ordinary versioning habit for a config author therefore made the
@@ -450,10 +507,13 @@ class WeaponAddonTest {
 		WeaponAddon  weaponAddon = new WeaponAddon(null);
 		ConfigReport report      = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, weaponFile));
 
-		assertTrue(report.issues().stream().anyMatch(
-				           issue -> issue.severity() == Severity.WARNING
-				                    && issue.code().equals("selectiveFire.unknown_mode")),
-		           "expected a selectiveFire.unknown_mode WARNING for 'sinlge'");
+		// exactly one: GunWeaponParser's SelectiveFireSectionParser already warns, and applyOptionalShootConfig's
+		// own re-read used to add an identical second line (only a throwable's parser skips the shared parser)
+		assertEquals(1, report.issues().stream()
+		                      .filter(issue -> issue.severity() == Severity.WARNING
+		                                       && issue.code().equals("selectiveFire.unknown_mode"))
+		                      .count(),
+		             "expected exactly one selectiveFire.unknown_mode WARNING for 'sinlge'");
 
 		Weapon weapon = weaponAddon.getWeapon("bad_selective_fire");
 		assertNotNull(weapon);

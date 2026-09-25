@@ -27,6 +27,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * BZ-FA-03: {@code ThrowableAction.activate()} never called {@code weapon.consumeShot()}, so a throwable authored
@@ -89,6 +90,7 @@ class ThrowableActionAmmoTest {
 		EffectRunner  effectRunner  = mock(EffectRunner.class);
 		Player        player        = mock(Player.class);
 		JavaPlugin    plugin        = mock(JavaPlugin.class);
+		when(player.getUniqueId()).thenReturn(UUID.randomUUID()); // EmptyMagSoundGate keys a throwable per player
 
 		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
 			bukkit.when(Bukkit::getScheduler).thenReturn(mock(BukkitScheduler.class));

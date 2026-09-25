@@ -69,8 +69,9 @@ public class MeleeAction {
 	public boolean activate(Player player) {
 		MeleeData data = weapon.getMeleeData();
 
-		// empty-mag guard — only applies to melee weapons with ammo configured
-		if (weapon.getReloadData() != null && weapon.isMagazineEmpty()) {
+		// empty-mag guard — only applies to melee weapons with ammo configured. A worn-out weapon
+		// (applyOnHitDurability took it to 0) is refused the same way, like a broken gun (BZ-FA-06).
+		if (weapon.isBroken() || weapon.getReloadData() != null && weapon.isMagazineEmpty()) {
 			EffectContext emptyCtx = EffectContext.builder().weapon(weapon).source(player).build();
 			effectRunner.run(weapon, EffectHook.ON_EMPTY, emptyCtx);
 			return false;
