@@ -58,6 +58,14 @@ public final class DebugCommand extends Command {
 	protected void initializeArguments() {
 		Argument weapon = new Argument(bartizan, "weapon", getArgumentTree(), (argument, sender, args) -> {
 			Collection<Weapon> values = weaponManager.getWeapons().values();
+
+			// The registry is rebuilt from item NBT lazily on first use (WeaponManager javadoc), so it's still
+			// empty right after boot - reply instead of silently sending nothing (gi=67).
+			if (values.isEmpty()) {
+				sender.sendMessage("No weapons loaded.");
+				return;
+			}
+
 			for (Weapon weaponInstance : values) {
 				sender.sendMessage(weaponInstance.getUuid().toString());
 			}
