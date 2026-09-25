@@ -140,7 +140,7 @@ public final class StatsCommand extends Command {
 		sender.sendMessage(formatter.formatToJson(BartizanChatUtil.color(body), " ".repeat(3)));
 	}
 
-	private String totals(String name, PlayerStats stats) {
+	static String totals(String name, PlayerStats stats) {
 		int    shots = 0, hits = 0, headshots = 0, kills = 0, assists = 0;
 		double damage = 0, longest = 0;
 
@@ -169,9 +169,11 @@ public final class StatsCommand extends Command {
 
 		if (!stats.weapons.isEmpty()) {
 			info.append("\n&7Weapons&8:");
+			// The shots/hits/kills clause is quoted (JsonFormatter.formatToJson breaks a line at every unquoted
+			// comma) - same convention AmmunitionInfoCommand.buildInfo uses for a comma ammo id.
 			stats.weapons.forEach((weaponName, stat) -> info.append("\n &8- &e").append(weaponName)
-			        .append(" &8(&7").append(stat.shots).append(" shots, ").append(stat.hits).append(" hits, ")
-			        .append(stat.kills).append(" kills&8)"));
+			        .append(" &8(&7\"").append(stat.shots).append(" shots, ").append(stat.hits).append(" hits, ")
+			        .append(stat.kills).append(" kills\"&8)"));
 		}
 
 		return info.toString();

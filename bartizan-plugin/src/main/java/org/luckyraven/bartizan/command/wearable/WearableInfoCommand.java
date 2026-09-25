@@ -94,6 +94,16 @@ class WearableInfoCommand extends SubArgument {
 	}
 
 	private void sendInfo(Player player, Wearable wearable) {
+		JsonFormatter jsonFormatter = new JsonFormatter();
+		player.sendMessage(jsonFormatter.formatToJson(BartizanChatUtil.color(buildInfo(wearable)), " ".repeat(3)));
+	}
+
+	/**
+	 * The joined traits list is quoted when there's more than one: {@link JsonFormatter#formatToJson} breaks a
+	 * line at every unquoted comma, same convention {@code AmmunitionInfoCommand.buildInfo} uses for a comma ammo
+	 * id.
+	 */
+	static String buildInfo(Wearable wearable) {
 		StringBuilder traitsBuilder = new StringBuilder();
 		Set<String>   traits        = wearable.traits();
 
@@ -104,16 +114,12 @@ class WearableInfoCommand extends SubArgument {
 			for (String traitKey : traits) {
 				joiner.add("&b" + traitKey + " &7(" + wearable.traitLevel(traitKey) + ")");
 			}
-			traitsBuilder.append(joiner);
+			traitsBuilder.append('"').append(joiner).append('"');
 		}
 
-		String info = "&7Key&8: &b" + wearable.getWearableKey() + "\n&7Name&8: &b" + wearable.getName() +
-		              "\n&7Material&8: &b" + wearable.getMaterial().name() + "\n&7Base Reduction&8: &b" +
-		              (int) (wearable.getBaseDamageReduction() * 100) + "%" + "\n&7Traits&8: " + traitsBuilder;
-
-		JsonFormatter jsonFormatter = new JsonFormatter();
-
-		player.sendMessage(jsonFormatter.formatToJson(BartizanChatUtil.color(info), " ".repeat(3)));
+		return "&7Key&8: &b" + wearable.getWearableKey() + "\n&7Name&8: &b" + wearable.getName() +
+		       "\n&7Material&8: &b" + wearable.getMaterial().name() + "\n&7Base Reduction&8: &b" +
+		       (int) (wearable.getBaseDamageReduction() * 100) + "%" + "\n&7Traits&8: " + traitsBuilder;
 	}
 
 }

@@ -13,14 +13,18 @@ import org.luckyraven.bartizan.Bartizan;
 import org.luckyraven.bartizan.api.wearable.Wearable;
 import org.luckyraven.bartizan.file.BartizanMessages;
 import org.luckyraven.bartizan.file.BartizanSettings;
+import org.luckyraven.bartizan.util.BartizanChatUtil;
 import org.luckyraven.bartizan.wearable.WearableAddon;
 import org.luckyraven.keystone.command.argument.Argument;
+import org.luckyraven.keystone.datastructure.JsonFormatter;
 import org.luckyraven.keystone.datastructure.Tree;
 import org.luckyraven.keystone.message.MessageProvider;
 import org.mockito.MockedStatic;
 
 import java.lang.reflect.Field;
 import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -138,6 +142,32 @@ class WearableInfoCommandTest {
 		name.getAction().accept(name, sender, new String[]{"", "", "missing"});
 
 		verify(player).sendMessage(anyString());
+	}
+
+	/**
+	 * gi=63: {@link JsonFormatter#formatToJson} breaks a line at every unquoted comma - the traits joiner in
+	 * {@link WearableInfoCommand#buildInfo} joins with {@code "&7, "}, so two or more traits split one wearable's
+	 * Traits line into several.
+	 */
+	@Test
+	@DisplayName("multiple traits survive the info formatter on one line")
+	void multipleTraits_stayOnOneLine() throws Exception {
+		primeMoneySymbol();
+
+		Wearable wearable = mock(Wearable.class);
+		when(wearable.getWearableKey()).thenReturn("police_vest");
+		when(wearable.getName()).thenReturn("&7Police Vest&r");
+		when(wearable.getMaterial()).thenReturn(Material.IRON_CHESTPLATE);
+		when(wearable.getBaseDamageReduction()).thenReturn(0.1);
+		when(wearable.traits()).thenReturn(new LinkedHashSet<>(List.of("fire_resist", "speed")));
+		when(wearable.traitLevel("fire_resist")).thenReturn(1);
+		when(wearable.traitLevel("speed")).thenReturn(2);
+
+		String rendered = new JsonFormatter().formatToJson(
+				BartizanChatUtil.color(WearableInfoCommand.buildInfo(wearable)), " ".repeat(3));
+
+		// Key / Name / Material / Base Reduction / Traits = 5 lines when the traits clause stays on one line.
+		assertEquals(5, rendered.lines().count(), rendered);
 	}
 
 }
