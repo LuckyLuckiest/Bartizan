@@ -9,6 +9,7 @@ import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.configuration.parser.AmmunitionSectionParser.ParsedAmmo;
 import org.luckyraven.keystone.persistence.config.ConfigDocument;
+import org.luckyraven.keystone.persistence.config.ConfigIssue;
 import org.luckyraven.keystone.persistence.config.ConfigParser;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.NodeReader;
@@ -150,6 +151,41 @@ class AmmunitionSectionParserTest {
 		assertTrue(report.hasErrors());
 		assertTrue(report.issues().stream().anyMatch(
 				issue -> issue.severity() == Severity.ERROR && issue.code().equals("ammo.unknown_type")));
+	}
+
+	@Test
+	@DisplayName("unknown Ammo_Type is reported at the Ammo_Type line, naming the registered ids")
+	void unknownAmmoType_reportedAtValueLineWithRegisteredIds() {
+		parser.parse(rootReaderFor("""
+				Ammunition:
+				   Capacity: 6
+				   Ammo_Type: plasma
+				"""), report);
+
+		ConfigIssue issue = unknownTypeIssue();
+		assertEquals(3, issue.at().line(), "must point at Ammo_Type, not the section's first key (Capacity)");
+		assertTrue(issue.message().contains("(registered: [9mm, slugs])"), issue.message());
+	}
+
+	@Test
+	@DisplayName("unknown id inside Types: is reported at that list item's line")
+	void unknownTypeInList_reportedAtItemLine() {
+		parser.parse(rootReaderFor("""
+				Ammunition:
+				   Capacity: 6
+				   Types:
+				      - 9mm
+				      - plasma
+				"""), report);
+
+		assertEquals(5, unknownTypeIssue().at().line());
+	}
+
+	private ConfigIssue unknownTypeIssue() {
+		return report.issues().stream()
+		             .filter(issue -> issue.code().equals("ammo.unknown_type"))
+		             .findFirst()
+		             .orElseThrow();
 	}
 
 	@Test

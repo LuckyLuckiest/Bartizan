@@ -1,9 +1,12 @@
 package org.luckyraven.bartizan.configuration.parser;
 
 import org.jetbrains.annotations.Nullable;
+import org.luckyraven.keystone.persistence.config.ConfigNode;
 import org.luckyraven.keystone.persistence.config.ConfigReport;
 import org.luckyraven.keystone.persistence.config.MappingNode;
 import org.luckyraven.keystone.persistence.config.NodeReader;
+import org.luckyraven.keystone.persistence.config.ScalarNode;
+import org.luckyraven.keystone.persistence.config.SequenceNode;
 import org.luckyraven.keystone.persistence.config.Severity;
 import org.luckyraven.bartizan.api.ammo.Ammunition;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
@@ -15,6 +18,7 @@ import org.luckyraven.bartizan.api.weapon.reload.ReloadType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.TreeSet;
 
 /**
  * Parses the {@code Ammunition:} and optional {@code Reload:} sections from a weapon YAML file. Returns a
@@ -140,10 +144,12 @@ public class AmmunitionSectionParser {
 
 		List<Ammunition> resolved = new ArrayList<>();
 		if (hasSingle) {
-			resolved.add(resolveAmmo(ammoSection, report, "Ammunition.Ammo_Type", ammoTypeString));
+			resolved.add(resolveAmmo(ammoSection.get("Ammo_Type"), report, ammoTypeString));
 		} else if (hasList) {
-			for (String id : typesList) {
-				resolved.add(resolveAmmo(ammoSection, report, "Ammunition.Types", id));
+			// Walk the sequence itself, not typesList: each unknown id is reported at its own list item. ofStrings()
+			// already reported (and dropped) any non-scalar item, so the scalars here are exactly typesList.
+			for (ConfigNode item : ((SequenceNode) ammoSection.get("Types")).items()) {
+				if (item instanceof ScalarNode scalar) resolved.add(resolveAmmo(scalar, report, scalar.value()));
 			}
 		} else {
 			// Ammunition: present but neither key set — silently no magazine, same as the section being absent.
@@ -198,11 +204,12 @@ public class AmmunitionSectionParser {
 	}
 
 	@Nullable
-	private Ammunition resolveAmmo(MappingNode ammoSection, ConfigReport report, String path, String id) {
+	private Ammunition resolveAmmo(ConfigNode at, ConfigReport report, String id) {
 		Ammunition ammo = ammunitionManager.getAmmunition(id);
 		if (ammo == null) {
-			report.add(Severity.ERROR, ammoSection.location(), path, "unknown ammo type '" + id + "'",
-			           "ammo.unknown_type");
+			report.add(Severity.ERROR, at.location(), at.path(), "unknown ammo type '" + id + "' (registered: "
+			                                                     + new TreeSet<>(ammunitionManager.getAmmunitionKeys())
+			                                                     + ")", "ammo.unknown_type");
 		}
 		return ammo;
 	}
