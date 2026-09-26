@@ -79,7 +79,8 @@ class WearableGiveCommand extends SubArgument {
 			try {
 				itemAmount = Integer.parseInt(args[3]);
 			} catch (NumberFormatException exception) {
-				player.sendMessage(BartizanMessages.MUST_BE_NUMBERS.toString());
+				player.sendMessage(BartizanChatUtil.commandMessage(
+						BartizanMessages.MUST_BE_NUMBERS.toString().replace("%command%", args[3])));
 				return;
 			}
 

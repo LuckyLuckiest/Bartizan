@@ -1,12 +1,16 @@
 package org.luckyraven.bartizan.command;
 
 import org.bukkit.Material;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.ammo.Ammunition;
+import org.luckyraven.bartizan.file.BartizanSettings;
 import org.luckyraven.bartizan.util.BartizanChatUtil;
 import org.luckyraven.keystone.datastructure.JsonFormatter;
 
+import java.lang.reflect.Field;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,6 +21,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * comma - the id must reach the player on one line.
  */
 class AmmunitionInfoCommandTest {
+
+	// BartizanChatUtil.color() reads this process-wide static (%money_symbol%); primed/reset here instead of
+	// relying on another test class leaving it set, same convention WearableEquipListenerTest uses.
+	@BeforeEach
+	void primeMoneySymbol() throws ReflectiveOperationException {
+		Field moneySymbol = BartizanSettings.class.getDeclaredField("moneySymbol");
+		moneySymbol.setAccessible(true);
+		moneySymbol.set(null, "$");
+	}
+
+	@AfterEach
+	void resetMoneySymbol() throws ReflectiveOperationException {
+		Field moneySymbol = BartizanSettings.class.getDeclaredField("moneySymbol");
+		moneySymbol.setAccessible(true);
+		moneySymbol.set(null, null);
+	}
 
 	@Test
 	@DisplayName("a comma ammo id survives the info formatter on one line")

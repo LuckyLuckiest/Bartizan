@@ -33,7 +33,7 @@ Shoot:
             Chance: 5
             Amount: 3
       Consumed_Amount: 1
-      Per_Shot: 1
+      Per_Shot: 3
       Cooldown: 0.3
       Distance: 30
       Particle: true

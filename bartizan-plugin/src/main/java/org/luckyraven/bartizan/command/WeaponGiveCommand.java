@@ -64,7 +64,8 @@ class WeaponGiveCommand extends SubArgument {
 			try {
 				giveAmount = Integer.parseInt(args[4]);
 			} catch (NumberFormatException exception) {
-				sender.sendMessage(BartizanChatUtil.commandMessage(BartizanMessages.MUST_BE_NUMBERS.toString()));
+				sender.sendMessage(BartizanChatUtil.commandMessage(
+						BartizanMessages.MUST_BE_NUMBERS.toString().replace("%command%", args[4])));
 				return;
 			}
 

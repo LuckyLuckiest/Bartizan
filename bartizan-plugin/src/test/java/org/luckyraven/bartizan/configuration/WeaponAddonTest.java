@@ -477,6 +477,48 @@ class WeaponAddonTest {
 	}
 
 	/**
+	 * gi=86: {@code XMaterial.matchXMaterial} can find a name present (e.g. {@code COPPER_PICKAXE}, added 1.21.9)
+	 * while {@code .get()} returns {@code null} because this server/test JVM's {@code spigot-api} (1.16.5) has no
+	 * matching {@code Material} - a different failure shape than an unrecognised name (which leaves
+	 * {@code isPresent()} false) but must fall back the same way instead of storing a null Material.
+	 */
+	@Test
+	@DisplayName("registerWeapon: a Material recognised by name but unmapped on this server version falls back to FEATHER with a WARNING")
+	void registerWeapon_materialRecognisedButUnmappedOnThisVersion_warnsAndFallsBack() throws Exception {
+		JavaPlugin        plugin            = PluginMocks.plugin(tempDir);
+		AmmunitionManager ammunitionManager = new AmmunitionManager();
+
+		File weaponFile = writeWeaponFile("golden_ak47_like.yml", """
+				Information:
+				   Name: "&7Golden AK&r"
+				   Category: gun
+				   Material: "COPPER_PICKAXE"
+				   Durability:
+				      Base: 100
+
+				Shoot:
+				   Selective_Fire: single
+				   Projectile:
+				      Speed: 20
+				      Type: BULLET
+				      Damage:
+				         Base: 5
+				""");
+
+		WeaponAddon  weaponAddon = new WeaponAddon(null);
+		ConfigReport report     = weaponAddon.registerWeapon(ammunitionManager, new FileHandler(plugin, weaponFile));
+
+		Weapon weapon = weaponAddon.getWeapon("golden_ak47_like");
+		assertNotNull(weapon, "a Material XMaterial can't map on this version must still register the weapon");
+		assertEquals(XMaterial.FEATHER.get(), weapon.getMaterial(),
+		             "expected the same FEATHER fallback as an unrecognised Material name");
+		assertTrue(report.issues().stream().anyMatch(
+				           issue -> issue.severity() == Severity.WARNING &&
+				                    issue.code().equals("weapon.unknown_material")),
+			           "expected a WARNING for the unmapped Material");
+	}
+
+	/**
 	 * BZ-CF-14: {@code applyOptionalShootConfig}'s own {@code Selective_Fire} read (independent of each type
 	 * parser's {@code SelectiveFireSectionParser} call) used to silently resolve an unrecognised value to AUTO via
 	 * {@code SelectiveFire.getType}'s default branch, with no {@link ConfigReport} entry anywhere.

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
+import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.mockito.MockedStatic;
 
@@ -97,6 +98,43 @@ class WeaponDroppedListenerTest {
 
 		assertTrue(event.isCancelled(), "Cancel.Drop_Item must keep the drop cancelled");
 		verify(weapon, never()).unScope(any(), anyBoolean());
+	}
+
+	/**
+	 * gi=64: sneaking with an empty magazine and no usable ammo, {@code tryReload} returns {@code false} with no
+	 * side effect (no reload starts), but the already-initiated drop was never re-cancelled - unlike the sibling
+	 * magazine-full branch, which does. The weapon left the inventory as a dropped item instead of being refused.
+	 */
+	@Test
+	@DisplayName("sneak-dropping with no ammo to reload cancels the drop instead of letting the weapon leave the hand")
+	void sneakDrop_noAmmoToReload_cancelsDrop() {
+		WeaponService         weaponService = mock(WeaponService.class);
+		JavaPlugin            plugin        = mock(JavaPlugin.class);
+		WeaponDroppedListener listener      = new WeaponDroppedListener(plugin, weaponService);
+
+		Player player = mock(Player.class);
+		when(player.isSneaking()).thenReturn(true);
+
+		Weapon weapon = mock(Weapon.class);
+		when(weapon.getReloadData()).thenReturn(mock(ReloadData.class));
+		when(weapon.isMagazineFull()).thenReturn(false);
+
+		Item      item      = mock(Item.class);
+		ItemStack itemStack = mock(ItemStack.class);
+		when(item.getItemStack()).thenReturn(itemStack);
+		when(weaponService.validateAndGetWeapon(player, itemStack)).thenReturn(weapon);
+		when(weaponService.tryReload(plugin, player, weapon)).thenReturn(false);
+
+		PlayerDropItemEvent event = new PlayerDropItemEvent(player, item);
+
+		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+			bukkit.when(Bukkit::getPluginManager).thenReturn(mock(PluginManager.class));
+
+			listener.onPlayerDrop(event);
+		}
+
+		assertTrue(event.isCancelled(), "a failed no-ammo reload must still cancel the drop, like the "
+		           + "magazine-full branch does");
 	}
 
 }

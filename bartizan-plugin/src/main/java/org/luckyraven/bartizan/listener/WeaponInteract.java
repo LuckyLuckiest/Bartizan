@@ -1,5 +1,6 @@
 package org.luckyraven.bartizan.listener;
 
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
@@ -24,6 +25,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Nullable;
 import org.luckyraven.keystone.bean.autowire.AutowireTarget;
 import org.luckyraven.keystone.bean.listener.ListenerHandler;
+import org.luckyraven.keystone.npc.NpcSupport;
 import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.keystone.timer.CountdownTimer;
 import org.luckyraven.keystone.timer.RepeatingTimer;
@@ -328,6 +330,7 @@ public class WeaponInteract implements Listener {
 		ItemStack item   = player.getInventory().getItemInMainHand();
 
 		if (!weaponService.isWeapon(item)) return;
+		if (isNpc(event.getRightClicked())) return;
 		event.setCancelled(true);
 
 		if (player.isDead() || !combatEligibility.canBeHit(player)) return;
@@ -356,6 +359,13 @@ public class WeaponInteract implements Listener {
 		} else {
 			shootOtherModes(gunWeapon, player);
 		}
+	}
+
+	/**
+	 * Package-private so a test can stub it: {@code NpcSupport} can't be mocked without Citizens on the classpath.
+	 */
+	boolean isNpc(Entity entity) {
+		return NpcSupport.isNpc(entity);
 	}
 
 	@EventHandler(priority = EventPriority.LOWEST)

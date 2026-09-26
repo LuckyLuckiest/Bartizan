@@ -124,12 +124,11 @@ public class WeaponAddon {
 		if (materialString == null) {
 			throw new InvalidConfigurationException("Information.Material not found for '" + fileName + "'");
 		}
-		Optional<XMaterial> xMaterialOptional = XMaterial.matchXMaterial(materialString);
-		Material            material;
-		if (xMaterialOptional.isPresent()) {
-			material = xMaterialOptional.get().get();
-		} else {
-			// An unresolvable Material silently fell back to FEATHER with no diagnostic at all (BZ-CF-06).
+		// XMaterial can match a name present (isPresent() true) while .get() still returns null, when the name is
+		// only valid on a newer MC version than this server implements (e.g. COPPER_PICKAXE, added 1.21.9) - the
+		// same fallback as an outright unrecognised name (BZ-CF-06) covers both (gi=86).
+		Material material = XMaterial.matchXMaterial(materialString).map(XMaterial::get).orElse(null);
+		if (material == null) {
 			material = XMaterial.FEATHER.get();
 			ConfigNode materialNode = information.get("Material").node();
 			report.add(Severity.WARNING,
