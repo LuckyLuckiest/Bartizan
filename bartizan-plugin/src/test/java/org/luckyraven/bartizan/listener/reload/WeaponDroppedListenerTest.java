@@ -9,12 +9,24 @@ import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.luckyraven.bartizan.api.combat.CombatEligibility;
+import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.Weapon;
+import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
+import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.fire.PluginFireRegistry;
+import org.luckyraven.bartizan.listener.WeaponInteract;
+import org.luckyraven.bartizan.scope.SpyglassScopeTask;
+import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
 import org.luckyraven.bartizan.api.weapon.dto.ReloadData;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.keystone.util.ActionBarManager;
 import org.mockito.MockedStatic;
+
+import java.lang.reflect.Field;
+import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,6 +60,7 @@ class WeaponDroppedListenerTest {
 		// getHandlingData()/getReloadData() default null on an unstubbed mock: no Cancel.Drop_Item, no ammo - the
 		// drop falls all the way through onPlayerDrop uncancelled (the melee/throwable "no Reload_Data" shape).
 		Weapon weapon = mock(Weapon.class);
+		when(weapon.getUuid()).thenReturn(UUID.randomUUID()); // consulted by WeaponInteract#clearWeaponState too
 
 		Item      item      = mock(Item.class);
 		ItemStack itemStack = mock(ItemStack.class);
@@ -65,6 +78,45 @@ class WeaponDroppedListenerTest {
 
 		assertFalse(event.isCancelled(), "a melee/throwable weapon with no Cancel.Drop_Item drops normally");
 		verify(weapon).unScope(player, false);
+	}
+
+	/**
+	 * A Q drop is the one way a gun leaves the hand without a holster, quit or death: its live burst and tracking
+	 * entries must end with it, not linger until the hold check notices the item is gone.
+	 */
+	@Test
+	@DisplayName("an uncancelled drop clears WeaponInteract's tracking state for the dropped weapon")
+	void plainDrop_clearsWeaponInteractTrackingState() throws Exception {
+		WeaponService         weaponService = mock(WeaponService.class);
+		WeaponDroppedListener listener      = new WeaponDroppedListener(mock(JavaPlugin.class), weaponService);
+
+		// constructing it registers it as WeaponInteract.get()'s target, as in the real bean graph
+		WeaponInteract interact = new WeaponInteract(mock(JavaPlugin.class), mock(WeaponService.class),
+				mock(WeaponRaytracer.class), mock(PluginFireRegistry.class), CombatEligibility.DEFAULT,
+				mock(EffectRunner.class), mock(BlockDamageManager.class), mock(StatusEffectService.class),
+				mock(SpyglassScopeTask.class));
+
+		Player player = mock(Player.class);
+		when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+
+		UUID   weaponUuid = UUID.randomUUID();
+		Weapon weapon     = mock(Weapon.class);
+		when(weapon.getUuid()).thenReturn(weaponUuid);
+
+		Item      item      = mock(Item.class);
+		ItemStack itemStack = mock(ItemStack.class);
+		when(item.getItemStack()).thenReturn(itemStack);
+		when(weaponService.validateAndGetWeapon(player, itemStack)).thenReturn(weapon);
+
+		Field continuousFire = WeaponInteract.class.getDeclaredField("continuousFire");
+		continuousFire.setAccessible(true);
+		@SuppressWarnings("unchecked")
+		Map<UUID, Object> map = (Map<UUID, Object>) continuousFire.get(interact);
+		map.put(weaponUuid, new Object());
+
+		listener.onPlayerDropScopeCleanup(new PlayerDropItemEvent(player, item));
+
+		assertFalse(map.containsKey(weaponUuid), "a burst must end with the drop");
 	}
 
 	@Test

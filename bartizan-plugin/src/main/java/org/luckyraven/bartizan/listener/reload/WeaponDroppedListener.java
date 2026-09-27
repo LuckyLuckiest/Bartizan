@@ -15,6 +15,7 @@ import org.luckyraven.keystone.util.ActionBarManager;
 import org.luckyraven.keystone.util.ChatUtil;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
+import org.luckyraven.bartizan.listener.WeaponInteract;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.event.WeaponReloadEvent;
 
@@ -99,6 +100,9 @@ public class WeaponDroppedListener implements Listener {
 	 * keyed off {@code event.isCancelled()} directly (the F-swap counterpart is {@code WeaponInteract#onSwapHands})
 	 * - one guard for every current and future uncancelled exit instead of one patched into each.
 	 * {@code Weapon#unScope} is a no-op unless the weapon is actually scoped.
+	 *
+	 * <p>Also clears {@code WeaponInteract}'s tracking state for the weapon, as a holster, quit or death does, so a
+	 * burst held while the gun is dropped ends with the drop.
 	 */
 	@EventHandler(priority = EventPriority.MONITOR)
 	public void onPlayerDropScopeCleanup(PlayerDropItemEvent event) {
@@ -107,9 +111,12 @@ public class WeaponDroppedListener implements Listener {
 		Player player = event.getPlayer();
 		Weapon weapon = weaponService.validateAndGetWeapon(player, event.getItemDrop().getItemStack());
 
-		if (weapon != null) {
-			weapon.unScope(player, false);
-		}
+		if (weapon == null) return;
+
+		weapon.unScope(player, false);
+
+		WeaponInteract interact = WeaponInteract.get();
+		if (interact != null) interact.clearWeaponState(player, weapon);
 	}
 
 	private boolean cancelsDropItem(Weapon weapon) {
