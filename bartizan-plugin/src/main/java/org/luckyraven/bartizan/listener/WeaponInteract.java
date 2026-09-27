@@ -13,6 +13,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryInteractEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -459,7 +460,7 @@ public class WeaponInteract implements Listener {
 		Player player = event.getPlayer();
 		if (event.isInterrupted() || !(event.getWeapon() instanceof GunWeapon gun)) return;
 		if (gun.getCurrentSelectiveFire() != SelectiveFire.AUTO || !TriggerRelease.isExact(gun)) return;
-		if (!player.isHandRaised() || player.isDead() || !combatEligibility.canBeHit(player)) return;
+		if (!usesTrigger(player) || !combatEligibility.canBeHit(player)) return;
 		if (weaponService.getHeldHand(player, gun.getUuid()) != EquipmentSlot.HAND) return;
 
 		shootFullAuto(gun, player, player.getInventory().getItemInMainHand());
@@ -1062,6 +1063,18 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
+	 * The exact hold as the server can see it: the use state, less the two cases where the server knows it outlives
+	 * the button. Nothing ends a use on death, so a gun kept through it (keepInventory) stays "used" until respawn;
+	 * and a client with a screen open handles no keys, so it sends no RELEASE_USE_ITEM until the screen closes - of
+	 * those screens the server only knows the containers it opened itself. Chat, the player's own inventory and the
+	 * pause menu are client-side: a trigger held into one of them fires on until it closes (migration.md §15).
+	 */
+	private static boolean usesTrigger(Player player) {
+		return player.isHandRaised() && !player.isDead() &&
+		       player.getOpenInventory().getType() == InventoryType.CRAFTING;
+	}
+
+	/**
 	 * One held trigger. Every repeat of it ({@link PlayerInteractEvent} while RMB stays down) calls {@link #refresh};
 	 * the loop that owns the hold calls {@link #stillHeld} once per tick. This is how the listener detects RMB release
 	 * without a first-class "edge release" signal from Spigot.
@@ -1097,14 +1110,14 @@ public class WeaponInteract implements Listener {
 
 		/**
 		 * {@link #stillHeld(int)} for a trigger tracked through the vanilla use state ({@code exactUser}, see
-		 * {@link TriggerRelease}; {@code null} for a repeat-only hold). Once the server has seen the player's hand
-		 * raised, the use state is the hold: it ending is the release, to the tick. Until then - the client predicted
-		 * a use-on-block instead (a hoe on dirt), or the item has not picked up its use-state components yet - the
-		 * repeats still decide.
+		 * {@link TriggerRelease}; {@code null} for a repeat-only hold). Once the server has seen the use state
+		 * ({@link #usesTrigger}), it is the hold: it ending is the release, to the tick. Until then - the client
+		 * predicted a use-on-block instead (a hoe on dirt), or the item has not picked up its use-state components
+		 * yet - the repeats still decide.
 		 */
 		private boolean stillHeld(@Nullable Player exactUser, int idleWindow) {
 			if (exactUser != null) {
-				if (exactUser.isHandRaised()) {
+				if (usesTrigger(exactUser)) {
 					sawUse = true;
 					return true;
 				}

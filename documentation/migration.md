@@ -430,6 +430,11 @@ re-sends right-click every 4 ticks while it is held and sends nothing on release
   and stop sprinting while holding right-click (it has `consumable` but not `use_effects`), and an older or Bedrock
   client may never send the release at all. If those plugins run on a proxy, the server can't see them: set the
   switch to `false`. An anticheat that expects the vanilla item-use slowdown may flag players sprinting while firing.
+- **A trigger held into a screen:** a client with a screen open sends no release until the screen closes. Death and
+  a container the server opens end the burst at once. Chat, the player's own inventory and the pause menu (also
+  alt-tab with pause-on-lost-focus) are client-side and invisible to the server, so a gun held firing into one of
+  them keeps firing — auto-reloading and resuming — until it closes or the ammo runs out. The fallback stopped
+  within 4 ticks there, since no repeats arrive while a screen is open.
 - **A right-click held through a reload** resumes AUTO fire when the reload completes, as the repeats did before.
   A press rejected by `Information.Equip_Delay` or the fire-rate lock now needs a fresh press on 1.21.11 (the
   fallback resumed on the next repeat).

@@ -58,6 +58,7 @@ class WeaponQuitCleanupListenerTest {
 
 		GunWeapon weapon = mock(GunWeapon.class);
 		when(weapon.isReloading()).thenReturn(true);
+		when(weapon.getUuid()).thenReturn(UUID.randomUUID()); // consulted by WeaponInteract#clearWeaponState too
 		when(weaponManager.getHeldWeapon(player)).thenReturn(weapon);
 
 		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
@@ -85,6 +86,7 @@ class WeaponQuitCleanupListenerTest {
 
 		Weapon weapon = mock(Weapon.class);
 		when(weapon.isReloading()).thenReturn(false);
+		when(weapon.getUuid()).thenReturn(UUID.randomUUID()); // consulted by WeaponInteract#clearWeaponState too
 		when(weaponManager.getHeldWeapon(player)).thenReturn(weapon);
 
 		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
@@ -166,6 +168,45 @@ class WeaponQuitCleanupListenerTest {
 		assertFalse(map.containsKey(weaponUuid),
 		           "onPlayerQuit must reach WeaponInteract and clear its tracking state for the quitting player's "
 		           + "weapon, or a mid-AUTO-fire/charge task keeps running against an offline Player");
+	}
+
+	/**
+	 * 0.5.2 exact trigger release: nothing ends a dead player's item use, so with keepInventory (or any plugin keeping
+	 * weapons) a held gun stayed "used" and kept firing from the death screen until respawn.
+	 */
+	@Test
+	@DisplayName("onPlayerDeath clears WeaponInteract's per-weapon tracking state too, stopping a live burst")
+	void onPlayerDeath_clearsWeaponInteractTrackingState() throws Exception {
+		WeaponManager weaponManager = mock(WeaponManager.class);
+		WeaponQuitCleanupListener listener = new WeaponQuitCleanupListener(weaponManager, mock(EffectRunner.class),
+		                                                                   mock(HudService.class),
+		                                                                   mock(WearableEffectsService.class));
+
+		WeaponInteract interact = new WeaponInteract(mock(JavaPlugin.class), mock(WeaponService.class),
+				mock(WeaponRaytracer.class), mock(PluginFireRegistry.class), CombatEligibility.DEFAULT,
+				mock(EffectRunner.class), mock(BlockDamageManager.class), mock(StatusEffectService.class),
+				mock(SpyglassScopeTask.class));
+
+		Player player = mock(Player.class);
+		when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+
+		UUID   weaponUuid = UUID.randomUUID();
+		Weapon weapon     = mock(Weapon.class);
+		when(weapon.getUuid()).thenReturn(weaponUuid);
+		when(weaponManager.getHeldWeapon(player)).thenReturn(weapon);
+
+		Field continuousFire = WeaponInteract.class.getDeclaredField("continuousFire");
+		continuousFire.setAccessible(true);
+		@SuppressWarnings("unchecked")
+		Map<UUID, Object> map = (Map<UUID, Object>) continuousFire.get(interact);
+		map.put(weaponUuid, new Object());
+
+		PlayerDeathEvent event = mock(PlayerDeathEvent.class);
+		when(event.getEntity()).thenReturn(player);
+
+		listener.onPlayerDeath(event);
+
+		assertFalse(map.containsKey(weaponUuid), "a burst held into death must end with it");
 	}
 
 	/**

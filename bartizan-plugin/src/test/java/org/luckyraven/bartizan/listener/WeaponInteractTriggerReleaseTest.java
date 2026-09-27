@@ -7,9 +7,11 @@ import org.bukkit.UnsafeValues;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemFactory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -106,6 +108,11 @@ class WeaponInteractTriggerReleaseTest {
 	 * {@code Player#isHandRaised()}: the server-side use state.
 	 */
 	private boolean              handRaised;
+	private boolean              dead;
+	/**
+	 * {@code Player#getOpenInventory()}'s type: {@code CRAFTING} is the player's own inventory, i.e. no container.
+	 */
+	private InventoryType        openInventory = InventoryType.CRAFTING;
 
 	@BeforeEach
 	void setUp() {
@@ -114,6 +121,10 @@ class WeaponInteractTriggerReleaseTest {
 		when(inventory.getItemInMainHand()).thenReturn(item);
 		when(item.hasItemMeta()).thenReturn(true);
 		when(player.isHandRaised()).thenAnswer(invocation -> handRaised);
+		when(player.isDead()).thenAnswer(invocation -> dead);
+		InventoryView view = mock(InventoryView.class);
+		when(view.getType()).thenAnswer(invocation -> openInventory);
+		when(player.getOpenInventory()).thenReturn(view);
 		// the gun item already carries the 1.21.11+ use state (TriggerRelease's marker) - read only in exact mode
 		when(item.getItemMeta()).thenReturn(itemMeta);
 		when(itemMeta.getPersistentDataContainer()).thenReturn(itemData);
@@ -402,6 +413,32 @@ class WeaponInteractTriggerReleaseTest {
 		assertEquals(0, clock.pending(), "the burst is over - nothing left scheduled");
 	}
 
+	/**
+	 * Nothing ends a dead player's use state (keepInventory, or a plugin keeping weapons: the gun stays in hand), and
+	 * a client with a screen open sends no release until it closes - the server only sees the containers it opened.
+	 */
+	@ParameterizedTest(name = "{0}")
+	@CsvSource({"death", "server-opened container"})
+	@DisplayName("exact: death or a server-opened container ends the burst on the next tick, the hand still raised")
+	void exact_deathOrContainer_stopsTheBurst(String cause) {
+		exactMode(true, true);
+		gun(0, SelectiveFire.AUTO);
+		List<Long> rounds = new ArrayList<>();
+
+		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
+				(shot, context) -> rounds.add(clock.now()))) {
+			run(20, tick -> {
+				if (tick == 0) pressAndUse();
+				if (tick == 4) {
+					if (cause.equals("death")) dead = true;
+					else openInventory = InventoryType.CHEST;
+				}
+			});
+		}
+
+		assertEquals(List.of(0L, 1L, 2L, 3L, 4L), rounds);
+	}
+
 	@Test
 	@DisplayName("exact: no use state (a predicted use-on-block, e.g. a hoe on dirt) falls back to the repeats")
 	void exact_withoutAUseState_fallsBackToTheRepeats() {
@@ -522,6 +559,11 @@ class WeaponInteractTriggerReleaseTest {
 			handRaised = true;
 			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player, true));
 			assertEquals(0, rounds.constructed().size(), "a swap-cancelled reload resumes nothing");
+
+			openInventory = InventoryType.CHEST;
+			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player));
+			assertEquals(0, rounds.constructed().size(), "a server-opened container: the release may never come");
+			openInventory = InventoryType.CRAFTING;
 
 			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player));
 			assertEquals(1, rounds.constructed().size());
