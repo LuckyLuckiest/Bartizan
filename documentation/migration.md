@@ -429,12 +429,19 @@ re-sends right-click every 4 ticks while it is held and sends nothing on release
   the exact mode stays off and a startup warning names the plugin. A 1.21.2–1.21.10 client would be slowed to 20%
   and stop sprinting while holding right-click (it has `consumable` but not `use_effects`), and an older or Bedrock
   client may never send the release at all. If those plugins run on a proxy, the server can't see them: set the
-  switch to `false`. An anticheat that expects the vanilla item-use slowdown may flag players sprinting while firing.
+  switch to `false`. Behind a BungeeCord/Velocity proxy the startup log says so, and a client caught sending
+  right-click repeats through the use state (which a client following it never does) is switched to the fallback
+  for the rest of its session; a 1.21.2–1.21.10 client that does follow the use state is still slowed. An anticheat that expects the vanilla item-use slowdown may flag players sprinting while firing.
 - **A trigger held into a screen:** a client with a screen open sends no release until the screen closes. Death and
   a container the server opens end the burst at once. Chat, the player's own inventory and the pause menu (also
   alt-tab with pause-on-lost-focus) are client-side and invisible to the server, so a gun held firing into one of
   them keeps firing — auto-reloading and resuming — until it closes or the ammo runs out. The fallback stopped
-  within 4 ticks there, since no repeats arrive while a screen is open.
+  within 4 ticks there, since no repeats arrive while a screen is open. (Pinned by
+  `WeaponInteractTriggerReleaseTest#exact_longHoldWithoutRepeats_firesThroughoutAndStopsOnRelease`: a hold the
+  server can't see a screen in is just a long hold.)
+- **A burst a `Shoot.Circumstance` stops mid-hold** (e.g. `Sprinting: deny` once the player starts sprinting)
+  stays stopped until right-click is released and pressed again, even after the circumstance clears — in both
+  modes: the fallback's next repeat arrives as a press, is denied, and holds the trigger until the release.
 - **A right-click held through a reload** resumes AUTO fire when the reload completes, as the repeats did before.
   A press rejected by `Information.Equip_Delay` or the fire-rate lock now needs a fresh press on 1.21.11 (the
   fallback resumed on the next repeat).

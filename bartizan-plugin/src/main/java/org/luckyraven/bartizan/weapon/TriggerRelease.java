@@ -4,6 +4,7 @@ import lombok.CustomLog;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -16,6 +17,7 @@ import org.luckyraven.bartizan.api.weapon.dto.ScopeData;
 import org.luckyraven.bartizan.api.weapon.dto.ScopeType;
 import org.luckyraven.keystone.nms.NmsVersion;
 
+import java.io.File;
 import java.util.List;
 import java.util.Set;
 
@@ -44,6 +46,9 @@ import java.util.Set;
  * {@code modifyItemStack} logs a component its parser rejects and hands the item back unchanged. And the use state is
  * read by the client: with a plugin installed that lets older or Bedrock clients join ({@link #OLDER_CLIENT_BRIDGES}),
  * such a client may be slowed while holding right-click, or never send the release at all, so the mode stays off.
+ * Such a plugin on a proxy is out of sight: behind one the startup log warns, and {@code WeaponInteract} drops a
+ * player to the fallback once their client sends a right-click through the use state (which a client following it
+ * never does).
  */
 @CustomLog
 public final class TriggerRelease {
@@ -114,6 +119,13 @@ public final class TriggerRelease {
 		if (supported && enabled) {
 			log.info("Trigger release: exact - gun items are usable while held (1.21.11+ item components), so fire "
 			         + "stops on the first tick after right-click is released");
+			if (behindProxy()) {
+				log.warn("Trigger release: exact, behind a BungeeCord/Velocity proxy - if ViaBackwards, ViaRewind or "
+				         + "Geyser runs on the proxy, set Weapons.Trigger.Exact_Release_Detection: false in "
+				         + "settings.yml. Older 1.21.x clients are slowed while holding right-click, and a client "
+				         + "that keeps sending right-click repeats through the use state is switched to the "
+				         + "repeat-based fallback on its own");
+			}
 		} else if (bridge != null) {
 			log.warn("Trigger release: repeat-based fallback - " + bridge + " is installed, and a client older than "
 			         + "the server or a Bedrock client would be slowed while holding right-click, or never release "
@@ -219,6 +231,21 @@ public final class TriggerRelease {
 			log.warn("Trigger release: modifying an item's components failed - repeat-based fallback", failed);
 		}
 		return false;
+	}
+
+	/**
+	 * Spigot's {@code settings.bungeecord} or Paper's {@code proxies.velocity.enabled} - where an older-client plugin
+	 * may run on the proxy, out of {@link #olderClientBridge}'s sight.
+	 */
+	private static boolean behindProxy() {
+		try {
+			if (Bukkit.spigot().getConfig().getBoolean("settings.bungeecord")) return true;
+		} catch (RuntimeException noSpigotConfig) {
+			// not a Spigot server (or a unit test): fall through to Paper's file
+		}
+		File paperGlobal = new File("config", "paper-global.yml");
+		return paperGlobal.isFile() &&
+		       YamlConfiguration.loadConfiguration(paperGlobal).getBoolean("proxies.velocity.enabled");
 	}
 
 	@Nullable
