@@ -45,6 +45,11 @@ Gangland Warfare weapon module need to do.
 every behaviour change an admin or consumer plugin should know about, and `documentation/migration.md` §14 for the
 condensed upgrade checklist.
 
+0.5.2 fixes guns firing on after right-click is released: fire stops at most 4 ticks after the last right-click
+repeat on any server, and on the first tick after the release on 1.21.11+, where gun items are made usable while
+held (`settings.yml` `Weapons.Trigger.Exact_Release_Detection`, on by default). See `documentation/migration.md`
+§15.
+
 ## Package map (as-built, 0.5.1)
 
 ```

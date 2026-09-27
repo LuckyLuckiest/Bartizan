@@ -388,3 +388,50 @@ checklist.
 See `documentation/docket-fix-wave-0.5.1.md` §3 for the full numbered behaviour-change list (config parser
 warnings, importer changes, kill-credit fixes, stats/HUD fixes, and more) and §4 for what was deliberately left
 deferred or out of scope.
+
+## 15. 0.5.1 → 0.5.2 — trigger release
+
+A gun kept firing after right-click was let go: 3 to 5 extra AUTO rounds on a gun that fires every tick, up to 8
+ticks' worth on slower ones, and a `Cooldown` below 1 (`mp5` 0.1, `rifle` 0.5, `minigun` 0.05 — all truncate to 0) also cancelled and restarted
+the burst every 8 ticks while held, resetting recoil. Spigot has no "right-click released" event: the client
+re-sends right-click every 4 ticks while it is held and sends nothing on release. 0.5.2 fixes this in two layers.
+
+- **Every server:** fire now ends at most 4 ticks after the last right-click repeat, whatever the cooldown, and a
+  steady hold never cancels itself. SINGLE/BURST re-arming, the biological/beam charge release and the AUTO
+  flamethrower's spray use the same per-tick counter (the first two with one tick of slack, so a repeat arriving a
+  tick late can no longer fire a second SINGLE shot or release a charge mid-hold).
+- **1.21.11+, on by default:** right-click-trigger gun items are made usable while held — an invisible vanilla use
+  that never finishes, with no slowdown, sprinting kept, and no animation, sound or particles — so the server sees
+  the release itself and fire stops on the very next tick. Switch it off in `settings.yml`:
+
+  ```yaml
+  Weapons:
+     Trigger:
+        Exact_Release_Detection: false
+  ```
+
+  The console says which mode is active at startup (`Trigger release: exact` or `Trigger release: repeat-based
+  fallback (…)`). A server older than 1.21.11 always uses the fallback.
+
+### Behaviour to re-check after upgrading
+
+- **A gun item picks the use state up on its next rebuild** — its first shot, a reload, a refresh — so the first
+  press with an old item still uses the fallback. Turning the switch off strips it again the same way.
+- **Guns that stay on the fallback even on 1.21.11:** `Shoot.Trigger: left_click` guns (right-click is their scope),
+  `Scope.Type: spyglass` guns (the spyglass use is the scope), and guns whose `Information.Material` has its own
+  vanilla right-click use (bow, crossbow, trident, spyglass, buckets, boats, bundles, potions, throwables, food,
+  blocks, …). Every shipped right-click gun (hoes, pickaxes, axes, shovels, horse armor) gets the exact mode.
+- **On 1.21.11, left-click does nothing while the trigger is held** (vanilla: a client using an item swallows
+  attack clicks), so a right-click-trigger gun toggles its left-click scope only while the trigger is up. Reload
+  (drop key), selective fire (F / Shift+F) and the hotbar keys still work while firing.
+- **A right-click held through a reload** resumes AUTO fire when the reload completes, as the repeats did before.
+  A press rejected by `Information.Equip_Delay` or the fire-rate lock now needs a fresh press on 1.21.11 (the
+  fallback resumed on the next repeat).
+- **Fire rates are unchanged.** `Projectile.Cooldown` still truncates to whole ticks (`0.1`/`0.5`/`0.05` → 0 → a
+  round every tick); that is a balance decision left for a later release.
+
+### `bartizan-api` deltas
+
+- **New: `Weapon#getItemFinisher()`/`#setItemFinisher(Consumer<ItemStack>)`** — a last pass over every item
+  `buildItem` builds and `updateWeaponData` rewrites, shared by every copy of a template (like the placeholder
+  resolver). Bartizan's own `WeaponAddon` sets it on every gun template; additive only.
