@@ -3,12 +3,14 @@ package org.luckyraven.bartizan.listener;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.UnsafeValues;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemFactory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -333,7 +335,12 @@ class WeaponInteractTriggerReleaseTest {
 	// Exact release detection (1.21.11+ use state)
 	// ---------------------------------------------------------------------------------------------------------
 
-	private static void exactMode(boolean serverSupportsIt, boolean enabled) {
+	private void exactMode(boolean serverSupportsIt, boolean enabled) {
+		// TriggerRelease's startup probe: a mock item factory never calls a meta empty, so the probe item reads as
+		// carrying the components - a server whose item parser takes them
+		bukkit.when(Bukkit::getUnsafe).thenReturn(mock(UnsafeValues.class));
+		bukkit.when(Bukkit::getItemFactory).thenReturn(mock(ItemFactory.class));
+
 		try (MockedStatic<NmsVersion> version = mockStatic(NmsVersion.class)) {
 			version.when(NmsVersion::current)
 			       .thenReturn(serverSupportsIt ? new NmsVersion(21, 11) : new NmsVersion(20, 6));

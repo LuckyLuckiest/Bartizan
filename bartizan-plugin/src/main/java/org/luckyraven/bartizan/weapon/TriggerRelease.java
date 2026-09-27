@@ -16,6 +16,7 @@ import org.luckyraven.bartizan.api.weapon.dto.ScopeData;
 import org.luckyraven.bartizan.api.weapon.dto.ScopeType;
 import org.luckyraven.keystone.nms.NmsVersion;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -38,6 +39,11 @@ import java.util.Set;
  * {@code (int) (seconds * 20)} = 20,000,000 use ticks (about 11.5 days) before a consume could even be attempted, the
  * consume sound/particles only start after 21.875% of that, and {@code WeaponInteract} cancels
  * {@code PlayerItemConsumeEvent} for guns as the guard.
+ * <p>
+ * The server version is only the floor: {@link #configure} also tries the components on a probe item, since
+ * {@code modifyItemStack} logs a component its parser rejects and hands the item back unchanged. And the use state is
+ * read by the client: with a plugin installed that lets older or Bedrock clients join ({@link #OLDER_CLIENT_BRIDGES}),
+ * such a client may be slowed while holding right-click, or never send the release at all, so the mode stays off.
  */
 @CustomLog
 public final class TriggerRelease {
@@ -60,6 +66,15 @@ public final class TriggerRelease {
 	private static final NamespacedKey MARKER = NamespacedKey.fromString("bartizan:trigger_use");
 
 	/**
+	 * Plugins that let clients older than the server join (ViaBackwards, ViaRewind) or Bedrock clients (Geyser,
+	 * Floodgate). A 1.21.2-1.21.10 client gets the {@code consumable} without {@code use_effects}, so holding
+	 * right-click slows it to 20% and stops sprinting; an older or Bedrock client does not know the component at all
+	 * and may never send the release the server's use state waits for.
+	 */
+	private static final List<String> OLDER_CLIENT_BRIDGES = List.of("ViaBackwards", "ViaRewind", "Geyser-Spigot",
+	                                                                 "floodgate");
+
+	/**
 	 * Vanilla items whose own {@code Item#use} does something on right-click - the {@code consumable} path never
 	 * runs for them, so allowing their vanilla use would bow-draw, throw, fill, place or fire instead. Taken from the
 	 * Paper 1.21.11 item registry (every item class overriding {@code use}, plus the non-food prototype consumables).
@@ -74,7 +89,13 @@ public final class TriggerRelease {
 	                                                  "FIREWORK_ROCKET", "GLASS_BOTTLE", "WRITABLE_BOOK",
 	                                                  "WRITTEN_BOOK", "KNOWLEDGE_BOOK", "MAP");
 
+	/**
+	 * The server can add and strip the use-state components (1.21.11+, and its item parser takes them).
+	 */
 	private static volatile boolean supported;
+	/**
+	 * The switch is on and no {@link #OLDER_CLIENT_BRIDGES older-client plugin} is installed.
+	 */
 	private static volatile boolean enabled;
 
 	private TriggerRelease() {
@@ -86,11 +107,17 @@ public final class TriggerRelease {
 	 */
 	public static void configure(boolean exactReleaseDetection) {
 		supported = serverSupportsUseState();
-		enabled   = exactReleaseDetection;
+
+		String bridge = supported && exactReleaseDetection ? olderClientBridge() : null;
+		enabled = exactReleaseDetection && bridge == null;
 
 		if (supported && enabled) {
 			log.info("Trigger release: exact - gun items are usable while held (1.21.11+ item components), so fire "
 			         + "stops on the first tick after right-click is released");
+		} else if (bridge != null) {
+			log.warn("Trigger release: repeat-based fallback - " + bridge + " is installed, and a client older than "
+			         + "the server or a Bedrock client would be slowed while holding right-click, or never release "
+			         + "the gun's use state. AUTO fire stops at most 4 ticks after the last right-click repeat");
 		} else {
 			log.info("Trigger release: repeat-based fallback (" +
 			         (supported ? "Weapons.Trigger.Exact_Release_Detection is false" : "needs a 1.21.11+ server") +
@@ -120,8 +147,8 @@ public final class TriggerRelease {
 
 	/**
 	 * Adds the use-state components to {@code item} when {@code weapon} {@link #isExact is exact}, and strips them
-	 * when it is not (the switch turned off). A no-op on a server without item components, and whenever the item is
-	 * already in the wanted state.
+	 * when it is not (the switch off, or an older-client plugin installed). A no-op on a server without item
+	 * components, and whenever the item is already in the wanted state.
 	 */
 	@SuppressWarnings("deprecation")
 	public static void applyItemState(Weapon weapon, @Nullable ItemStack item) {
@@ -133,7 +160,15 @@ public final class TriggerRelease {
 		boolean wanted = isExact(weapon);
 		if (wanted == meta.getPersistentDataContainer().has(MARKER, PersistentDataType.BYTE)) return;
 
-		Bukkit.getUnsafe().modifyItemStack(item, item.getType().getKey() + (wanted ? USE_STATE : NO_USE_STATE));
+		try {
+			Bukkit.getUnsafe().modifyItemStack(item, item.getType().getKey() + (wanted ? USE_STATE : NO_USE_STATE));
+		} catch (RuntimeException failed) {
+			// a fork's own modifyItemStack: never let it break building or firing a gun - off until the next reload
+			supported = false;
+			log.warn("Trigger release: modifying a gun item's components failed - repeat-based fallback until the "
+			         + "next reload", failed);
+			return;
+		}
 
 		meta = item.getItemMeta();
 		if (meta == null) return;
@@ -162,13 +197,36 @@ public final class TriggerRelease {
 		       !name.endsWith("_SPAWN_EGG");
 	}
 
+	@SuppressWarnings("deprecation")
 	private static boolean serverSupportsUseState() {
 		try {
-			return NmsVersion.current().atLeast(21, 11);
+			if (!NmsVersion.current().atLeast(21, 11)) return false;
 		} catch (RuntimeException noServer) {
 			// no server to ask (a unit test): nothing to support the components on
 			return false;
 		}
+
+		// the version is only the floor - a later rename of a component field fails the parse, which
+		// modifyItemStack logs and swallows, leaving the probe as plain as it came (no meta)
+		try {
+			ItemStack probe = new ItemStack(Material.IRON_HOE);
+			Bukkit.getUnsafe().modifyItemStack(probe, "minecraft:iron_hoe" + USE_STATE);
+			if (probe.hasItemMeta()) return true;
+
+			log.warn("Trigger release: this server's item parser rejected the use-state item components (see the "
+			         + "error above) - repeat-based fallback");
+		} catch (RuntimeException failed) {
+			log.warn("Trigger release: modifying an item's components failed - repeat-based fallback", failed);
+		}
+		return false;
+	}
+
+	@Nullable
+	private static String olderClientBridge() {
+		for (String name : OLDER_CLIENT_BRIDGES) {
+			if (Bukkit.getPluginManager().getPlugin(name) != null) return name;
+		}
+		return null;
 	}
 
 }

@@ -9,10 +9,15 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.testsupport.BukkitRegistryFixture;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
@@ -38,9 +43,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -55,16 +63,38 @@ class TriggerReleaseTest {
 	private final ItemStack               item   = mock(ItemStack.class);
 	private final ItemMeta                meta   = mock(ItemMeta.class);
 	private final PersistentDataContainer data   = mock(PersistentDataContainer.class);
-	private final UnsafeValues            unsafe = mock(UnsafeValues.class);
+	private final UnsafeValues            unsafe  = mock(UnsafeValues.class);
+	private final PluginManager           plugins = mock(PluginManager.class);
+
+	private MockedStatic<Bukkit> bukkit;
 
 	@BeforeAll
 	static void bootstrapBukkitRegistry() {
 		BukkitRegistryFixture.install();
 	}
 
+	@BeforeEach
+	void setUp() {
+		bukkit = mockStatic(Bukkit.class);
+		bukkit.when(Bukkit::getUnsafe).thenReturn(unsafe);
+		bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
+		bukkit.when(Bukkit::getItemFactory).thenCallRealMethod(); // the fixture's, for the probe's hasItemMeta
+
+		// configure()'s probe: this server's item parser takes the use-state components, so the probe item comes
+		// back carrying them (a meta)
+		ItemMeta probeMeta = mock(ItemMeta.class);
+		when(probeMeta.clone()).thenReturn(probeMeta);
+		when(unsafe.modifyItemStack(any(), anyString())).thenAnswer(invocation -> {
+			ItemStack stack = invocation.getArgument(0);
+			if (stack != null && stack != item) stack.setItemMeta(probeMeta);
+			return stack;
+		});
+	}
+
 	@AfterEach
 	void reset() {
 		mode(false, false);
+		bukkit.close();
 	}
 
 	private static void mode(boolean serverSupportsIt, boolean enabled) {
@@ -90,10 +120,7 @@ class TriggerReleaseTest {
 	}
 
 	private String applied(GunWeapon gun) {
-		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
-			bukkit.when(Bukkit::getUnsafe).thenReturn(unsafe);
-			TriggerRelease.applyItemState(gun, item);
-		}
+		TriggerRelease.applyItemState(gun, item);
 		ArgumentCaptor<String> arguments = ArgumentCaptor.forClass(String.class);
 		verify(unsafe).modifyItemStack(eq(item), arguments.capture());
 		return arguments.getValue();
@@ -175,6 +202,44 @@ class TriggerReleaseTest {
 		assertFalse(TriggerRelease.isExact(gun(Material.IRON_HOE)));
 	}
 
+	@Test
+	@DisplayName("a 1.21.11+ server whose item parser rejects the components: the fallback, and a warning says why")
+	void configure_probeRejected_fallsBack() {
+		// CraftMagicNumbers#modifyItemStack logs the parse error itself and hands the item back unchanged
+		doAnswer(invocation -> invocation.getArgument(0)).when(unsafe).modifyItemStack(any(), anyString());
+
+		try (LogCapture logs = LogCapture.attach(TriggerRelease.class)) {
+			mode(true, true);
+
+			assertTrue(logs.any(Level.WARN, "rejected the use-state item components"));
+		}
+		assertFalse(TriggerRelease.isExact(gun(Material.IRON_HOE)));
+
+		heldItem(false);
+		TriggerRelease.applyItemState(gun(Material.IRON_HOE), item);
+		assertFalse(TriggerRelease.carriesUseState(item));
+		verify(unsafe, never()).modifyItemStack(eq(item), anyString());
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@ValueSource(strings = {"ViaBackwards", "ViaRewind", "Geyser-Spigot", "floodgate"})
+	@DisplayName("a plugin letting older or Bedrock clients join: the fallback, a warning naming it, items stripped")
+	void configure_olderClientBridge_fallsBackAndStrips(String bridge) {
+		when(plugins.getPlugin(bridge)).thenReturn(mock(Plugin.class));
+
+		try (LogCapture logs = LogCapture.attach(TriggerRelease.class)) {
+			mode(true, true);
+
+			assertTrue(logs.any(Level.WARN, bridge + " is installed"));
+		}
+		assertFalse(TriggerRelease.isExact(gun(Material.IRON_HOE)));
+
+		// an item given the use state before the plugin was added loses it on its next rebuild
+		heldItem(true);
+		assertEquals("minecraft:iron_hoe[!minecraft:consumable,minecraft:use_effects={}]",
+		             applied(gun(Material.IRON_HOE)));
+	}
+
 	// item components
 
 	@Test
@@ -199,11 +264,9 @@ class TriggerReleaseTest {
 		mode(true, true);
 		heldItem(true);
 
-		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
-			TriggerRelease.applyItemState(gun(Material.IRON_HOE), item);
+		TriggerRelease.applyItemState(gun(Material.IRON_HOE), item);
 
-			bukkit.verify(Bukkit::getUnsafe, never());
-		}
+		verify(unsafe, never()).modifyItemStack(eq(item), anyString());
 		verify(item, never()).setItemMeta(any());
 	}
 
@@ -225,11 +288,9 @@ class TriggerReleaseTest {
 		mode(false, true);
 		heldItem(false);
 
-		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
-			TriggerRelease.applyItemState(gun(Material.IRON_HOE), item);
+		TriggerRelease.applyItemState(gun(Material.IRON_HOE), item);
 
-			bukkit.verify(Bukkit::getUnsafe, never());
-		}
+		verify(unsafe, never()).modifyItemStack(any(), anyString());
 		verify(item, never()).getItemMeta();
 	}
 
@@ -239,12 +300,28 @@ class TriggerReleaseTest {
 		mode(true, true);
 		heldItem(false);
 
-		try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
-			TriggerRelease.applyItemState(gun(Material.CROSSBOW), item);
+		TriggerRelease.applyItemState(gun(Material.CROSSBOW), item);
 
-			bukkit.verify(Bukkit::getUnsafe, never());
+		verify(unsafe, never()).modifyItemStack(eq(item), anyString());
+	}
+
+	@Test
+	@DisplayName("a modifyItemStack that throws turns the use state off once, instead of breaking the gun item")
+	void applyItemState_modifyThrows_fallsBackOnce() {
+		mode(true, true);
+		heldItem(false);
+		doThrow(new IllegalStateException("a fork's item parser")).when(unsafe).modifyItemStack(eq(item),
+		                                                                                         anyString());
+
+		try (LogCapture logs = LogCapture.attach(TriggerRelease.class)) {
+			TriggerRelease.applyItemState(gun(Material.IRON_HOE), item);
+			TriggerRelease.applyItemState(gun(Material.IRON_HOE), item);
+
+			assertTrue(logs.any(Level.WARN, "repeat-based fallback"));
 		}
-		verify(unsafe, never()).modifyItemStack(any(), anyString());
+		verify(unsafe, times(1)).modifyItemStack(eq(item), anyString());
+		verify(data, never()).set(any(), any(), any());
+		assertFalse(TriggerRelease.isExact(gun(Material.IRON_HOE)));
 	}
 
 	@Test

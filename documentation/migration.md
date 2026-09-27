@@ -411,7 +411,8 @@ re-sends right-click every 4 ticks while it is held and sends nothing on release
   ```
 
   The console says which mode is active at startup (`Trigger release: exact` or `Trigger release: repeat-based
-  fallback (…)`). A server older than 1.21.11 always uses the fallback.
+  fallback (…)`). A server older than 1.21.11 always uses the fallback, and so does one whose item parser rejects
+  the components (Bartizan tries them on a probe item at startup and logs a warning).
 
 ### Behaviour to re-check after upgrading
 
@@ -424,6 +425,11 @@ re-sends right-click every 4 ticks while it is held and sends nothing on release
 - **On 1.21.11, left-click does nothing while the trigger is held** (vanilla: a client using an item swallows
   attack clicks), so a right-click-trigger gun toggles its left-click scope only while the trigger is up. Reload
   (drop key), selective fire (F / Shift+F) and the hotbar keys still work while firing.
+- **Older and Bedrock clients:** with ViaBackwards, ViaRewind, Geyser-Spigot or floodgate installed on the server,
+  the exact mode stays off and a startup warning names the plugin. A 1.21.2–1.21.10 client would be slowed to 20%
+  and stop sprinting while holding right-click (it has `consumable` but not `use_effects`), and an older or Bedrock
+  client may never send the release at all. If those plugins run on a proxy, the server can't see them: set the
+  switch to `false`. An anticheat that expects the vanilla item-use slowdown may flag players sprinting while firing.
 - **A right-click held through a reload** resumes AUTO fire when the reload completes, as the repeats did before.
   A press rejected by `Information.Equip_Delay` or the fire-rate lock now needs a fresh press on 1.21.11 (the
   fallback resumed on the next repeat).
