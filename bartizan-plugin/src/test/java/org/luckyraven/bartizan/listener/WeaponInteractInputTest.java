@@ -328,15 +328,18 @@ class WeaponInteractInputTest {
 	}
 
 	@Test
-	@DisplayName("the AUTO gun watchdog runs on the main thread")
+	@DisplayName("the AUTO gun's hold check runs on the main thread")
 	void autoWatchdog_isSynchronous() {
 		gun(HandlingData.Trigger.RIGHT_CLICK).setCurrentSelectiveFire(SelectiveFire.AUTO);
 
-		try (MockedConstruction<FullAutoTask> ignored = mockConstruction(FullAutoTask.class)) {
+		// 0.5.2: the separate AUTO watchdog timer is gone - the FullAutoTask asks whether the trigger is still held
+		// on its own tick, so it is the task itself that must be scheduled synchronously
+		try (MockedConstruction<FullAutoTask> tasks = mockConstruction(FullAutoTask.class)) {
 			listener.onPlayerInteract(click(Action.RIGHT_CLICK_AIR));
-		}
 
-		assertNoAsyncTimer();
+			verify(tasks.constructed().get(0)).start(false);
+			verify(tasks.constructed().get(0), never()).start(true);
+		}
 	}
 
 	@Test

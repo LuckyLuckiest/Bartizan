@@ -80,9 +80,10 @@ public class SpyglassScopeTask implements BeanLifecycle {
 	/**
 	 * The scoped {@code F} fire path for {@code SelectiveFire.AUTO} (weapons-roadmap.md gate {@code HP}): starts a
 	 * {@link FullAutoTask} mirroring {@code WeaponInteract#shootFullAuto}'s construction, minus the press-lock/
-	 * circumstance gate (F is a discrete key press, not a held button Spigot keeps re-firing) and its own
-	 * release-detection watchdog - {@link #tick()} is the release signal here. A no-op while a task for this
-	 * weapon is already running; {@link #tick()} stops it once the scope drops.
+	 * circumstance gate (F is a discrete key press, not a held button Spigot keeps re-firing) and its repeat-based
+	 * release detection - the spyglass's own vanilla use is the hold here, so the task asks
+	 * {@code Player#isHandRaised()} itself every tick and stops on the first tick after the scope drops
+	 * ({@link #tick()}'s poll stops it too, as the belt). A no-op while a task for this weapon is already running.
 	 * <p/>
 	 * // ponytail: no per-press cooldown/circumstance re-check beyond the caller's own gate - GunAction/
 	 * // FullAutoTask already refuse an empty mag, a broken weapon or a denied circumstance on their own tick.
@@ -92,12 +93,13 @@ public class SpyglassScopeTask implements BeanLifecycle {
 		if (autoTasks.containsKey(weaponUuid)) return;
 
 		FullAutoTask task = new FullAutoTask(plugin, weaponService, weapon, raytracer, player, item,
-		                                     () -> autoTasks.remove(weaponUuid), effectRunner);
+		                                     player::isHandRaised, () -> autoTasks.remove(weaponUuid),
+		                                     effectRunner);
 
 		autoTasks.put(weaponUuid, task);
 
 		task.start(false);
-		task.run();
+		task.fireFirstRound();
 	}
 
 	/**

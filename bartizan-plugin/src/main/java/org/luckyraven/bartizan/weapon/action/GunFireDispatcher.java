@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code WeaponSelectiveFireChangeListener}'s scoped {@code F} fire (weapons-roadmap.md gate {@code HP}) fires
  * through the exact same path a trigger click uses, instead of a second copy of it. AUTO is not handled here -
  * both callers construct their own {@link FullAutoTask}, since each owns a different lifecycle for it (a held
- * trigger with a release-detection watchdog vs. the spyglass scope-out poll).
+ * right-click trigger vs. the spyglass's own vanilla use).
  */
 public final class GunFireDispatcher {
 

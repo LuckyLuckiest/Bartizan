@@ -10,6 +10,8 @@ import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.effect.EffectRunner;
 
+import java.util.function.BooleanSupplier;
+
 /**
  * I will not claim this class as an invention from my side, but it is made by CJCrafter from WeaponMechanics. A
  * brilliant team that created sophisticated and efficient algorithms to make the user experience smooth.
@@ -54,15 +56,21 @@ public class FullAutoTask extends Timer {
 	private final WeaponRaytracer raytracer;
 	private final Player          player;
 	private final ItemStack       itemStack;
+	private final BooleanSupplier triggerHeld;
 	private final Runnable        onCancel;
 	private final EffectRunner    effectRunner;
 
 	private int tickIndex;
 
+	/**
+	 * @param triggerHeld asked once per scheduled tick, before anything else - {@code false} ends the burst on that
+	 * 		tick. Never asked for the press's own round (see {@link #fireFirstRound()}).
+	 */
 	public FullAutoTask(JavaPlugin plugin, WeaponService weaponService, GunWeapon weapon, WeaponRaytracer raytracer,
-	                    Player player, ItemStack weaponItem, Runnable onCancel, EffectRunner effectRunner) {
-		// Delay 1, not the cooldown: WeaponInteract fires the first round synchronously via run() the moment the
-		// trigger is pulled, and the scheduled ticks continue the cadence table from index 1.
+	                    Player player, ItemStack weaponItem, BooleanSupplier triggerHeld, Runnable onCancel,
+	                    EffectRunner effectRunner) {
+		// Delay 1, not the cooldown: the caller fires the first round synchronously via fireFirstRound() the moment
+		// the trigger is pulled, and the scheduled ticks continue the cadence table from index 1.
 		super(plugin, 1L, 1L);
 
 		this.plugin        = plugin;
@@ -71,6 +79,7 @@ public class FullAutoTask extends Timer {
 		this.raytracer     = raytracer;
 		this.player        = player;
 		this.itemStack     = weaponItem;
+		this.triggerHeld   = triggerHeld;
 		this.onCancel      = onCancel;
 		this.effectRunner  = effectRunner;
 
@@ -84,8 +93,22 @@ public class FullAutoTask extends Timer {
 		array[array.length - 1] = first;
 	}
 
+	/**
+	 * The press's own round, fired synchronously inside the event that pulled the trigger. Never gated on the hold:
+	 * the press is the hold, so a tap shorter than a tick still fires its round.
+	 */
+	public void fireFirstRound() {
+		fireCadenceTick();
+	}
+
 	@Override
 	public void run() {
+		// The trigger first: a released trigger ends the burst even on a tick the cadence would not fire on.
+		if (!triggerHeld.getAsBoolean()) {
+			cancel();
+			return;
+		}
+
 		// Shoot.Circumstance is only checked on the press that starts this task otherwise — re-check it every tick
 		// so sustained AUTO fire stops the moment a circumstance goes from allowed to denied mid-burst (e.g.
 		// Sprinting: deny on a weapon that started firing while merely walking).
@@ -94,6 +117,10 @@ public class FullAutoTask extends Timer {
 			return;
 		}
 
+		fireCadenceTick();
+	}
+
+	private void fireCadenceTick() {
 		int cooldown       = Math.max(1, weapon.getProjectileData().getCooldown());
 		int tickValue      = 20 / cooldown;
 		int shotsPerSecond = Math.max(1, Math.min(tickValue, 20));

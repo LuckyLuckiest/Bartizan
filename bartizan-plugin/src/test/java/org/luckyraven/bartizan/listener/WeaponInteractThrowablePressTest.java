@@ -1,10 +1,12 @@
 package org.luckyraven.bartizan.listener;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitScheduler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.combat.CombatEligibility;
@@ -18,7 +20,7 @@ import org.luckyraven.bartizan.scope.SpyglassScopeTask;
 import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.weapon.action.ThrowableAction;
-import org.luckyraven.keystone.timer.RepeatingTimer;
+import org.mockito.MockedStatic;
 import org.mockito.MockedConstruction;
 
 import java.util.UUID;
@@ -27,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
 /**
@@ -53,7 +56,7 @@ class WeaponInteractThrowablePressTest {
 		                                             mock(BlockDamageManager.class), mock(StatusEffectService.class),
 		                                             mock(SpyglassScopeTask.class));
 
-		try (MockedConstruction<RepeatingTimer> ignoredTimers = mockConstruction(RepeatingTimer.class);
+		try (MockedStatic<Bukkit> ignoredScheduler = schedulerMock();
 		     MockedConstruction<ThrowableAction> throwsMade = mockConstruction(ThrowableAction.class)) {
 			interact.onPlayerInteract(rightClick(player()));
 			interact.onPlayerInteract(rightClick(player()));
@@ -79,13 +82,23 @@ class WeaponInteractThrowablePressTest {
 		                                             mock(SpyglassScopeTask.class));
 
 		Player thrower = player();
-		try (MockedConstruction<RepeatingTimer> ignoredTimers = mockConstruction(RepeatingTimer.class);
+		try (MockedStatic<Bukkit> ignoredScheduler = schedulerMock();
 		     MockedConstruction<ThrowableAction> throwsMade = mockConstruction(ThrowableAction.class)) {
 			interact.onPlayerInteract(rightClick(thrower));
 			interact.onPlayerInteract(rightClick(thrower));
 
 			assertEquals(1, throwsMade.constructed().size());
 		}
+	}
+
+	/**
+	 * The press-hold release check is scheduled on a mock that never runs it - these tests only care about the gate
+	 * engaged in the press itself.
+	 */
+	private static MockedStatic<Bukkit> schedulerMock() {
+		MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class);
+		bukkit.when(Bukkit::getScheduler).thenReturn(mock(BukkitScheduler.class));
+		return bukkit;
 	}
 
 	private static Player player() {

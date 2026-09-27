@@ -29,6 +29,7 @@ import org.luckyraven.keystone.npc.NpcSupport;
 import org.luckyraven.bartizan.api.combat.CombatEligibility;
 import org.luckyraven.keystone.timer.CountdownTimer;
 import org.luckyraven.keystone.timer.RepeatingTimer;
+import org.luckyraven.keystone.timer.Timer;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
@@ -74,10 +75,29 @@ import java.util.function.BooleanSupplier;
 public class WeaponInteract implements Listener {
 
 	/**
-	 * Floor on the press-lock window, in ticks. Slightly larger than the AUTO watchdog's 3-tick idle window so that
-	 * very fast-cooldown SINGLE/BURST weapons still swallow the entire packet stream Spigot fires while RMB is held.
+	 * How often a held right-click reaches the server: a vanilla client re-sends USE_ITEM every 4 ticks
+	 * ({@code Minecraft#rightClickDelay}) while the button is held on an item it is not "using", and sends nothing at
+	 * all on release. So a hold is only visible as that repeat stream, and a release only as the repeat that fails to arrive. AUTO fire ends once more than this many
+	 * ticks pass since the last repeat - the earliest point a steady hold can be told apart from a release, so the
+	 * last round lands at most 4 ticks after the physical release (the next repeat's own tick, if it had come).
 	 */
-	private static final long MIN_PRESS_LOCK_TICKS = 4L;
+	static final int TRIGGER_REPEAT_TICKS = 4;
+
+	/**
+	 * Idle window, in ticks, for the SINGLE/BURST press-hold re-arm and the charge release: one repeat interval plus
+	 * one tick of slack, so a repeat whose packet lands a tick late (network jitter, or the client's tick drifting
+	 * against the server's) can't re-arm the trigger mid-hold - a second shot - or release a charge early. Each
+	 * extra tick of slack delays the re-arm after a real release by a tick (a slower tap-fire), hence just the one.
+	 * AUTO fire and the flamethrower spray get no slack: a late repeat there only ends the burst and starts a fresh
+	 * one on the same tick, whose first round fires synchronously in the press.
+	 */
+	static final int PRESS_RELEASE_TICKS = TRIGGER_REPEAT_TICKS + 1;
+
+	/**
+	 * Floor on the fire-rate lock ({@link GunFireDispatcher#lock}), in ticks - one repeat interval, so a throwable,
+	 * a denied press or a very fast-cooldown incendiary press can't re-trigger faster than a fresh press every repeat.
+	 */
+	private static final long MIN_PRESS_LOCK_TICKS = TRIGGER_REPEAT_TICKS;
 
 	/**
 	 * Length of one Minecraft tick in real-time milliseconds. Used to convert tick-denominated cooldowns to wall-clock
@@ -109,18 +129,16 @@ public class WeaponInteract implements Listener {
 	/**
 	 * {@code Information.Equip_Delay} gate — dedicated map, seeded in {@link #equip} and cleared on weapon
 	 * swap. Kept separate from {@link GunFireDispatcher}'s shared fire-rate map: that map also carries the per-shot
-	 * fire cooldown, rewritten on every shot by {@link #engagePressHoldWatchdog(UUID, long)}, so sharing it here
+	 * fire cooldown, rewritten on every shot by {@link #engagePressHoldWatchdog}, so sharing it here
 	 * would refuse the scope toggle for the whole fire-rate window after every shot, not just after an equip.
 	 */
 	private final Map<UUID, Long>                        equipDelayUntil;
 	/**
 	 * SINGLE/BURST held-trigger gate. After a SINGLE/BURST shot fires, an entry is inserted here for the weapon and a
-	 * release-detection watchdog is scheduled. While the entry exists, all incoming RMB events for the weapon are
+	 * per-tick release check is scheduled. While the entry exists, all incoming RMB events for the weapon are
 	 * dropped — this is what enforces one-shot-per-press despite Spigot's repeated PlayerInteractEvent stream while RMB
-	 * is held. The watchdog removes the entry once it observes a quiet event window (one full
-	 * {@link #MIN_PRESS_LOCK_TICKS}-tick cycle without the {@link WeaponData#shooting} flag being refreshed by an
-	 * incoming event), which signals that RMB has actually been released and the trigger should be re-armed for the
-	 * next press.
+	 * is held. The check removes the entry once the trigger is released - more than {@link #PRESS_RELEASE_TICKS}
+	 * ticks without a repeat - at which point the trigger is re-armed for the next press.
 	 *
 	 * <p>This is orthogonal to {@link GunFireDispatcher}'s shared fire-rate gate (weapons-roadmap.md gate {@code HP}
 	 * review — moved out of this class so {@code WeaponSelectiveFireChangeListener}'s scoped F fire goes through the
@@ -129,8 +147,9 @@ public class WeaponInteract implements Listener {
 	 */
 	private final Map<UUID, AtomicReference<WeaponData>> pressHoldState;
 	/**
-	 * Per-weapon release callbacks invoked by the {@link #continuousFire} watchdog when it detects RMB has been
-	 * released. Used by charge-then-release weapons (biological) to fire once the player lets go of RMB.
+	 * Per-weapon release callbacks invoked by the charge hold's per-tick release check ({@link #handleChargeHold})
+	 * when it detects RMB has been released. Used by charge-then-release weapons (biological, beam) to fire once the
+	 * player lets go of RMB.
 	 */
 	private final Map<UUID, Runnable>                    releaseCallbacks;
 	private final Map<UUID, FullAutoTask>                autoTasks;
@@ -651,13 +670,13 @@ public class WeaponInteract implements Listener {
 	/**
 	 * Category-agnostic charge-then-release trigger for weapons whose fire action is a charge-and-release cycle
 	 * (biological now; beam at gate {@code HC}). The first RMB press invokes {@code start}; subsequent RMB presses
-	 * (Spigot fires them while RMB is held) keep the {@link WeaponData#shooting} flag refreshed. When the watchdog
-	 * detects the player has released RMB, it invokes {@code release}.
+	 * (Spigot fires them while RMB is held) refresh the hold. Once more than {@link #PRESS_RELEASE_TICKS} ticks pass
+	 * without one, the player has released RMB and {@code release} fires.
 	 */
 	private void handleChargeHold(UUID weaponUuid, Player player, BooleanSupplier start, Runnable release) {
 		AtomicReference<WeaponData> existing = continuousFire.get(weaponUuid);
 		if (existing != null) {
-			existing.get().shooting = true;
+			existing.get().refresh();
 			return;
 		}
 
@@ -666,31 +685,23 @@ public class WeaponInteract implements Listener {
 
 		if (!start.getAsBoolean()) return;
 
-		WeaponData freshWeaponData = new WeaponData();
-		freshWeaponData.shooting = true;
-		AtomicReference<WeaponData> ref = new AtomicReference<>(freshWeaponData);
+		WeaponData                  hold = new WeaponData();
+		AtomicReference<WeaponData> ref  = new AtomicReference<>(hold);
 		continuousFire.put(weaponUuid, ref);
 
 		releaseCallbacks.put(weaponUuid, release);
 
-		// Release-detection watchdog. Must be synchronous: when the player releases RMB, this fires the release
-		// callback, which raytracer-calls — getNearbyEntities is main-thread only.
-		new RepeatingTimer(plugin, 4L, time -> {
-			AtomicReference<WeaponData> stillShooting = continuousFire.get(weaponUuid);
-			if (stillShooting == null) {
-				time.stop();
-				releaseCallbacks.remove(weaponUuid);
-				return;
-			}
-			if (!stillShooting.get().shooting) {
-				time.stop();
-				continuousFire.remove(weaponUuid);
-				Runnable callback = releaseCallbacks.remove(weaponUuid);
-				if (callback != null) callback.run();
-				return;
-			}
-			stillShooting.get().shooting = false;
-		}).start(false);
+		// Main thread: the release callback raytraces — getNearbyEntities is main-thread only.
+		everyTick(() -> {
+			// cleared by a swap/quit (which also dropped the callback): the charge died with it
+			if (continuousFire.get(weaponUuid) != ref) return false;
+			if (hold.stillHeld(PRESS_RELEASE_TICKS)) return true;
+
+			continuousFire.remove(weaponUuid, ref);
+			Runnable callback = releaseCallbacks.remove(weaponUuid);
+			if (callback != null) callback.run();
+			return false;
+		});
 	}
 
 	/**
@@ -727,11 +738,10 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
-	 * AUTO-mode trigger for incendiary weapons. Spawns a {@link RepeatingTimer} that calls
-	 * {@link IncendiaryAction#fireOnce(Player)} every tick-rate ticks while RMB is held, plus a watchdog that cancels
-	 * the loop a few ticks after the player releases RMB. The release-detection mechanism reuses
-	 * {@link #continuousFire} — the {@code shooting} flag is set on every {@link PlayerInteractEvent} and cleared by
-	 * the watchdog.
+	 * AUTO-mode trigger for incendiary weapons: the first spray fires in the press, then one per-tick loop owns both
+	 * the release check - the AUTO gun's, at most {@link #TRIGGER_REPEAT_TICKS} ticks past the last repeat - and the
+	 * {@link IncendiaryAction#fireOnce(Player)} cadence, so a spray can never land on a tick the hold has already
+	 * lapsed on.
 	 */
 	private void handleIncendiaryAuto(IncendiaryWeapon weapon, IncendiaryAction action, Player player) {
 		UUID weaponUuid = weapon.getUuid();
@@ -740,62 +750,52 @@ public class WeaponInteract implements Listener {
 
 		AtomicReference<WeaponData> existing = continuousFire.get(weaponUuid);
 		if (existing != null) {
-			// already running — just refresh the held flag so the watchdog doesn't kill it
-			existing.get().shooting = true;
+			// already running — a repeat of the held trigger
+			existing.get().refresh();
 			return;
 		}
 
-		// The first spray fires inside the event that pulled the trigger; the loop below (a RepeatingTimer skips
-		// its first scheduled run) continues the cadence from the next tick-rate boundary. Empty or broken: nothing
-		// to loop over. Information.Equip_Delay gates the first spray like every other first press (BZ-EV-17).
+		// Empty or broken: nothing to loop over. Information.Equip_Delay gates the first spray like every other
+		// first press (BZ-EV-17).
 		if (isEquipDelayActive(weaponUuid) || !action.fireOnce(player)) return;
 
-		WeaponData freshWeaponData = new WeaponData();
-		freshWeaponData.shooting = true;
-		AtomicReference<WeaponData> ref = new AtomicReference<>(freshWeaponData);
+		WeaponData                  hold = new WeaponData();
+		AtomicReference<WeaponData> ref  = new AtomicReference<>(hold);
 		continuousFire.put(weaponUuid, ref);
 
-		int tickRate = Math.max(1, weapon.getIncendiaryData().getTickRate());
-		RepeatingTimer sprayLoop = new RepeatingTimer(plugin, tickRate, time -> {
-			if (!action.fireOnce(player)) {
-				time.stop();
-				activeTasks.remove(weaponUuid);
-				continuousFire.remove(weaponUuid);
-			}
-		});
-		sprayLoop.start(false);
-		activeTasks.put(weaponUuid, sprayLoop);
+		// The loop sprays Tick_Rate + 1 ticks after the press, then every Tick_Rate - the cadence the old
+		// RepeatingTimer spray loop had (it skipped its first scheduled run).
+		int   tickRate   = Math.max(1, weapon.getIncendiaryData().getTickRate());
+		int[] untilSpray = {tickRate + 1};
+		everyTick(() -> {
+			// cleared by a swap/quit
+			if (continuousFire.get(weaponUuid) != ref) return false;
 
-		// release-detection watchdog — mirrors the AUTO gun pattern
-		new RepeatingTimer(plugin, tickRate + 3L, time -> {
-			AtomicReference<WeaponData> stillShooting = continuousFire.get(weaponUuid);
-			if (stillShooting == null) {
-				time.stop();
-				return;
+			if (hold.stillHeld(TRIGGER_REPEAT_TICKS)) {
+				if (--untilSpray[0] > 0) return true;
+
+				untilSpray[0] = tickRate;
+				if (action.fireOnce(player)) return true;
 			}
-			if (!stillShooting.get().shooting) {
-				time.stop();
-				continuousFire.remove(weaponUuid);
-				RepeatingTimer running = activeTasks.remove(weaponUuid);
-				if (running != null) running.stop();
-				return;
-			}
-			stillShooting.get().shooting = false;
-		}).start(false);
+
+			// released, or empty/broken mid-spray
+			continuousFire.remove(weaponUuid, ref);
+			return false;
+		});
 	}
 
 	/**
 	 * SINGLE/BURST press gate. Returns {@code true} if the current RMB event should be dropped — either because the
-	 * held-trigger watchdog is still tracking RMB-held state from a prior shot (in which case the held flag is
-	 * refreshed so the watchdog knows RMB is still down), or because the per-shot cooldown has not expired yet. Returns
+	 * held-trigger check is still tracking RMB-held state from a prior shot (in which case the hold is refreshed so
+	 * the check knows RMB is still down), or because the per-shot cooldown has not expired yet. Returns
 	 * {@code false} if the press is genuine and the caller should fire — in which case the caller MUST follow up with
-	 * {@link #engagePressHoldWatchdog(UUID, long)} so the next held-RMB event is correctly suppressed.
+	 * {@link #engagePressHoldWatchdog} so the next held-RMB event is correctly suppressed.
 	 */
 	private boolean isPressGated(UUID weaponUuid) {
 		AtomicReference<WeaponData> held = pressHoldState.get(weaponUuid);
 		if (held != null) {
-			// already in hold state — refresh the flag so the watchdog knows RMB is still down
-			held.get().shooting = true;
+			// already in hold state — a repeat of the held trigger
+			held.get().refresh();
 			EmptyMagSoundGate.refresh(weaponUuid);
 			return true;
 		}
@@ -861,38 +861,43 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
-	 * Records the per-shot cooldown deadline and starts the held-trigger watchdog for the given weapon. Must be called
-	 * immediately after a SINGLE/BURST shot fires. The watchdog reads the {@link WeaponData#shooting} flag every
-	 * {@link #MIN_PRESS_LOCK_TICKS} ticks and clears the weapon's entry once it observes one full cycle without a
-	 * refresh — indicating the player has released RMB and the trigger should be re-armed for the next press. Until the
-	 * entry is cleared, {@link #isPressGated(UUID)} will continue to drop incoming events for this weapon.
+	 * Records the per-shot cooldown deadline and starts the held-trigger release check for the given weapon. Must be
+	 * called immediately after a SINGLE/BURST shot fires. The check runs every tick and clears the weapon's entry once
+	 * more than {@link #PRESS_RELEASE_TICKS} ticks pass without a repeat — the player has released RMB and the trigger
+	 * is re-armed for the next press. Until the entry is cleared, {@link #isPressGated(UUID)} will continue to drop
+	 * incoming events for this weapon.
 	 */
 	private void engagePressHoldWatchdog(UUID weaponUuid, long lockTicks) {
 		GunFireDispatcher.lock(weaponUuid, lockTicks);
 
-		WeaponData freshWeaponData = new WeaponData();
-		freshWeaponData.shooting = true;
-		AtomicReference<WeaponData> ref = new AtomicReference<>(freshWeaponData);
+		WeaponData                  hold = new WeaponData();
+		AtomicReference<WeaponData> ref  = new AtomicReference<>(hold);
 		pressHoldState.put(weaponUuid, ref);
 
-		// release-detection watchdog. Main thread, like every watchdog here: WeaponData.shooting is a plain field the
-		// interact handler also writes, and the AUTO one resets the recoil pattern (BZ-EV-02).
-		new RepeatingTimer(plugin, MIN_PRESS_LOCK_TICKS, time -> {
-			AtomicReference<WeaponData> stillHeld = pressHoldState.get(weaponUuid);
-			if (stillHeld == null) {
-				// already cleared (e.g., by weapon swap)
-				time.stop();
-				return;
+		// Main thread, like every hold check here: WeaponData is plain state the interact handler also writes
+		// (BZ-EV-02).
+		everyTick(() -> {
+			// cleared by a swap/quit, or re-engaged by a newer press: that press owns the entry now
+			if (pressHoldState.get(weaponUuid) != ref) return false;
+			if (hold.stillHeld(PRESS_RELEASE_TICKS)) return true;
+
+			pressHoldState.remove(weaponUuid, ref);
+			return false;
+		});
+	}
+
+	/**
+	 * Runs {@code body} on the main thread once per tick, from the tick after the press on, until it returns
+	 * {@code false}. A plain Keystone {@link Timer} rather than a {@code RepeatingTimer}, which skips its first
+	 * scheduled run - every hold check here counts that first tick.
+	 */
+	private void everyTick(BooleanSupplier body) {
+		new Timer(plugin, 1L, 1L) {
+			@Override
+			public void run() {
+				if (!body.getAsBoolean()) stop();
 			}
-			if (!stillHeld.get().shooting) {
-				// no PlayerInteractEvent refreshed the flag in the last cycle — RMB has been released. Re-arm the
-				// trigger so the next press fires a fresh shot.
-				time.stop();
-				pressHoldState.remove(weaponUuid);
-				return;
-			}
-			stillHeld.get().shooting = false;
-		}).start(false);
+		}.start(false);
 	}
 
 	/**
@@ -900,9 +905,9 @@ public class WeaponInteract implements Listener {
 	 *
 	 * <p>Spigot fires {@link PlayerInteractEvent} repeatedly while the client holds RMB on a weapon item — there is no
 	 * first-class "edge press" signal. To make SINGLE/BURST behave as one-shot-per-press despite this, we run a
-	 * release-detection watchdog ({@link #engagePressHoldWatchdog(UUID, long)}) that drops every event arriving while a
-	 * previous trigger pull is still "held". The watchdog only clears its entry once it observes a quiet tick window
-	 * (the held-RMB packet stream has stopped), at which point the trigger is re-armed for the next genuine press.
+	 * per-tick release check ({@link #engagePressHoldWatchdog}) that drops every event arriving while a previous
+	 * trigger pull is still "held". It only clears its entry once the held-RMB packet stream has stopped (the
+	 * {@link #PRESS_RELEASE_TICKS} idle window), at which point the trigger is re-armed for the next genuine press.
 	 *
 	 * <p>The cooldown gate ({@link GunFireDispatcher#isLocked}/{@link GunFireDispatcher#lock}) is preserved as an
 	 * orthogonal rate limiter that prevents firing faster than the weapon's natural fire rate even when the player
@@ -936,13 +941,19 @@ public class WeaponInteract implements Listener {
 		                   timer -> weapon.getRecoil().resetRecoilPattern()).start(false);
 	}
 
+	/**
+	 * AUTO trigger. The press fires the first round synchronously and starts a {@link FullAutoTask}; every repeat of
+	 * the held trigger after that only refreshes the hold. The task itself asks whether the trigger is still held on
+	 * every tick, before firing - more than {@link #TRIGGER_REPEAT_TICKS} ticks since the last repeat ends it - so the
+	 * release bound no longer depends on the weapon's cooldown, and a steady hold never cancels itself mid-burst.
+	 */
 	private void shootFullAuto(GunWeapon weapon, Player player, ItemStack item) {
 		UUID weaponUuid = weapon.getUuid();
 		if (!autoTasks.containsKey(weaponUuid)) {
 			// Information.Equip_Delay / Shoot.Circumstance: only checked on the press that would start a fresh
-			// burst. Gated by the same press-hold watchdog shootOtherModes uses, so a denial doesn't re-fire
-			// ON_DENY on every repeated PlayerInteractEvent Spigot sends while RMB stays held — the entry only
-			// clears once the watchdog observes RMB has actually been released.
+			// burst. Gated by the same press-hold check shootOtherModes uses, so a denial doesn't re-fire ON_DENY on
+			// every repeated PlayerInteractEvent Spigot sends while RMB stays held — the entry only clears once RMB
+			// has actually been released.
 			if (isPressGated(weaponUuid)) return;
 
 			HandlingData.Circumstance denied = CircumstanceRules.firstDenied(player, weapon);
@@ -952,58 +963,30 @@ public class WeaponInteract implements Listener {
 				return;
 			}
 
+			WeaponData hold = new WeaponData();
+			continuousFire.put(weaponUuid, new AtomicReference<>(hold));
+
+			// Every way the burst ends - release, reload, circumstance, swap/quit - runs through here, so the next
+			// press always starts on a fresh recoil pattern and never mid-hold.
 			var autoTask = new FullAutoTask(plugin, weaponService, weapon, raytracer, player, item,
-			                                () -> {
-												autoTasks.remove(weaponUuid);
-												continuousFire.remove(weaponUuid);
-											}, effectRunner);
+			                                () -> hold.stillHeld(TRIGGER_REPEAT_TICKS), () -> {
+				autoTasks.remove(weaponUuid);
+				continuousFire.remove(weaponUuid);
+				weapon.getRecoil().resetRecoilPattern();
+			}, effectRunner);
 
 			autoTasks.put(weaponUuid, autoTask);
 
-			WeaponData freshWeaponData = new WeaponData();
-			freshWeaponData.shooting = true;
-			AtomicReference<WeaponData> weaponDataAtomicReference = new AtomicReference<>(freshWeaponData);
-
-			continuousFire.put(weaponUuid, weaponDataAtomicReference);
-
 			// Schedule first (so a cancel() from inside run() has a task id to cancel), then fire the first round
 			// synchronously: index 0 of the cadence table is always a shot, and the scheduled ticks continue from
-			// index 1 on the next tick. Previously the task's initial delay was the full cooldown, so every fresh
-			// AUTO press waited that long before its first round.
+			// index 1 on the next tick.
 			autoTask.start(false);
-			autoTask.run();
-
-			// watchdog timer for AUTO mode
-			long watchdog = weapon.getProjectileData().getCooldown() + 2L;
-			new RepeatingTimer(plugin, watchdog, time -> {
-				AtomicReference<WeaponData> stillShooting = continuousFire.get(weaponUuid);
-
-				if (stillShooting == null) {
-					time.stop();
-					weapon.getRecoil().resetRecoilPattern();
-					return;
-				}
-
-				if (!stillShooting.get().shooting) {
-					FullAutoTask task = autoTasks.get(weaponUuid);
-
-					if (task != null) {
-						task.cancel();
-					}
-
-					time.stop();
-					continuousFire.remove(weaponUuid);
-					weapon.getRecoil().resetRecoilPattern();
-					return;
-				}
-
-				stillShooting.get().shooting = false;
-			}).start(false);
+			autoTask.fireFirstRound();
 		} else {
 			AtomicReference<WeaponData> weaponData = continuousFire.get(weaponUuid);
 
 			if (weaponData != null) {
-				weaponData.get().shooting = true;
+				weaponData.get().refresh();
 				EmptyMagSoundGate.refresh(weaponUuid);
 			}
 		}
@@ -1020,22 +1003,37 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
-	 * Held-RMB shared state. The {@link #shooting} flag is set to {@code true} on every RMB {@link PlayerInteractEvent}
-	 * while a fire-task is active and cleared by a watchdog after one idle cycle; this is how the listener detects RMB
-	 * release without a first-class "edge release" signal from Spigot.
+	 * One held trigger. Every repeat of it ({@link PlayerInteractEvent} while RMB stays down) calls {@link #refresh};
+	 * the loop that owns the hold calls {@link #stillHeld} once per tick. This is how the listener detects RMB release
+	 * without a first-class "edge release" signal from Spigot.
 	 *
 	 * <ul>
 	 *   <li>AUTO uses this via {@link #continuousFire} to know when to stop the {@link FullAutoTask}.
 	 *   <li>SINGLE/BURST uses this via {@link #pressHoldState} to know when the trigger should be re-armed for the
 	 *       next press (the cooldown gate {@link GunFireDispatcher#isLocked} alone is not sufficient — once it
 	 *       lapses mid-hold, the next held-RMB event would otherwise fire a second shot).
-	 *   <li>Biological charge-then-release uses this via {@link #continuousFire} to know when to fire the charged
-	 *       shot.
+	 *   <li>Charge-then-release and the AUTO flamethrower use this via {@link #continuousFire} to know when to fire
+	 *       the charged shot, or stop spraying.
 	 * </ul>
 	 */
 	private static class WeaponData {
 
-		private boolean shooting;
+		private int idleTicks;
+
+		/**
+		 * A repeat of the held trigger arrived.
+		 */
+		private void refresh() {
+			idleTicks = 0;
+		}
+
+		/**
+		 * Advances this hold by one tick: {@code true} while the last repeat is at most {@code idleWindow} ticks
+		 * old.
+		 */
+		private boolean stillHeld(int idleWindow) {
+			return ++idleTicks <= idleWindow;
+		}
 
 	}
 
