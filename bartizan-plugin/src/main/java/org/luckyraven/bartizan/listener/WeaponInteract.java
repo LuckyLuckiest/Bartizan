@@ -20,6 +20,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
@@ -68,6 +69,7 @@ import org.luckyraven.bartizan.api.weapon.ThrowableWeapon;
 import org.luckyraven.bartizan.util.EmptyMagSoundGate;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -171,6 +173,14 @@ public class WeaponInteract implements Listener {
 	 * recorded swing is treated as the second half of the same click and dropped.
 	 */
 	private final Map<UUID, Long>                        lastMeleeSwingMs;
+	/**
+	 * Players whose client was seen sending a right-click while the server held its gun's use state - a client in
+	 * the use state sends none, so this one does not follow it (an older or Bedrock client through ViaBackwards,
+	 * ViaRewind or Geyser on a proxy, where {@link TriggerRelease}'s plugin check can't see them). Their guns use the
+	 * repeat-based fallback until they quit. A false positive only costs that fallback: the one legit way here is a
+	 * gun item gaining the use state while its slot update is still more than a repeat interval (200 ms) away.
+	 */
+	private final Set<UUID>                              repeatClients;
 
 	public WeaponInteract(JavaPlugin plugin, WeaponService weaponService, WeaponRaytracer raytracer,
 	                      PluginFireRegistry fireRegistry, CombatEligibility combatEligibility,
@@ -193,6 +203,7 @@ public class WeaponInteract implements Listener {
 		this.activeTasks        = new ConcurrentHashMap<>();
 		this.meleeCooldowns     = new ConcurrentHashMap<>();
 		this.lastMeleeSwingMs   = new ConcurrentHashMap<>();
+		this.repeatClients      = ConcurrentHashMap.newKeySet();
 		instance                = this;
 	}
 
@@ -282,7 +293,15 @@ public class WeaponInteract implements Listener {
 		// Exact trigger release: the server has to enter the use state the client predicted for the gun, or it never
 		// sees the hold at all (and Spigot, unlike Paper, never tells the client to drop it) - so an exact gun's
 		// right-click keeps its vanilla use, once its item carries the never-finishing consumable that use now is.
-		boolean exactUse = rightClick && TriggerRelease.isExact(gunWeapon) && TriggerRelease.carriesUseState(item);
+		if (rightClick && player.isHandRaised() && TriggerRelease.isExact(gunWeapon)) {
+			repeatClients.add(player.getUniqueId());
+		}
+		boolean exactUse = rightClick && exact(gunWeapon, player) && TriggerRelease.carriesUseState(item);
+		// The use this press lets through starts right after the event, in the same packet - unless it is a
+		// use-on-block (the client may not follow it with the USE_ITEM a use needs) or the material is on a cooldown
+		// (vanilla refuses the use). Known up front, so a tap released before the next tick still counts as released.
+		boolean useStarts = exactUse && event.getAction() == Action.RIGHT_CLICK_AIR &&
+		                    !player.hasCooldown(item.getType());
 
 		// no interruption while the weapon is reloading — but Shoot.Circumstance.Reloading: deny must still fire
 		// ON_DENY on the press that triggered it, so the circumstance check runs BEFORE this early return. When
@@ -311,10 +330,10 @@ public class WeaponInteract implements Listener {
 
 		if (selectiveFire == SelectiveFire.AUTO) {
 			// handle the AUTO mode with full auto task
-			shootFullAuto(gunWeapon, player, item);
+			shootFullAuto(gunWeapon, player, item, useStarts);
 		} else {
 			// handle the BURST and SINGLE modes
-			shootOtherModes(gunWeapon, player);
+			shootOtherModes(gunWeapon, player, useStarts);
 		}
 	}
 
@@ -390,9 +409,9 @@ public class WeaponInteract implements Listener {
 		SelectiveFire selectiveFire = gunWeapon.getCurrentSelectiveFire();
 
 		if (selectiveFire == SelectiveFire.AUTO) {
-			shootFullAuto(gunWeapon, player, item);
+			shootFullAuto(gunWeapon, player, item, false);
 		} else {
-			shootOtherModes(gunWeapon, player);
+			shootOtherModes(gunWeapon, player, false);
 		}
 	}
 
@@ -459,11 +478,16 @@ public class WeaponInteract implements Listener {
 	public void onReloadComplete(WeaponReloadCompleteEvent event) {
 		Player player = event.getPlayer();
 		if (event.isInterrupted() || !(event.getWeapon() instanceof GunWeapon gun)) return;
-		if (gun.getCurrentSelectiveFire() != SelectiveFire.AUTO || !TriggerRelease.isExact(gun)) return;
+		if (gun.getCurrentSelectiveFire() != SelectiveFire.AUTO || !exact(gun, player)) return;
 		if (!usesTrigger(player) || !combatEligibility.canBeHit(player)) return;
 		if (weaponService.getHeldHand(player, gun.getUuid()) != EquipmentSlot.HAND) return;
 
-		shootFullAuto(gun, player, player.getInventory().getItemInMainHand());
+		shootFullAuto(gun, player, player.getInventory().getItemInMainHand(), true);
+	}
+
+	@EventHandler
+	public void onQuit(PlayerQuitEvent event) {
+		repeatClients.remove(event.getPlayer().getUniqueId());
 	}
 
 	/**
@@ -910,17 +934,19 @@ public class WeaponInteract implements Listener {
 	 * incoming events for this weapon.
 	 */
 	private void engagePressHoldWatchdog(UUID weaponUuid, long lockTicks) {
-		engagePressHoldWatchdog(weaponUuid, lockTicks, null);
+		engagePressHoldWatchdog(weaponUuid, lockTicks, null, false);
 	}
 
 	/**
 	 * {@link #engagePressHoldWatchdog(UUID, long)} for a gun whose trigger is tracked through the vanilla use state
-	 * ({@code exactUser}): the trigger re-arms on the first tick after right-click is released.
+	 * ({@code exactUser}): the trigger re-arms on the first tick after right-click is released. {@code useStarts}:
+	 * the press itself starts that use state (see {@link WeaponData#WeaponData(boolean)}).
 	 */
-	private void engagePressHoldWatchdog(UUID weaponUuid, long lockTicks, @Nullable Player exactUser) {
+	private void engagePressHoldWatchdog(UUID weaponUuid, long lockTicks, @Nullable Player exactUser,
+	                                     boolean useStarts) {
 		GunFireDispatcher.lock(weaponUuid, lockTicks);
 
-		WeaponData                  hold = new WeaponData();
+		WeaponData                  hold = new WeaponData(useStarts);
 		AtomicReference<WeaponData> ref  = new AtomicReference<>(hold);
 		pressHoldState.put(weaponUuid, ref);
 
@@ -964,7 +990,7 @@ public class WeaponInteract implements Listener {
 	 * release-and-re-presses RMB rapidly — shared with {@code WeaponSelectiveFireChangeListener}'s scoped F fire
 	 * (weapons-roadmap.md gate {@code HP} review) so mashing either input is rate-limited identically.
 	 */
-	private void shootOtherModes(GunWeapon weapon, Player player) {
+	private void shootOtherModes(GunWeapon weapon, Player player, boolean useStarts) {
 		UUID weaponUuid = weapon.getUuid();
 
 		if (isPressGated(weaponUuid)) return;
@@ -973,14 +999,14 @@ public class WeaponInteract implements Listener {
 		// so a held RMB doesn't re-fire ON_DENY every tick until release — matches the "once per press" contract.
 		HandlingData.Circumstance denied = CircumstanceRules.firstDenied(player, weapon);
 		if (denied != null) {
-			engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS, exactUser(weapon, player));
+			engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS, exactUser(weapon, player), useStarts);
 			fireDeny(weapon, player, denied.key());
 			return;
 		}
 
 		long lockTicks = GunFireDispatcher.lockTicksFor(weapon);
 
-		engagePressHoldWatchdog(weaponUuid, lockTicks, exactUser(weapon, player));
+		engagePressHoldWatchdog(weaponUuid, lockTicks, exactUser(weapon, player), useStarts);
 
 		// fire one shot (SINGLE) or one burst sequence (BURST). The inner SequenceTimer in shoot()
 		// already spaces individual burst rounds by projectileCooldown.
@@ -997,7 +1023,7 @@ public class WeaponInteract implements Listener {
 	 * every tick, before firing - more than {@link #TRIGGER_REPEAT_TICKS} ticks since the last repeat ends it - so the
 	 * release bound no longer depends on the weapon's cooldown, and a steady hold never cancels itself mid-burst.
 	 */
-	private void shootFullAuto(GunWeapon weapon, Player player, ItemStack item) {
+	private void shootFullAuto(GunWeapon weapon, Player player, ItemStack item, boolean useStarts) {
 		UUID weaponUuid = weapon.getUuid();
 		if (!autoTasks.containsKey(weaponUuid)) {
 			// Information.Equip_Delay / Shoot.Circumstance: only checked on the press that would start a fresh
@@ -1008,13 +1034,13 @@ public class WeaponInteract implements Listener {
 
 			HandlingData.Circumstance denied = CircumstanceRules.firstDenied(player, weapon);
 			if (denied != null) {
-				engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS, exactUser(weapon, player));
+				engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS, exactUser(weapon, player), useStarts);
 				fireDeny(weapon, player, denied.key());
 				return;
 			}
 
 			Player     exactUser = exactUser(weapon, player);
-			WeaponData hold      = new WeaponData();
+			WeaponData hold      = new WeaponData(useStarts);
 			continuousFire.put(weaponUuid, new AtomicReference<>(hold));
 
 			// Every way the burst ends - release, reload, circumstance, swap/quit - runs through here, so the next
@@ -1054,12 +1080,20 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
-	 * {@code player} when {@code weapon}'s trigger is tracked through the vanilla use state
-	 * ({@link TriggerRelease#isExact}), else {@code null} - the repeat-only hold.
+	 * {@code weapon}'s trigger is tracked through {@code player}'s vanilla use state: {@link TriggerRelease#isExact},
+	 * and the client follows that state ({@link #repeatClients}).
+	 */
+	private boolean exact(Weapon weapon, Player player) {
+		return TriggerRelease.isExact(weapon) && !repeatClients.contains(player.getUniqueId());
+	}
+
+	/**
+	 * {@code player} when {@code weapon}'s trigger is tracked through the vanilla use state ({@link #exact}), else
+	 * {@code null} - the repeat-only hold.
 	 */
 	@Nullable
-	private static Player exactUser(Weapon weapon, Player player) {
-		return TriggerRelease.isExact(weapon) ? player : null;
+	private Player exactUser(Weapon weapon, Player player) {
+		return exact(weapon, player) ? player : null;
 	}
 
 	/**
@@ -1070,8 +1104,11 @@ public class WeaponInteract implements Listener {
 	 * pause menu are client-side: a trigger held into one of them fires on until it closes (migration.md §15).
 	 */
 	private static boolean usesTrigger(Player player) {
-		return player.isHandRaised() && !player.isDead() &&
-		       player.getOpenInventory().getType() == InventoryType.CRAFTING;
+		if (!player.isHandRaised() || player.isDead()) return false;
+
+		// no container open: the 2x2 crafting grid, which CraftInventoryView reports as CREATIVE in creative mode
+		InventoryType open = player.getOpenInventory().getType();
+		return open == InventoryType.CRAFTING || open == InventoryType.CREATIVE;
 	}
 
 	/**
@@ -1088,10 +1125,23 @@ public class WeaponInteract implements Listener {
 	 *       the charged shot, or stop spraying.
 	 * </ul>
 	 */
-	private static class WeaponData {
+	private class WeaponData {
 
 		private int     idleTicks;
 		private boolean sawUse;
+
+		private WeaponData() {
+			this(false);
+		}
+
+		/**
+		 * @param useStarts the press that pulled the trigger starts the use state itself, right after its event: a
+		 * 		tap whose release lands before the first per-tick check then still reads as released there, instead of
+		 * 		the use state never being seen and the repeat window running out.
+		 */
+		private WeaponData(boolean useStarts) {
+			this.sawUse = useStarts;
+		}
 
 		/**
 		 * A repeat of the held trigger arrived.
@@ -1113,10 +1163,11 @@ public class WeaponInteract implements Listener {
 		 * {@link TriggerRelease}; {@code null} for a repeat-only hold). Once the server has seen the use state
 		 * ({@link #usesTrigger}), it is the hold: it ending is the release, to the tick. Until then - the client
 		 * predicted a use-on-block instead (a hoe on dirt), or the item has not picked up its use-state components
-		 * yet - the repeats still decide.
+		 * yet - the repeats still decide. So do they once the client turns out not to follow the use state
+		 * ({@link #repeatClients}).
 		 */
 		private boolean stillHeld(@Nullable Player exactUser, int idleWindow) {
-			if (exactUser != null) {
+			if (exactUser != null && !repeatClients.contains(exactUser.getUniqueId())) {
 				if (usesTrigger(exactUser)) {
 					sawUse = true;
 					return true;

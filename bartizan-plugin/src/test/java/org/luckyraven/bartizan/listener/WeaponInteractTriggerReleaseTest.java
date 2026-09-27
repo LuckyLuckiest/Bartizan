@@ -4,6 +4,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.UnsafeValues;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.block.Action;
@@ -36,6 +38,7 @@ import org.luckyraven.bartizan.api.weapon.IncendiaryWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.WeaponType;
 import org.luckyraven.bartizan.api.weapon.dto.DurabilityData;
+import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.api.weapon.ProjectileType;
 import org.luckyraven.bartizan.api.weapon.modifiers.BlockDamageManager;
@@ -45,6 +48,7 @@ import org.luckyraven.bartizan.fire.PluginFireRegistry;
 import org.luckyraven.bartizan.scope.SpyglassScopeTask;
 import org.luckyraven.bartizan.status.StatusEffectService;
 import org.luckyraven.bartizan.support.TickScheduler;
+import org.luckyraven.bartizan.weapon.CircumstanceRules;
 import org.luckyraven.bartizan.weapon.TriggerRelease;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.weapon.action.ChargeController;
@@ -390,8 +394,14 @@ class WeaponInteractTriggerReleaseTest {
 		assertEquals(List.of(0L, 1L, 2L, 3L, 4L), rounds);
 	}
 
+	/**
+	 * Also the server's whole view of a trigger held into chat, the player's own inventory or the pause menu: those
+	 * screens are client-side, send nothing, and the release only comes once they close - so fire (and, off
+	 * {@link #exact_reloadComplete_resumesAHeldAutoGun}, a reload's resume) carries on meanwhile (migration.md §15).
+	 */
 	@Test
-	@DisplayName("exact: a long hold with no repeats at all keeps firing, never resets recoil, and stops on release")
+	@DisplayName("exact: a long hold with no repeats at all (or one held into a client-side screen) keeps firing, "
+	             + "never resets recoil, and stops on release")
 	void exact_longHoldWithoutRepeats_firesThroughoutAndStopsOnRelease() {
 		exactMode(true, true);
 		gun(0, SelectiveFire.AUTO);
@@ -449,7 +459,11 @@ class WeaponInteractTriggerReleaseTest {
 		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
 				(shot, context) -> rounds.add(clock.now()))) {
 			run(24, tick -> {
-				if (repeatAt(tick, 8)) press(); // the hand never rises
+				// a use-on-block repeats as USE_ITEM_ON, and the hand never rises
+				if (repeatAt(tick, 8)) {
+					listener.onPlayerInteract(new PlayerInteractEvent(player, Action.RIGHT_CLICK_BLOCK, item,
+					                                                  mock(Block.class), BlockFace.UP, EquipmentSlot.HAND));
+				}
 			});
 		}
 
@@ -585,6 +599,157 @@ class WeaponInteractTriggerReleaseTest {
 
 			assertEquals(0, rounds.constructed().size());
 		}
+	}
+
+	@Test
+	@DisplayName("exact: a creative player's own inventory reads as CREATIVE, not CRAFTING - still no container")
+	void exact_creativeMode_holdsLikeSurvival() {
+		exactMode(true, true);
+		gun(0, SelectiveFire.AUTO);
+		openInventory = InventoryType.CREATIVE; // CraftInventoryView#getType for a creative player's 2x2 grid
+		List<Long> rounds = new ArrayList<>();
+
+		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
+				(shot, context) -> rounds.add(clock.now()))) {
+			run(20, tick -> {
+				if (tick == 0) pressAndUse();
+				if (tick == 15) handRaised = false;
+			});
+		}
+
+		assertEquals(LongStream.rangeClosed(0, 15).boxed().toList(), rounds);
+	}
+
+	/**
+	 * A one-client-tick tap whose USE_ITEM and RELEASE_USE_ITEM both land before the next server tick (a tick over
+	 * 50 ms, or network jitter): the per-tick check never sees the hand raised.
+	 */
+	@Test
+	@DisplayName("exact: a tap released before the next tick fires the press's round only")
+	void exact_tapReleasedWithinTheSameTick_firesOneRound() {
+		exactMode(true, true);
+		gun(0, SelectiveFire.AUTO);
+		List<Long> rounds = new ArrayList<>();
+
+		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
+				(shot, context) -> rounds.add(clock.now()))) {
+			run(20, tick -> {
+				if (tick == 0) {
+					pressAndUse();
+					handRaised = false;
+				}
+			});
+		}
+
+		assertEquals(List.of(0L), rounds);
+	}
+
+	@Test
+	@DisplayName("exact: SINGLE re-arms after a tap released before the next tick, so a fast re-press fires")
+	void exact_single_tapReleasedWithinTheSameTick_rearms() {
+		exactMode(true, true);
+		GunWeapon gun = gun(4, SelectiveFire.SINGLE);
+
+		try (MockedConstruction<GunAction> shots = mockConstruction(GunAction.class)) {
+			run(12, tick -> {
+				if (tick == 0) {
+					pressAndUse();
+					handRaised = false;
+				}
+				if (tick == 3) {
+					GunFireDispatcher.unlock(gun.getUuid());
+					pressAndUse();
+				}
+			});
+
+			assertEquals(2, shots.constructed().size(), "the tap's release must re-arm the trigger");
+		}
+	}
+
+	@Test
+	@DisplayName("exact: a press on a material cooldown starts no use, so the repeats decide")
+	void exact_pressOnItemCooldown_fallsBackToTheRepeats() {
+		exactMode(true, true);
+		gun(0, SelectiveFire.AUTO);
+		when(player.hasCooldown(any())).thenReturn(true);
+		List<Long> rounds = new ArrayList<>();
+
+		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
+				(shot, context) -> rounds.add(clock.now()))) {
+			run(24, tick -> {
+				if (repeatAt(tick, 8)) press(); // vanilla refuses the use: the hand never rises
+			});
+		}
+
+		assertEquals(LongStream.rangeClosed(0, 12).boxed().toList(), rounds);
+	}
+
+	/**
+	 * ViaBackwards/ViaRewind/Geyser on a proxy, where the older-client plugin check can't see them: the server
+	 * enters the use state, but the client keeps sending repeats (a client in the use state sends none) and may never
+	 * send the release.
+	 */
+	@Test
+	@DisplayName("exact: a client repeating right-click through the server's use state falls back to the repeats")
+	void exact_clientIgnoringTheUseState_fallsBackToTheRepeats() {
+		exactMode(true, true);
+		GunWeapon  gun    = gun(0, SelectiveFire.AUTO);
+		List<Long> rounds = new ArrayList<>();
+		when(weaponService.getHeldHand(player, gun.getUuid())).thenReturn(EquipmentSlot.HAND);
+
+		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
+				(shot, context) -> rounds.add(clock.now()))) {
+			run(30, tick -> {
+				if (tick == 0) pressAndUse(); // the server's use state starts, and never ends
+				if (repeatAt(tick, 8) && tick > 0) {
+					assertEquals(Event.Result.DENY, press().useItemInHand(),
+					             "no more use states for a client that doesn't follow them");
+				}
+			});
+
+			assertEquals(LongStream.rangeClosed(0, 12).boxed().toList(), rounds);
+
+			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player));
+			assertEquals(13, rounds.size(), "the stale use state resumes nothing");
+		}
+	}
+
+	/**
+	 * {@code Shoot.Circumstance} is checked once per press: a burst it stops mid-hold stays stopped until the
+	 * trigger is released and pressed again, in both modes - the fallback's next repeat re-enters as a press, is
+	 * denied, and holds the press gate until the release.
+	 */
+	@ParameterizedTest(name = "exact: {0}")
+	@CsvSource({"true", "false"})
+	@DisplayName("a burst a circumstance stops mid-hold resumes only on a fresh press, in both modes")
+	void circumstanceDeniedMidHold_resumesOnlyOnAFreshPress(boolean exact) {
+		exactMode(true, exact);
+		GunWeapon  gun       = gun(0, SelectiveFire.AUTO);
+		List<Long> rounds    = new ArrayList<>();
+		boolean[]  sprinting = {false};
+
+		try (MockedStatic<CircumstanceRules> rules = mockStatic(CircumstanceRules.class);
+		     MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
+				     (shot, context) -> rounds.add(clock.now()))) {
+			rules.when(() -> CircumstanceRules.firstDenied(any(), any()))
+			     .thenAnswer(invocation -> sprinting[0] ? HandlingData.Circumstance.SPRINTING : null);
+
+			run(40, tick -> {
+				if (tick == 4) sprinting[0] = true; // after tick 4's round: the burst stops at 5
+				if (tick == 10) sprinting[0] = false;
+				if (tick == 30) GunFireDispatcher.unlock(gun.getUuid()); // the wall-clock gate, as in real time
+				if (exact) {
+					if (tick == 0 || tick == 30) pressAndUse();
+					if (tick == 20) handRaised = false;
+				} else if (repeatAt(tick, 20) || tick == 30) {
+					press();
+				}
+			});
+		}
+
+		// held 0-20: stopped at 5 and silent through the rest of the hold; the fresh press at 30 fires again
+		assertEquals(List.of(0L, 1L, 2L, 3L, 4L), rounds.subList(0, 5));
+		assertEquals(30L, rounds.get(5));
 	}
 
 	@Test
