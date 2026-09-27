@@ -107,11 +107,6 @@ public final class TriggerRelease {
 	}
 
 	/**
-	 * Adds the use-state components to {@code item} when {@code weapon} {@link #isExact is exact}, and strips them
-	 * when it is not (the switch turned off). A no-op on a server without item components, and whenever the item is
-	 * already in the wanted state.
-	 */
-	/**
 	 * {@code true} when {@code item} already carries the use state - only then may its vanilla use go through: an item
 	 * built before it had the components (they arrive with its next rebuild, usually the first shot) would otherwise
 	 * run its material's own default use, e.g. an armor piece equipping itself.
@@ -123,6 +118,11 @@ public final class TriggerRelease {
 		return meta != null && meta.getPersistentDataContainer().has(MARKER, PersistentDataType.BYTE);
 	}
 
+	/**
+	 * Adds the use-state components to {@code item} when {@code weapon} {@link #isExact is exact}, and strips them
+	 * when it is not (the switch turned off). A no-op on a server without item components, and whenever the item is
+	 * already in the wanted state.
+	 */
 	@SuppressWarnings("deprecation")
 	public static void applyItemState(Weapon weapon, @Nullable ItemStack item) {
 		if (!supported || item == null) return;
