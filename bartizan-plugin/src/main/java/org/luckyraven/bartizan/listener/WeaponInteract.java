@@ -17,6 +17,7 @@ import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -34,8 +35,10 @@ import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
+import org.luckyraven.bartizan.api.event.WeaponReloadCompleteEvent;
 import org.luckyraven.bartizan.weapon.CircumstanceRules;
 import org.luckyraven.bartizan.weapon.ScopeToggle;
+import org.luckyraven.bartizan.weapon.TriggerRelease;
 import org.luckyraven.bartizan.weapon.WeaponService;
 import org.luckyraven.bartizan.api.weapon.dto.ScopeData;
 import org.luckyraven.bartizan.api.weapon.dto.ScopeType;
@@ -77,9 +80,12 @@ public class WeaponInteract implements Listener {
 	/**
 	 * How often a held right-click reaches the server: a vanilla client re-sends USE_ITEM every 4 ticks
 	 * ({@code Minecraft#rightClickDelay}) while the button is held on an item it is not "using", and sends nothing at
-	 * all on release. So a hold is only visible as that repeat stream, and a release only as the repeat that fails to arrive. AUTO fire ends once more than this many
-	 * ticks pass since the last repeat - the earliest point a steady hold can be told apart from a release, so the
-	 * last round lands at most 4 ticks after the physical release (the next repeat's own tick, if it had come).
+	 * all on release. So a hold is only visible as that repeat stream, and a release only as the repeat that fails to
+	 * arrive. AUTO fire ends once more than this many ticks pass since the last repeat - the earliest point a steady
+	 * hold can be told apart from a release, so the last round lands at most 4 ticks after the physical release (the
+	 * next repeat's own tick, if it had come). With {@link TriggerRelease exact release detection} a gun's hold is the
+	 * vanilla use state instead, and this window only decides while that state has not started (see
+	 * {@link WeaponData#stillHeld(Player, int)}).
 	 */
 	static final int TRIGGER_REPEAT_TICKS = 4;
 
@@ -138,7 +144,8 @@ public class WeaponInteract implements Listener {
 	 * per-tick release check is scheduled. While the entry exists, all incoming RMB events for the weapon are
 	 * dropped — this is what enforces one-shot-per-press despite Spigot's repeated PlayerInteractEvent stream while RMB
 	 * is held. The check removes the entry once the trigger is released - more than {@link #PRESS_RELEASE_TICKS}
-	 * ticks without a repeat - at which point the trigger is re-armed for the next press.
+	 * ticks without a repeat, or the gun's use state ending under {@link TriggerRelease exact release detection} -
+	 * at which point the trigger is re-armed for the next press.
 	 *
 	 * <p>This is orthogonal to {@link GunFireDispatcher}'s shared fire-rate gate (weapons-roadmap.md gate {@code HP}
 	 * review — moved out of this class so {@code WeaponSelectiveFireChangeListener}'s scoped F fire goes through the
@@ -271,6 +278,11 @@ public class WeaponInteract implements Listener {
 			return;
 		}
 
+		// Exact trigger release: the server has to enter the use state the client predicted for the gun, or it never
+		// sees the hold at all (and Spigot, unlike Paper, never tells the client to drop it) - so an exact gun's
+		// right-click keeps its vanilla use, once its item carries the never-finishing consumable that use now is.
+		boolean exactUse = rightClick && TriggerRelease.isExact(gunWeapon) && TriggerRelease.carriesUseState(item);
+
 		// no interruption while the weapon is reloading — but Shoot.Circumstance.Reloading: deny must still fire
 		// ON_DENY on the press that triggered it, so the circumstance check runs BEFORE this early return. When
 		// Reloading is unconfigured (or every configured circumstance is satisfied), firstDenied is null and the
@@ -281,14 +293,17 @@ public class WeaponInteract implements Listener {
 				if (denied != null) fireDeny(gunWeapon, player, denied.key());
 			}
 			event.setCancelled(true);
+			// held through the reload: onReloadComplete resumes AUTO fire off this use state
+			if (exactUse) event.setUseItemInHand(Event.Result.ALLOW);
 			return;
 		}
 
 		if (!fireClick) return;
 
-		// cancel block interaction
+		// cancel block interaction - which also skips the item's own use-on-block (a hoe tilling, an axe stripping)
+		// even when the item use itself is allowed
 		event.setUseInteractedBlock(Event.Result.DENY);
-		event.setUseItemInHand(Event.Result.DENY);
+		event.setUseItemInHand(exactUse ? Event.Result.ALLOW : Event.Result.DENY);
 
 		SelectiveFire selectiveFire = gunWeapon.getCurrentSelectiveFire();
 
@@ -432,6 +447,32 @@ public class WeaponInteract implements Listener {
 
 		// cancel the default Minecraft attack damage for all other weapon types.
 		event.setCancelled(true);
+	}
+
+	/**
+	 * Exact trigger release: a right-click held through a reload sends nothing when the reload ends - the client is
+	 * still in the use state it entered, where the repeat-based fallback would get its next repeat - so a held AUTO
+	 * gun resumes firing here.
+	 */
+	@EventHandler
+	public void onReloadComplete(WeaponReloadCompleteEvent event) {
+		Player player = event.getPlayer();
+		if (event.isInterrupted() || !(event.getWeapon() instanceof GunWeapon gun)) return;
+		if (gun.getCurrentSelectiveFire() != SelectiveFire.AUTO || !TriggerRelease.isExact(gun)) return;
+		if (!player.isHandRaised() || player.isDead() || !combatEligibility.canBeHit(player)) return;
+		if (weaponService.getHeldHand(player, gun.getUuid()) != EquipmentSlot.HAND) return;
+
+		shootFullAuto(gun, player, player.getInventory().getItemInMainHand());
+	}
+
+	/**
+	 * Guard for exact trigger release: a gun's use state never finishes on its own (20,000,000 ticks), but a gun must
+	 * never be eaten even if it did.
+	 */
+	@EventHandler(priority = EventPriority.LOWEST)
+	public void onItemConsume(PlayerItemConsumeEvent event) {
+		Weapon weapon = weaponService.getWeaponTemplate(weaponService.getHeldWeaponName(event.getItem()));
+		if (weapon instanceof GunWeapon) event.setCancelled(true);
 	}
 
 	@EventHandler
@@ -868,6 +909,14 @@ public class WeaponInteract implements Listener {
 	 * incoming events for this weapon.
 	 */
 	private void engagePressHoldWatchdog(UUID weaponUuid, long lockTicks) {
+		engagePressHoldWatchdog(weaponUuid, lockTicks, null);
+	}
+
+	/**
+	 * {@link #engagePressHoldWatchdog(UUID, long)} for a gun whose trigger is tracked through the vanilla use state
+	 * ({@code exactUser}): the trigger re-arms on the first tick after right-click is released.
+	 */
+	private void engagePressHoldWatchdog(UUID weaponUuid, long lockTicks, @Nullable Player exactUser) {
 		GunFireDispatcher.lock(weaponUuid, lockTicks);
 
 		WeaponData                  hold = new WeaponData();
@@ -879,7 +928,7 @@ public class WeaponInteract implements Listener {
 		everyTick(() -> {
 			// cleared by a swap/quit, or re-engaged by a newer press: that press owns the entry now
 			if (pressHoldState.get(weaponUuid) != ref) return false;
-			if (hold.stillHeld(PRESS_RELEASE_TICKS)) return true;
+			if (hold.stillHeld(exactUser, PRESS_RELEASE_TICKS)) return true;
 
 			pressHoldState.remove(weaponUuid, ref);
 			return false;
@@ -923,14 +972,14 @@ public class WeaponInteract implements Listener {
 		// so a held RMB doesn't re-fire ON_DENY every tick until release — matches the "once per press" contract.
 		HandlingData.Circumstance denied = CircumstanceRules.firstDenied(player, weapon);
 		if (denied != null) {
-			engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS);
+			engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS, exactUser(weapon, player));
 			fireDeny(weapon, player, denied.key());
 			return;
 		}
 
 		long lockTicks = GunFireDispatcher.lockTicksFor(weapon);
 
-		engagePressHoldWatchdog(weaponUuid, lockTicks);
+		engagePressHoldWatchdog(weaponUuid, lockTicks, exactUser(weapon, player));
 
 		// fire one shot (SINGLE) or one burst sequence (BURST). The inner SequenceTimer in shoot()
 		// already spaces individual burst rounds by projectileCooldown.
@@ -958,18 +1007,19 @@ public class WeaponInteract implements Listener {
 
 			HandlingData.Circumstance denied = CircumstanceRules.firstDenied(player, weapon);
 			if (denied != null) {
-				engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS);
+				engagePressHoldWatchdog(weaponUuid, MIN_PRESS_LOCK_TICKS, exactUser(weapon, player));
 				fireDeny(weapon, player, denied.key());
 				return;
 			}
 
-			WeaponData hold = new WeaponData();
+			Player     exactUser = exactUser(weapon, player);
+			WeaponData hold      = new WeaponData();
 			continuousFire.put(weaponUuid, new AtomicReference<>(hold));
 
 			// Every way the burst ends - release, reload, circumstance, swap/quit - runs through here, so the next
 			// press always starts on a fresh recoil pattern and never mid-hold.
 			var autoTask = new FullAutoTask(plugin, weaponService, weapon, raytracer, player, item,
-			                                () -> hold.stillHeld(TRIGGER_REPEAT_TICKS), () -> {
+			                                () -> hold.stillHeld(exactUser, TRIGGER_REPEAT_TICKS), () -> {
 				autoTasks.remove(weaponUuid);
 				continuousFire.remove(weaponUuid);
 				weapon.getRecoil().resetRecoilPattern();
@@ -1003,6 +1053,15 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
+	 * {@code player} when {@code weapon}'s trigger is tracked through the vanilla use state
+	 * ({@link TriggerRelease#isExact}), else {@code null} - the repeat-only hold.
+	 */
+	@Nullable
+	private static Player exactUser(Weapon weapon, Player player) {
+		return TriggerRelease.isExact(weapon) ? player : null;
+	}
+
+	/**
 	 * One held trigger. Every repeat of it ({@link PlayerInteractEvent} while RMB stays down) calls {@link #refresh};
 	 * the loop that owns the hold calls {@link #stillHeld} once per tick. This is how the listener detects RMB release
 	 * without a first-class "edge release" signal from Spigot.
@@ -1018,7 +1077,8 @@ public class WeaponInteract implements Listener {
 	 */
 	private static class WeaponData {
 
-		private int idleTicks;
+		private int     idleTicks;
+		private boolean sawUse;
 
 		/**
 		 * A repeat of the held trigger arrived.
@@ -1032,6 +1092,24 @@ public class WeaponInteract implements Listener {
 		 * old.
 		 */
 		private boolean stillHeld(int idleWindow) {
+			return stillHeld(null, idleWindow);
+		}
+
+		/**
+		 * {@link #stillHeld(int)} for a trigger tracked through the vanilla use state ({@code exactUser}, see
+		 * {@link TriggerRelease}; {@code null} for a repeat-only hold). Once the server has seen the player's hand
+		 * raised, the use state is the hold: it ending is the release, to the tick. Until then - the client predicted
+		 * a use-on-block instead (a hoe on dirt), or the item has not picked up its use-state components yet - the
+		 * repeats still decide.
+		 */
+		private boolean stillHeld(@Nullable Player exactUser, int idleWindow) {
+			if (exactUser != null) {
+				if (exactUser.isHandRaised()) {
+					sawUse = true;
+					return true;
+				}
+				if (sawUse) return false;
+			}
 			return ++idleTicks <= idleWindow;
 		}
 

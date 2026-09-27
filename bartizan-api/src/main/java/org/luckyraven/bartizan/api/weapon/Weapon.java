@@ -37,6 +37,7 @@ import org.luckyraven.bartizan.api.weapon.WeaponType;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 
 @Getter
 @Setter
@@ -151,6 +152,14 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 	// Placeholder resolver for display name + lore (injected by WeaponAddon after construction).
 	@Nullable
 	private Placeholder          placeholder;
+	/**
+	 * Last pass over every item {@link #buildItem} builds and {@link #updateWeaponData} rewrites - injected by the
+	 * plugin after construction like {@link #placeholder}, and shared by every copy of the template. Bartizan uses it
+	 * for its version-gated item components (0.5.2: the 1.21.11+ use state behind exact trigger-release detection).
+	 * {@code null} leaves the item as built.
+	 */
+	@Nullable
+	private Consumer<ItemStack>  itemFinisher;
 
 	protected Weapon(UUID uuid, String name, String displayName, WeaponType category, Material material,
 	                 int customModelData, short durability, List<String> lore, boolean dropHologram,
@@ -480,6 +489,7 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		ItemStack item = builder.build();
 		applyAttributeModifiers(item);
 		applyCrossbowChargedProjectile(item);
+		if (itemFinisher != null) itemFinisher.accept(item);
 		return item;
 	}
 
@@ -548,6 +558,8 @@ public abstract class Weapon implements Cloneable, Comparable<Weapon> {
 		if (handlingData != null && !handlingData.getAttributes().isEmpty()) {
 			applyAttributeModifiers(itemBuilder.build());
 		}
+
+		if (itemFinisher != null) itemFinisher.accept(itemBuilder.build());
 	}
 
 	/**

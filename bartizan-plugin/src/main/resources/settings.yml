@@ -109,6 +109,16 @@ Stats:
    Assist_Window_Ticks: 100  # damage dealt within this many ticks before someone else's kill counts as an assist
    Autosave_Minutes: 5
 
+# Weapons: gun trigger behaviour (0.5.2).
+Weapons:
+   Trigger:
+      # On a 1.21.11+ server, right-click-trigger gun items are made usable while held - an invisible vanilla
+      # use that never finishes: no slowdown, sprinting kept, no animation, sound or particles - so the server sees
+      # right-click being released and a gun stops firing on the very next tick. false, or an older server, falls
+      # back to the stream of repeated right-clicks, which reveals a release up to 4 ticks late. A change reaches
+      # a gun item already in someone's inventory on its next shot or rebuild.
+      Exact_Release_Detection: true
+
 # Import: settings for /bartizan import weaponmechanics (weapons-roadmap.md gate HM). Missing entirely = both
 # defaults below.
 Import:

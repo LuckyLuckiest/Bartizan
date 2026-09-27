@@ -22,6 +22,7 @@ import org.luckyraven.keystone.persistence.config.NodeReader;
 import org.luckyraven.keystone.persistence.config.Severity;
 import org.luckyraven.bartizan.api.weapon.BeamWeapon;
 import org.luckyraven.bartizan.api.weapon.BiologicalWeapon;
+import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.ammo.AmmunitionManager;
@@ -29,6 +30,7 @@ import org.luckyraven.bartizan.configuration.parser.*;
 import org.luckyraven.bartizan.api.weapon.dto.*;
 import org.luckyraven.bartizan.api.weapon.WeaponType;
 import org.luckyraven.bartizan.raytrace.WeaponMuzzle;
+import org.luckyraven.bartizan.weapon.TriggerRelease;
 
 import java.util.*;
 import java.util.function.BooleanSupplier;
@@ -199,6 +201,9 @@ public class WeaponAddon {
 		// hand the placeholder resolver to the weapon instance so its rendering path can resolve
 		// configured PlaceholderAPI tokens
 		weapon.setPlaceholder(placeholder);
+		// exact trigger release (0.5.2): every build/rebuild of a gun item adds - or, with the switch off, strips -
+		// the 1.21.11+ use-state components
+		if (weapon instanceof GunWeapon) weapon.setItemFinisher(item -> TriggerRelease.applyItemState(weapon, item));
 
 		if (!report.isEmpty()) report.log(log);
 
