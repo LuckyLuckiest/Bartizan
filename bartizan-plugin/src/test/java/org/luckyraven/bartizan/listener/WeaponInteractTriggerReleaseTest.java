@@ -396,8 +396,8 @@ class WeaponInteractTriggerReleaseTest {
 
 	/**
 	 * Also the server's whole view of a trigger held into chat, the player's own inventory or the pause menu: those
-	 * screens are client-side, send nothing, and the release only comes once they close - so fire (and, off
-	 * {@link #exact_reloadComplete_resumesAHeldAutoGun}, a reload's resume) carries on meanwhile (migration.md §15).
+	 * screens are client-side, send nothing, and the release only comes once they close - so fire carries on
+	 * meanwhile, up to the end of the magazine ({@link #reloadComplete_resumesNothing}; migration.md §15).
 	 */
 	@Test
 	@DisplayName("exact: a long hold with no repeats at all (or one held into a client-side screen) keeps firing, "
@@ -546,9 +546,13 @@ class WeaponInteractTriggerReleaseTest {
 		assertEquals(List.of(0L, 1L, 2L, 3L, 4L), rounds);
 	}
 
+	/**
+	 * A press during a reload starts no use state: Paper then keeps the client on its repeats, which carry the fire
+	 * on once the reload is done, for as long as the button is really held.
+	 */
 	@Test
-	@DisplayName("exact: a right-click during a reload keeps its vanilla use, so the hold survives the reload")
-	void exact_reloadingPressKeepsTheUseState() {
+	@DisplayName("exact: a right-click during a reload is denied its vanilla use")
+	void exact_reloadingPressDeniesTheUseState() {
 		exactMode(true, true);
 		GunWeapon gun = gun(0, SelectiveFire.AUTO);
 		doReturn(true).when(gun).isReloading();
@@ -556,46 +560,32 @@ class WeaponInteractTriggerReleaseTest {
 		PlayerInteractEvent event = press();
 
 		assertTrue(event.isCancelled(), "the block interaction stays denied while reloading");
-		assertEquals(Event.Result.ALLOW, event.useItemInHand());
+		assertEquals(Event.Result.DENY, event.useItemInHand());
 	}
 
-	@Test
-	@DisplayName("exact: AUTO fire resumes when a reload completes with the trigger still held")
-	void exact_reloadComplete_resumesAHeldAutoGun() {
-		exactMode(true, true);
-		GunWeapon gun = gun(0, SelectiveFire.AUTO);
-		when(weaponService.getHeldHand(player, gun.getUuid())).thenReturn(EquipmentSlot.HAND);
-
-		try (MockedConstruction<GunAction> rounds = mockConstruction(GunAction.class)) {
-			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player));
-			assertEquals(0, rounds.constructed().size(), "trigger not held: nothing resumes");
-
-			handRaised = true;
-			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player, true));
-			assertEquals(0, rounds.constructed().size(), "a swap-cancelled reload resumes nothing");
-
-			openInventory = InventoryType.CHEST;
-			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player));
-			assertEquals(0, rounds.constructed().size(), "a server-opened container: the release may never come");
-			openInventory = InventoryType.CRAFTING;
-
-			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player));
-			assertEquals(1, rounds.constructed().size());
-
-			clock.tick();
-			assertEquals(2, rounds.constructed().size(), "the resumed burst keeps firing while held");
-		}
-	}
-
-	@Test
-	@DisplayName("fallback: a completed reload does not start fire on its own")
-	void fallback_reloadComplete_resumesNothing() {
+	/**
+	 * Nothing resumes a burst when a reload completes: a trigger held into chat, the player's own inventory or the
+	 * pause menu sends no release while the screen is open, so a resume would fire unattended, reload after reload,
+	 * until the ammo ran out. Unattended fire stops with the magazine; a held trigger needs a fresh press.
+	 */
+	@ParameterizedTest(name = "exact: {0}")
+	@CsvSource({"true", "false"})
+	@DisplayName("a completed reload never starts fire on its own, the hand raised or not")
+	void reloadComplete_resumesNothing(boolean exact) throws ReflectiveOperationException {
+		exactMode(true, exact);
 		GunWeapon gun = gun(0, SelectiveFire.AUTO);
 		when(weaponService.getHeldHand(player, gun.getUuid())).thenReturn(EquipmentSlot.HAND);
 		handRaised = true;
 
 		try (MockedConstruction<GunAction> rounds = mockConstruction(GunAction.class)) {
-			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player));
+			// every handler WeaponInteract has for the event, if any
+			for (var method : WeaponInteract.class.getMethods()) {
+				if (method.getParameterCount() == 1 &&
+				    method.getParameterTypes()[0] == WeaponReloadCompleteEvent.class) {
+					method.invoke(listener, new WeaponReloadCompleteEvent(gun, player));
+				}
+			}
+			for (int i = 0; i < 10; i++) clock.tick();
 
 			assertEquals(0, rounds.constructed().size());
 		}
@@ -693,9 +683,8 @@ class WeaponInteractTriggerReleaseTest {
 	@DisplayName("exact: a client repeating right-click through the server's use state falls back to the repeats")
 	void exact_clientIgnoringTheUseState_fallsBackToTheRepeats() {
 		exactMode(true, true);
-		GunWeapon  gun    = gun(0, SelectiveFire.AUTO);
+		gun(0, SelectiveFire.AUTO);
 		List<Long> rounds = new ArrayList<>();
-		when(weaponService.getHeldHand(player, gun.getUuid())).thenReturn(EquipmentSlot.HAND);
 
 		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
 				(shot, context) -> rounds.add(clock.now()))) {
@@ -708,9 +697,6 @@ class WeaponInteractTriggerReleaseTest {
 			});
 
 			assertEquals(LongStream.rangeClosed(0, 12).boxed().toList(), rounds);
-
-			listener.onReloadComplete(new WeaponReloadCompleteEvent(gun, player));
-			assertEquals(13, rounds.size(), "the stale use state resumes nothing");
 		}
 	}
 
@@ -750,6 +736,65 @@ class WeaponInteractTriggerReleaseTest {
 		// held 0-20: stopped at 5 and silent through the rest of the hold; the fresh press at 30 fires again
 		assertEquals(List.of(0L, 1L, 2L, 3L, 4L), rounds.subList(0, 5));
 		assertEquals(30L, rounds.get(5));
+	}
+
+	/**
+	 * The press's own round can put the gun's material on a cooldown - a {@code Cooldown} effect on the shot, or
+	 * {@code HUD.Reload_Item_Cooldown} on an empty magazine's reload - after which vanilla refuses the use the client
+	 * already predicted, and tells it nothing. Denying the use makes Paper resync the client back onto its repeats.
+	 */
+	@Test
+	@DisplayName("exact: a round that puts the gun on a cooldown denies the use, and the repeats carry the burst")
+	void exact_roundSettingACooldown_fallsBackToTheRepeats() {
+		exactMode(true, true);
+		gun(0, SelectiveFire.AUTO);
+		boolean[] cooldown = {false};
+		when(player.hasCooldown(any())).thenAnswer(invocation -> cooldown[0]);
+		List<Long> rounds = new ArrayList<>();
+
+		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class, (shot, context) -> {
+			rounds.add(clock.now());
+			cooldown[0] = true;
+		})) {
+			run(24, tick -> {
+				if (!repeatAt(tick, 8)) return;
+
+				PlayerInteractEvent event = press();
+				listener.onUseDecided(event);
+				// the repeats after it: the client knows the cooldown by then and predicts no use
+				if (tick == 0) {
+					assertEquals(Event.Result.DENY, event.useItemInHand(), "vanilla refuses it: the client must resync");
+				}
+			});
+		}
+
+		assertEquals(LongStream.rangeClosed(0, 12).boxed().toList(), rounds);
+	}
+
+	/**
+	 * A plugin denying the use after Bartizan's handler: on Paper the client resyncs onto its repeats, and those are
+	 * the hold now - one burst throughout, not a fresh one (and a recoil reset) per repeat.
+	 */
+	@Test
+	@DisplayName("exact: a use another plugin denies leaves the hold on the repeats - one burst while held")
+	void exact_useDeniedByAnotherPlugin_fallsBackToTheRepeats() {
+		exactMode(true, true);
+		gun(0, SelectiveFire.AUTO);
+		List<Long> rounds = new ArrayList<>();
+
+		try (MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
+				(shot, context) -> rounds.add(clock.now()))) {
+			run(24, tick -> {
+				if (!repeatAt(tick, 8)) return;
+
+				PlayerInteractEvent event = press();
+				event.setUseItemInHand(Event.Result.DENY); // a HIGH or HIGHEST listener
+				listener.onUseDecided(event);
+			});
+		}
+
+		assertEquals(LongStream.rangeClosed(0, 12).boxed().toList(), rounds);
+		verify(recoil, times(1)).resetRecoilPattern();
 	}
 
 	@Test

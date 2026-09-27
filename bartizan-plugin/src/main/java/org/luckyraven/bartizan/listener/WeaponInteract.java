@@ -37,7 +37,6 @@ import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.api.weapon.dto.EffectHook;
 import org.luckyraven.bartizan.api.weapon.dto.HandlingData;
-import org.luckyraven.bartizan.api.event.WeaponReloadCompleteEvent;
 import org.luckyraven.bartizan.weapon.CircumstanceRules;
 import org.luckyraven.bartizan.weapon.ScopeToggle;
 import org.luckyraven.bartizan.weapon.TriggerRelease;
@@ -181,6 +180,12 @@ public class WeaponInteract implements Listener {
 	 * gun item gaining the use state while its slot update is still more than a repeat interval (200 ms) away.
 	 */
 	private final Set<UUID>                              repeatClients;
+	/**
+	 * The hold the press being handled built on its use starting ({@code useStarts}), until {@link #onUseDecided}
+	 * sees whether it really did. Main thread only, like every event handler here.
+	 */
+	@Nullable
+	private WeaponData                                   pendingUse;
 
 	public WeaponInteract(JavaPlugin plugin, WeaponService weaponService, WeaponRaytracer raytracer,
 	                      PluginFireRegistry fireRegistry, CombatEligibility combatEligibility,
@@ -228,6 +233,8 @@ public class WeaponInteract implements Listener {
 		Player    player = event.getPlayer();
 		ItemStack item   = event.getItem();
 		Weapon    weapon = weaponService.validateAndGetWeapon(player, item);
+
+		pendingUse = null;
 
 		boolean leftClick = event.getAction() == Action.LEFT_CLICK_AIR || event.getAction() == Action.LEFT_CLICK_BLOCK;
 		boolean rightClick = event.getAction() == Action.RIGHT_CLICK_AIR ||
@@ -299,7 +306,8 @@ public class WeaponInteract implements Listener {
 		boolean exactUse = rightClick && exact(gunWeapon, player) && TriggerRelease.carriesUseState(item);
 		// The use this press lets through starts right after the event, in the same packet - unless it is a
 		// use-on-block (the client may not follow it with the USE_ITEM a use needs) or the material is on a cooldown
-		// (vanilla refuses the use). Known up front, so a tap released before the next tick still counts as released.
+		// (vanilla refuses the use). Assumed up front, so a tap released before the next tick still counts as
+		// released; onUseDecided takes it back if the press itself, or another plugin, stops the use after all.
 		boolean useStarts = exactUse && event.getAction() == Action.RIGHT_CLICK_AIR &&
 		                    !player.hasCooldown(item.getType());
 
@@ -312,9 +320,9 @@ public class WeaponInteract implements Listener {
 				HandlingData.Circumstance denied = CircumstanceRules.firstDenied(player, gunWeapon);
 				if (denied != null) fireDeny(gunWeapon, player, denied.key());
 			}
+			// the use stays denied too: nothing resumes a use state when the reload ends, while Paper keeps a denied
+			// client on its repeats, which carry the fire on for as long as the button really is held
 			event.setCancelled(true);
-			// held through the reload: onReloadComplete resumes AUTO fire off this use state
-			if (exactUse) event.setUseItemInHand(Event.Result.ALLOW);
 			return;
 		}
 
@@ -335,6 +343,11 @@ public class WeaponInteract implements Listener {
 			// handle the BURST and SINGLE modes
 			shootOtherModes(gunWeapon, player, useStarts);
 		}
+
+		// The press can put the gun's material on a cooldown itself (a Cooldown effect on the shot, or
+		// HUD.Reload_Item_Cooldown on an empty magazine's reload): vanilla then refuses the use the client already
+		// predicted, and tells it nothing. Denied, Paper resyncs the client back onto its repeats.
+		if (useStarts && player.hasCooldown(item.getType())) event.setUseItemInHand(Event.Result.DENY);
 	}
 
 	@EventHandler
@@ -470,19 +483,21 @@ public class WeaponInteract implements Listener {
 	}
 
 	/**
-	 * Exact trigger release: a right-click held through a reload sends nothing when the reload ends - the client is
-	 * still in the use state it entered, where the repeat-based fallback would get its next repeat - so a held AUTO
-	 * gun resumes firing here.
+	 * Exact trigger release: whether the use a press counted on ({@code useStarts}) really starts is only settled once
+	 * every listener has run - a plugin after Bartizan may deny it, or the press may have put the material on a
+	 * cooldown. If it doesn't, the hold goes back to the repeats (on Paper, a denied client resyncs onto them) rather
+	 * than reading the missing use state as a release on the next tick.
 	 */
-	@EventHandler
-	public void onReloadComplete(WeaponReloadCompleteEvent event) {
-		Player player = event.getPlayer();
-		if (event.isInterrupted() || !(event.getWeapon() instanceof GunWeapon gun)) return;
-		if (gun.getCurrentSelectiveFire() != SelectiveFire.AUTO || !exact(gun, player)) return;
-		if (!usesTrigger(player) || !combatEligibility.canBeHit(player)) return;
-		if (weaponService.getHeldHand(player, gun.getUuid()) != EquipmentSlot.HAND) return;
+	@EventHandler(priority = EventPriority.MONITOR)
+	public void onUseDecided(PlayerInteractEvent event) {
+		WeaponData hold = pendingUse;
+		pendingUse = null;
+		if (hold == null) return;
 
-		shootFullAuto(gun, player, player.getInventory().getItemInMainHand(), true);
+		ItemStack item = event.getItem();
+		if (event.useItemInHand() == Event.Result.DENY || item != null && event.getPlayer().hasCooldown(item.getType())) {
+			hold.sawUse = false;
+		}
 	}
 
 	@EventHandler
@@ -949,6 +964,7 @@ public class WeaponInteract implements Listener {
 		WeaponData                  hold = new WeaponData(useStarts);
 		AtomicReference<WeaponData> ref  = new AtomicReference<>(hold);
 		pressHoldState.put(weaponUuid, ref);
+		if (useStarts) pendingUse = hold;
 
 		// Main thread, like every hold check here: WeaponData is plain state the interact handler also writes
 		// (BZ-EV-02).
@@ -1042,6 +1058,7 @@ public class WeaponInteract implements Listener {
 			Player     exactUser = exactUser(weapon, player);
 			WeaponData hold      = new WeaponData(useStarts);
 			continuousFire.put(weaponUuid, new AtomicReference<>(hold));
+			if (useStarts) pendingUse = hold;
 
 			// Every way the burst ends - release, reload, circumstance, swap/quit - runs through here, so the next
 			// press always starts on a fresh recoil pattern and never mid-hold.
@@ -1101,7 +1118,8 @@ public class WeaponInteract implements Listener {
 	 * the button. Nothing ends a use on death, so a gun kept through it (keepInventory) stays "used" until respawn;
 	 * and a client with a screen open handles no keys, so it sends no RELEASE_USE_ITEM until the screen closes - of
 	 * those screens the server only knows the containers it opened itself. Chat, the player's own inventory and the
-	 * pause menu are client-side: a trigger held into one of them fires on until it closes (migration.md §15).
+	 * pause menu are client-side: a trigger held into one of them fires on until it closes or the magazine runs dry
+	 * - nothing resumes a burst after a reload, so unattended fire ends there (migration.md §15).
 	 */
 	private static boolean usesTrigger(Player player) {
 		if (!player.isHandRaised() || player.isDead()) return false;

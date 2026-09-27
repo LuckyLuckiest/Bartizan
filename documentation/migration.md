@@ -435,15 +435,23 @@ re-sends right-click every 4 ticks while it is held and sends nothing on release
 - **A trigger held into a screen:** a client with a screen open sends no release until the screen closes. Death and
   a container the server opens end the burst at once. Chat, the player's own inventory and the pause menu (also
   alt-tab with pause-on-lost-focus) are client-side and invisible to the server, so a gun held firing into one of
-  them keeps firing — auto-reloading and resuming — until it closes or the ammo runs out. The fallback stopped
-  within 4 ticks there, since no repeats arrive while a screen is open. (Pinned by
-  `WeaponInteractTriggerReleaseTest#exact_longHoldWithoutRepeats_firesThroughoutAndStopsOnRelease`: a hold the
-  server can't see a screen in is just a long hold.)
+  them keeps firing until it closes or the magazine runs dry — **known exploit:** up to one magazine of unattended
+  fire (a player can hold right-click, press T and let go). Nothing resumes a burst after a reload, so it never
+  goes further than that. The fallback stopped within 4 ticks there, since no repeats arrive while a screen is
+  open; set the switch to `false` if one magazine is too much. (Pinned by
+  `WeaponInteractTriggerReleaseTest#exact_longHoldWithoutRepeats_firesThroughoutAndStopsOnRelease` and
+  `#reloadComplete_resumesNothing`.)
 - **A burst a `Shoot.Circumstance` stops mid-hold** (e.g. `Sprinting: deny` once the player starts sprinting)
   stays stopped until right-click is released and pressed again, even after the circumstance clears — in both
   modes: the fallback's next repeat arrives as a press, is denied, and holds the trigger until the release.
-- **A right-click held through a reload** resumes AUTO fire when the reload completes, as the repeats did before.
-  A press rejected by `Information.Equip_Delay` or the fire-rate lock now needs a fresh press on 1.21.11 (the
+- **A right-click held through a reload** does not resume AUTO fire on 1.21.11: release and press again once the
+  reload is done (the fallback's repeats still resume it, as before). A resume would let a trigger held into a
+  screen fire on reload after reload. A right-click pressed *during* a reload is denied its use, so on Paper the
+  client's repeats carry the fire on once the reload ends, as in the fallback.
+- **A press that stops its own use** — a `Cooldown` effect on the shot, or `HUD.Reload_Item_Cooldown` on an
+  empty-magazine reload — or a use another plugin denies falls back to the repeats for that hold; on Spigot, which
+  never resyncs the client, it ends after 4 ticks and needs a fresh press.
+- A press rejected by `Information.Equip_Delay` or the fire-rate lock now needs a fresh press on 1.21.11 (the
   fallback resumed on the next repeat).
 - **Fire rates are unchanged.** `Projectile.Cooldown` still truncates to whole ticks (`0.1`/`0.5`/`0.05` → 0 → a
   round every tick); that is a balance decision left for a later release.
