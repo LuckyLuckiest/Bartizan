@@ -461,3 +461,27 @@ re-sends right-click every 4 ticks while it is held and sends nothing on release
 - **New: `Weapon#getItemFinisher()`/`#setItemFinisher(Consumer<ItemStack>)`** — a last pass over every item
   `buildItem` builds and `updateWeaponData` rewrites, shared by every copy of a template (like the placeholder
   resolver). Bartizan's own `WeaponAddon` sets it on every gun template; additive only.
+
+## 16. 0.5.2 → 0.6.0 — NPC fire while moving (Keystone 1.13.0)
+
+Install **Keystone 1.13.0** first; Bartizan 0.6.0 compiles against it. On an older Keystone the new NPC hooks below
+are simply never called.
+
+- **NPC gun cadence counts server ticks.** Keystone 1.13 hands the weapon controller the server ticks elapsed per
+  AI tick (`tick(int)`), where 0.5.x took one tick off per AI tick. A cop on a 10-tick AI clock therefore fires
+  about once per AI tick (the 5-tick floor now means 5 server ticks) instead of once every 5 AI ticks. Tune it per
+  NPC tier through Keystone's `AbstractNpc#setFireRateScale` (Gangland exposes it per tier in its NPC configs);
+  the factory's `fireRateMultiplier` still scales each cooldown as before.
+- **Reload signal.** `isReloading()` mirrors the held weapon, so Keystone squads hear a member reloading and a
+  reloading shooter backs off to the far edge of its band.
+- **BURST rounds re-aim.** A burst remembers its target and the aim error Keystone applied when it faced it; each
+  later round faces the target's current position with that same error, so a strafing target no longer walks out
+  of the burst and the NPC shoots no straighter. A target that dies or leaves mid-burst ends the burst. SINGLE and
+  AUTO are unchanged: each shot already follows Keystone's fresh facing.
+- **Fixed with the Keystone bump:** a full-auto burst ending ran its end-of-burst cleanup (recoil reset, trigger
+  tracking) twice on Keystone 1.11.2+.
+
+### `bartizan-api` deltas
+
+- `NpcWeaponController` now documents the inherited `isReloading()` and `tick(int)` (Keystone 1.13 SPI);
+  no new methods of its own.

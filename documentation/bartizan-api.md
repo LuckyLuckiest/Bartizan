@@ -504,6 +504,12 @@ internal-only; see `documentation/migration.md` §14 for the consumer-facing sum
   shared by every copy of a template. Bartizan sets it on every gun template to add (or strip) the 1.21.11+ use-state
   components behind exact trigger-release detection; see `documentation/migration.md` §15.
 
+## 0.6.0 API delta
+
+- Compiles against Keystone 1.13.0. `NpcWeaponController` inherits (and Bartizan implements) `tick(int
+  elapsedServerTicks)` — the cooldown in server ticks, already divided by the NPC's `AbstractNpc#setFireRateScale`
+  — and `isReloading()`. No new Bartizan-owned API; see `documentation/migration.md` §16.
+
 ## What Bartizan does *not* use
 
 Bartizan does not use `keystone-module` — it is a plain Spigot plugin, not a Keystone module host. There is no

@@ -6,7 +6,7 @@ installed on any Keystone-powered server, not just Gangland's.
 
 ## Install
 
-Drop `Bartizan-0.5.0.jar` beside `Keystone-1.9.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
+Drop `Bartizan-0.6.0.jar` beside `Keystone-1.13.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
 Keystone and NBT-API — both must already be installed and enabled, or Bartizan fails to load (Keystone's
 `NbtBridge.detect()` falls back to a no-op accessor when NBT-API is absent, which makes every Bartizan item inert,
 so it is a hard `depend:`, not a `softdepend:`). Soft-depends on `ViaVersion`, `PlaceholderAPI`.
@@ -49,6 +49,10 @@ condensed upgrade checklist.
 repeat on any server, and on the first tick after the release on 1.21.11+, where gun items are made usable while
 held (`settings.yml` `Weapons.Trigger.Exact_Release_Detection`, on by default). See `documentation/migration.md`
 §15.
+
+0.6.0 needs Keystone 1.13.0. NPC gun cadence now counts real server ticks and scales with the NPC's fire-rate scale
+(the consumer's per-tier multiplier), a reloading NPC tells its squad, and a BURST's later rounds keep tracking a
+moving target with the same aim error. See `documentation/migration.md` §16.
 
 ## Package map (as-built, 0.5.1)
 
@@ -147,5 +151,5 @@ mvn clean install            # bartizan-plugin/target/Bartizan-0.5.0.jar
 mvn clean install -DskipTests
 ```
 
-Keystone (`org.luckyraven:keystone-*:1.9.0`) must already be installed to `~/.m2` (`mvn clean install` in the
+Keystone (`org.luckyraven:keystone-*:1.13.0`) must already be installed to `~/.m2` (`mvn clean install` in the
 Keystone repo) before this reactor resolves.
