@@ -9,14 +9,18 @@ import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.effect.EffectRunner;
+import org.luckyraven.bartizan.weapon.WeaponManager;
 import org.luckyraven.keystone.timer.SequenceTimer;
 import org.mockito.ArgumentCaptor;
 
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -115,8 +119,7 @@ class NpcWeaponCadenceTest {
 		int perShot  = 3;
 		int cooldown = 4;
 		GunWeapon gun = mockGun(SelectiveFire.BURST, perShot, cooldown);
-		LivingEntity shooter = mock(LivingEntity.class);
-		stubFacing(shooter, -90f);
+		LivingEntity shooter = liveShooterAt(-90f);
 		RecordingController controller = newController(shooter, gun);
 		LivingEntity target = liveTarget(new AtomicReference<>(eyeAt(10, 0)));
 
@@ -361,11 +364,106 @@ class NpcWeaponCadenceTest {
 		assertEquals(0, controller.fireRoundCalls);
 	}
 
+	// ── 0.6.0: live shooter (Citizens swaps the NPC's entity after spawn) ─────────────────────────────────────
+
+	@Test
+	void supplierShooter_burstRoundFacesTheCurrentEntity_notTheOneBoundAtCreation() {
+		// Citizens replaced the entity ~2 s after spawn; rounds kept leaving from the removed one (squad-tactics).
+		LivingEntity first = liveShooterAt(-90f);
+		LivingEntity second = liveShooterAt(-90f);
+		AtomicReference<LivingEntity> current = new AtomicReference<>(first);
+		GunWeapon           gun        = mockGun(SelectiveFire.BURST, 3, 4);
+		RecordingController controller = newController(current::get, gun);
+		assertTrue(controller.tryFire(liveTarget(new AtomicReference<>(eyeAt(10, 0)))));
+
+		when(first.isValid()).thenReturn(false);
+		current.set(second);
+		SequenceTimer timer = mock(SequenceTimer.class);
+		controller.burstRound(gun, timer);
+
+		verify(timer, never()).stop();
+		verify(second).setRotation(anyFloat(), anyFloat());
+		verify(first, never()).setRotation(anyFloat(), anyFloat());
+		assertEquals(1, controller.fireRoundCalls, "the replacement entity keeps firing the burst");
+	}
+
+	@Test
+	void supplierShooter_nullOrDeadOrInvalid_skipsFiringWithoutThrowing() {
+		AtomicReference<LivingEntity> current = new AtomicReference<>();
+		GunWeapon           gun        = mockGun(SelectiveFire.SINGLE, 1, 6);
+		RecordingController controller = newController(current::get, gun);
+		LivingEntity        target     = liveTarget(new AtomicReference<>(eyeAt(10, 0)));
+
+		assertFalse(controller.tryFire(target), "no entity yet: skip");
+		assertTrue(controller.isShooterGone());
+
+		LivingEntity dead = liveShooterAt(-90f);
+		when(dead.isDead()).thenReturn(true);
+		current.set(dead);
+		assertFalse(controller.tryFire(target), "dead entity: skip");
+
+		LivingEntity removed = liveShooterAt(-90f);
+		when(removed.isValid()).thenReturn(false);
+		current.set(removed);
+		assertFalse(controller.tryFire(target), "removed entity: skip");
+		controller.refreshHeldItem();
+
+		assertEquals(0, controller.fireRoundCalls);
+		assertFalse(controller.isBusy(), "a skipped trigger must not start a cooldown");
+		verify(gun, never()).reload(any(), any(), anyBoolean());
+
+		current.set(liveShooterAt(-90f));
+		assertTrue(controller.tryFire(target), "fires again once a live entity is back");
+		assertEquals(1, controller.fireRoundCalls);
+	}
+
+	@Test
+	void supplierShooter_refreshHeldItemUsesTheCurrentEntity() {
+		LivingEntity first = liveShooterAt(-90f);
+		LivingEntity second = liveShooterAt(-90f);
+		AtomicReference<LivingEntity> current = new AtomicReference<>(first);
+		RecordingController controller = newController(current::get, mockGun(SelectiveFire.SINGLE, 1, 6));
+
+		current.set(second);
+		controller.refreshHeldItem();
+
+		verify(second).getEquipment();
+		verify(first, never()).getEquipment();
+	}
+
+	@Test
+	void factory_supplierOverload_bindsTheLiveShooter() {
+		WeaponManager weapons = mock(WeaponManager.class);
+		GunWeapon     gun     = mockGun(SelectiveFire.SINGLE, 1, 6);
+		when(weapons.createTransientWeapon("rifle")).thenReturn(gun);
+		AtomicReference<LivingEntity> current = new AtomicReference<>();
+
+		NpcWeaponControllerImpl controller = (NpcWeaponControllerImpl) new NpcWeaponFactoryImpl(
+				null, weapons, mock(EffectRunner.class)).create(current::get, "rifle", 1.0, 0.0);
+
+		assertTrue(controller.isShooterGone());
+		current.set(liveShooterAt(-90f));
+		assertFalse(controller.isShooterGone(), "the controller reads the supplier, not a snapshot");
+	}
+
 	// ---------------------------------------------------------------------------------------------------------------
+
+	private static LivingEntity liveShooterAt(float yaw) {
+		LivingEntity shooter = mock(LivingEntity.class);
+		when(shooter.isValid()).thenReturn(true);
+		stubFacing(shooter, yaw);
+		return shooter;
+	}
+
+	private static RecordingController newController(Supplier<LivingEntity> shooter, GunWeapon gun) {
+		return new RecordingController(mock(JavaPlugin.class), shooter, gun, NO_RATE_SCALING, 15.0,
+		                               mock(EffectRunner.class));
+	}
 
 	private static RecordingController newController(GunWeapon gun, double fireRateMultiplier) {
 		JavaPlugin   plugin  = mock(JavaPlugin.class);
 		LivingEntity shooter = mock(LivingEntity.class);
+		when(shooter.isValid()).thenReturn(true);
 		// aimErrorDegrees is accepted and stored but must never affect this path (bartizan.md §1.6(8)) — a
 		// deliberately nonzero, never-asserted-on value here would catch anyone who wires it in by mistake.
 		return new RecordingController(plugin, shooter, gun, fireRateMultiplier, 15.0, mock(EffectRunner.class));
@@ -428,6 +526,11 @@ class NpcWeaponCadenceTest {
 
 		RecordingController(JavaPlugin plugin, LivingEntity shooter, GunWeapon weapon, double fireRateMultiplier,
 		                    double aimErrorDegrees, EffectRunner effectRunner) {
+			super(plugin, shooter, weapon, fireRateMultiplier, aimErrorDegrees, effectRunner);
+		}
+
+		RecordingController(JavaPlugin plugin, Supplier<LivingEntity> shooter, GunWeapon weapon,
+		                    double fireRateMultiplier, double aimErrorDegrees, EffectRunner effectRunner) {
 			super(plugin, shooter, weapon, fireRateMultiplier, aimErrorDegrees, effectRunner);
 		}
 

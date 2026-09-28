@@ -23,6 +23,9 @@ import org.luckyraven.bartizan.raytrace.WeaponShooting;
 import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.keystone.timer.SequenceTimer;
 
+import java.util.Objects;
+import java.util.function.Supplier;
+
 /**
  * Bartizan's sole {@link NpcWeaponController} — NPC firing cadence, ported <b>line by line</b> from
  * {@code cops-n-crooks/npc/NpcCombatDelegate.java} per bartizan.md §1.6(8) (do not re-derive the arithmetic).
@@ -50,6 +53,12 @@ import org.luckyraven.keystone.timer.SequenceTimer;
  * offset IS the aim error. Each round ({@link #reaim()}) faces the stored target's current eyes plus the same offset,
  * so a moving NPC keeps tracking without shooting any straighter; {@code aimErrorDegrees} stays unused.
  *
+ * <p><b>Live shooter (0.6.0).</b> Citizens can replace an NPC's entity after spawn, so the controller reads its
+ * shooter through a {@link Supplier} on every use rather than keeping the entity it was created with (rounds used to
+ * leave from the removed entity's last position). While the supplier yields {@code null} or a dead/removed entity the
+ * controller skips firing: {@link #tryFire} returns {@code false} without touching cooldown or ammunition, and a
+ * running burst stops. The {@code LivingEntity} constructor is kept and binds that one entity.
+ *
  * <p>The two Bukkit-touching side effects — an actual shot ({@link #fireRound}) and burst scheduling
  * ({@link #scheduleBurst}) — are package-private hooks so {@code NpcWeaponCadenceTest} can stub them and exercise
  * the pure cadence arithmetic (attack-cooldown scaling, the busy/one-trigger gate, {@link #tick()}) with no live
@@ -59,7 +68,7 @@ import org.luckyraven.keystone.timer.SequenceTimer;
 public class NpcWeaponControllerImpl implements NpcWeaponController {
 
 	private final JavaPlugin    plugin;
-	private final LivingEntity  shooter;
+	private final Supplier<? extends LivingEntity> shooter;
 	private final Weapon        weapon;
 	private final double        fireRateMultiplier;
 	private final double        aimErrorDegrees;
@@ -74,8 +83,14 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 
 	public NpcWeaponControllerImpl(JavaPlugin plugin, LivingEntity shooter, Weapon weapon,
 	                               double fireRateMultiplier, double aimErrorDegrees, EffectRunner effectRunner) {
+		this(plugin, () -> shooter, weapon, fireRateMultiplier, aimErrorDegrees, effectRunner);
+	}
+
+	/** Reads the shooter from {@code shooter} on every use, so a replaced NPC entity is followed (class javadoc). */
+	public NpcWeaponControllerImpl(JavaPlugin plugin, Supplier<? extends LivingEntity> shooter, Weapon weapon,
+	                               double fireRateMultiplier, double aimErrorDegrees, EffectRunner effectRunner) {
 		this.plugin             = plugin;
-		this.shooter            = shooter;
+		this.shooter            = Objects.requireNonNull(shooter, "shooter");
 		this.weapon             = weapon;
 		this.fireRateMultiplier = fireRateMultiplier;
 		this.aimErrorDegrees    = aimErrorDegrees;
@@ -111,6 +126,8 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	public boolean tryFire(LivingEntity target) {
 		if (!(weapon instanceof GunWeapon gun)) return false;
 		if (isBusy()) return false;
+		LivingEntity self = liveShooter();
+		if (self == null) return false;
 
 		if (weapon.isBroken() || weapon.isMagazineEmpty()) {
 			triggerReload();
@@ -122,7 +139,7 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 
 		return switch (mode) {
 			case SINGLE -> performSingleShot(gun);
-			case BURST -> performBurstFire(gun, target);
+			case BURST -> performBurstFire(gun, self, target);
 			case AUTO -> performAutoShot(gun);
 		};
 	}
@@ -157,7 +174,7 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	}
 
 	/** Ported from {@code NpcCombatDelegate.performBurstFire} (`:283-306`) — one trigger per burst. */
-	private boolean performBurstFire(GunWeapon gun, LivingEntity target) {
+	private boolean performBurstFire(GunWeapon gun, LivingEntity self, LivingEntity target) {
 		if (plugin == null) return false;
 
 		int perShot  = Math.max(gun.getProjectileData().getPerShot(), 1);
@@ -167,9 +184,9 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 		attackCooldown = scaleCooldown(Math.max(totalBurstTicks, 5));
 
 		// Keystone's faceTarget has just applied the aim error, so facing minus ideal IS that error (class javadoc).
-		Vector ideal = ideal(target);
+		Vector ideal = ideal(self, target);
 		burstTarget    = target;
-		burstAimOffset = ideal == null ? new Vector() : shooter.getEyeLocation().getDirection().subtract(ideal);
+		burstAimOffset = ideal == null ? new Vector() : self.getEyeLocation().getDirection().subtract(ideal);
 
 		scheduleBurst(gun, perShot, cooldown);
 
@@ -230,7 +247,13 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	 * {@code NpcWeaponCadenceTest} can pin it without a live Bukkit scheduler — see the class javadoc.
 	 */
 	boolean isShooterGone() {
-		return !shooter.isValid();
+		return liveShooter() == null;
+	}
+
+	/** The shooter as it is now, or {@code null} while the supplier has none or it is dead/removed (class javadoc). */
+	private LivingEntity liveShooter() {
+		LivingEntity entity = shooter.get();
+		return entity == null || !entity.isValid() || entity.isDead() ? null : entity;
 	}
 
 	/**
@@ -240,20 +263,22 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	boolean reaim() {
 		LivingEntity target = burstTarget;
 		if (target == null || !target.isValid() || target.isDead()) return false;
+		LivingEntity self = liveShooter();
+		if (self == null) return false;
 
-		Vector ideal = ideal(target);
+		Vector ideal = ideal(self, target);
 		if (ideal == null) return true;   // coincident eyes: nothing to face, keep the current rotation
 		Vector direction = ideal.add(burstAimOffset);
 		if (direction.lengthSquared() < 1.0E-12) return true;
 
-		Location facing = shooter.getLocation().setDirection(direction.normalize());
-		shooter.setRotation(facing.getYaw(), facing.getPitch());
+		Location facing = self.getLocation().setDirection(direction.normalize());
+		self.setRotation(facing.getYaw(), facing.getPitch());
 		return true;
 	}
 
 	/** Unit vector from the shooter's eyes to the target's, or {@code null} when they coincide. */
-	private Vector ideal(LivingEntity target) {
-		Vector between = target.getEyeLocation().toVector().subtract(shooter.getEyeLocation().toVector());
+	private static Vector ideal(LivingEntity self, LivingEntity target) {
+		Vector between = target.getEyeLocation().toVector().subtract(self.getEyeLocation().toVector());
 		return between.lengthSquared() < 1.0E-12 ? null : between.normalize();
 	}
 
@@ -265,6 +290,9 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	 * item. Extracted as its own method so {@code NpcWeaponCadenceTest} can stub it — see the class javadoc.
 	 */
 	boolean fireRound(GunWeapon gun) {
+		LivingEntity shooter = liveShooter();
+		if (shooter == null) return false;
+
 		if (weapon.isBroken() || weapon.isMagazineEmpty()) {
 			triggerReload();
 			return false;
@@ -310,8 +338,10 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	@Override
 	public void refreshHeldItem() {
 		if (weapon == null) return;
+		LivingEntity self = liveShooter();
+		if (self == null) return;
 
-		EntityEquipment equipment = shooter.getEquipment();
+		EntityEquipment equipment = self.getEquipment();
 		if (equipment == null) return;
 
 		ItemStack current = equipment.getItemInMainHand();

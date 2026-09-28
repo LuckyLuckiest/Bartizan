@@ -488,6 +488,11 @@ time-to-kill collapses until the consumer sets the scale.
   later round faces the target's current position with that same error, so a strafing target no longer walks out
   of the burst and the NPC shoots no straighter. A target that dies or leaves mid-burst ends the burst. SINGLE and
   AUTO are unchanged: each shot already follows Keystone's fresh facing.
+- **Live shooter.** Citizens can replace an NPC's entity shortly after spawn; a controller bound to the spawn-time
+  entity kept firing from the removed entity's last position. Create controllers with
+  `NpcWeaponFactory.create(Supplier<? extends LivingEntity>, ...)` (e.g. `() -> npc.getEntity()`): the controller
+  reads the shooter on every shot and skips firing, without throwing, while the supplier yields `null` or a
+  dead/removed entity. The `LivingEntity` overload still works and binds that one entity.
 - **Fixed with the Keystone bump:** a full-auto burst ending ran its end-of-burst cleanup (recoil reset, trigger
   tracking) twice on Keystone 1.11.2+.
 
@@ -495,3 +500,5 @@ time-to-kill collapses until the consumer sets the scale.
 
 - `NpcWeaponController` now documents the inherited `isReloading()` and `tick(int)` (Keystone 1.13 SPI);
   no new methods of its own.
+- `NpcWeaponFactory.create(Supplier<? extends LivingEntity> shooter, String, double, double)` - new overload
+  (a `default` that throws `UnsupportedOperationException` for pre-0.6.0 implementations; Bartizan overrides it).

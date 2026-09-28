@@ -8,6 +8,8 @@ import org.luckyraven.bartizan.api.weapon.Weapon;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.weapon.WeaponManager;
 
+import java.util.function.Supplier;
+
 /**
  * Bartizan's sole {@link NpcWeaponFactory} implementation (bartizan.md §1.6(8)). Resolves a fresh, unregistered
  * weapon instance via {@link WeaponManager#createTransientWeapon(String)} — NPC weapons never enter the runtime
@@ -31,6 +33,12 @@ public class NpcWeaponFactoryImpl implements NpcWeaponFactory {
 	@Override
 	public NpcWeaponController create(LivingEntity shooter, String weaponName, double fireRateMultiplier,
 	                                  double aimErrorDegrees) {
+		return create(() -> shooter, weaponName, fireRateMultiplier, aimErrorDegrees);
+	}
+
+	@Override
+	public NpcWeaponController create(Supplier<? extends LivingEntity> shooter, String weaponName,
+	                                  double fireRateMultiplier, double aimErrorDegrees) {
 		Weapon weapon = weaponManager.createTransientWeapon(weaponName);
 		if (weapon == null) {
 			// Gate-H review M1: an unknown name used to surface as an NPE on the controller's first combat tick.
