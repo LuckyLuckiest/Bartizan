@@ -1,18 +1,26 @@
 package org.luckyraven.bartizan.npc;
 
+import org.bukkit.Location;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.Vector;
 import org.junit.jupiter.api.Test;
 import org.luckyraven.bartizan.api.weapon.GunWeapon;
 import org.luckyraven.bartizan.api.weapon.SelectiveFire;
 import org.luckyraven.bartizan.api.weapon.dto.ProjectileData;
 import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.keystone.timer.SequenceTimer;
+import org.mockito.ArgumentCaptor;
+
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -107,8 +115,10 @@ class NpcWeaponCadenceTest {
 		int perShot  = 3;
 		int cooldown = 4;
 		GunWeapon gun = mockGun(SelectiveFire.BURST, perShot, cooldown);
-		RecordingController controller = newController(gun, NO_RATE_SCALING);
-		LivingEntity target = mock(LivingEntity.class);
+		LivingEntity shooter = mock(LivingEntity.class);
+		stubFacing(shooter, -90f);
+		RecordingController controller = newController(shooter, gun);
+		LivingEntity target = liveTarget(new AtomicReference<>(eyeAt(10, 0)));
 
 		// One trigger per burst — schedules perShot rounds exactly once.
 		assertTrue(controller.tryFire(target), "first tryFire should schedule the burst");
@@ -212,10 +222,120 @@ class NpcWeaponCadenceTest {
 		verify(timer).stop();
 		assertEquals(0, controller.fireRoundCalls, "a dead/destroyed NPC must not fire the rest of its burst");
 
+		stubFacing(shooter, -90f);
 		when(shooter.isValid()).thenReturn(true);
+		assertTrue(controller.tryFire(liveTarget(new AtomicReference<>(eyeAt(10, 0)))));
 		controller.burstRound(gun, mock(SequenceTimer.class));
 
 		assertEquals(1, controller.fireRoundCalls, "a live shooter keeps firing its burst");
+	}
+
+	// ── 0.6.0: server-tick cadence, isReloading, burst re-aim ───────────────────────────────────────────────────
+
+	@Test
+	void tickElapsed_subtractsServerTicks() {
+		// SINGLE, perShot 3 x cooldown 4 = 12 server ticks busy.
+		RecordingController controller = newController(mockGun(SelectiveFire.SINGLE, 3, 4), NO_RATE_SCALING);
+		assertTrue(controller.tryFire(mock(LivingEntity.class)));
+
+		controller.tick(10);
+		assertTrue(controller.isBusy(), "10 of 12 server ticks elapsed: still busy");
+		controller.tick(0);
+		assertTrue(controller.isBusy(), "a zero-tick call (Keystone carries a fire-rate-scale fraction) subtracts nothing");
+		controller.tick(2);
+		assertFalse(controller.isBusy(), "12 of 12 server ticks elapsed: ready");
+	}
+
+	@Test
+	void tickNoArg_stillOnePerCall() {
+		RecordingController controller = newController(mockGun(SelectiveFire.SINGLE, 1, 6), NO_RATE_SCALING);
+		assertTrue(controller.tryFire(mock(LivingEntity.class)));
+
+		for (int i = 0; i < 5; i++) controller.tick();
+		assertTrue(controller.isBusy(), "tick() still takes exactly one tick off");
+		controller.tick();
+		assertFalse(controller.isBusy());
+	}
+
+	@Test
+	void isReloading_mirrorsWeapon() {
+		GunWeapon           gun        = mockGun(SelectiveFire.SINGLE, 1, 6);
+		RecordingController controller = newController(gun, NO_RATE_SCALING);
+
+		assertFalse(controller.isReloading());
+		when(gun.isReloading()).thenReturn(true);
+		assertTrue(controller.isReloading());
+	}
+
+	@Test
+	void burstRound_reaimsAtStoredTargetWithSameOffset() {
+		LivingEntity shooter = mock(LivingEntity.class);
+		when(shooter.isValid()).thenReturn(true);
+		GunWeapon           gun        = mockGun(SelectiveFire.BURST, 3, 4);
+		RecordingController controller = newController(shooter, gun);
+
+		// Keystone's faceTarget left the shooter 10 degrees off a target due east (yaw -90): that is the aim error.
+		stubFacing(shooter, -80f);
+		AtomicReference<Location> targetEye = new AtomicReference<>(eyeAt(10, 0));
+		assertTrue(controller.tryFire(liveTarget(targetEye)));
+		Vector offset = new Location(null, 0, 0, 0, -80f, 0f).getDirection().subtract(new Vector(1, 0, 0));
+
+		// The target strafes 4 blocks sideways (and a little down) between rounds.
+		targetEye.set(new Location(null, 10, 0.6, 4));
+		SequenceTimer timer = mock(SequenceTimer.class);
+		controller.burstRound(gun, timer);
+
+		Vector   newIdeal = new Vector(10, -1, 4).normalize();
+		Location expected = new Location(null, 0, 0, 0).setDirection(newIdeal.clone().add(offset).normalize());
+		ArgumentCaptor<Float> yaw   = ArgumentCaptor.forClass(Float.class);
+		ArgumentCaptor<Float> pitch = ArgumentCaptor.forClass(Float.class);
+		verify(shooter).setRotation(yaw.capture(), pitch.capture());
+		assertEquals(expected.getYaw(), yaw.getValue(), 1e-3, "the round tracks the moved target");
+		assertEquals(expected.getPitch(), pitch.getValue(), 1e-3);
+		// Keystone's aim error is an additive world-frame vector, so re-adding it keeps the miss at about 10 degrees.
+		double missDegrees = Math.toDegrees(
+				new Location(null, 0, 0, 0, yaw.getValue(), pitch.getValue()).getDirection().angle(newIdeal));
+		assertEquals(10, missDegrees, 1.5, "the aim error is kept, neither corrected nor grown");
+		assertEquals(1, controller.fireRoundCalls);
+		verify(timer, never()).stop();
+	}
+
+	@Test
+	void burstRound_targetDead_stopsTimerWithoutFiring() {
+		LivingEntity shooter = mock(LivingEntity.class);
+		when(shooter.isValid()).thenReturn(true);
+		stubFacing(shooter, -90f);
+		GunWeapon           gun        = mockGun(SelectiveFire.BURST, 3, 4);
+		RecordingController controller = newController(shooter, gun);
+		LivingEntity        target     = liveTarget(new AtomicReference<>(eyeAt(10, 0)));
+		assertTrue(controller.tryFire(target));
+
+		when(target.isDead()).thenReturn(true);
+		when(target.isValid()).thenReturn(false);
+		SequenceTimer timer = mock(SequenceTimer.class);
+		controller.burstRound(gun, timer);
+
+		verify(timer).stop();
+		verify(shooter, never()).setRotation(anyFloat(), anyFloat());
+		assertEquals(0, controller.fireRoundCalls, "no round at a dead target");
+	}
+
+	@Test
+	void burstRound_shooterGone_stillStopsFirst() {
+		LivingEntity shooter = mock(LivingEntity.class);
+		when(shooter.isValid()).thenReturn(true);
+		stubFacing(shooter, -90f);
+		GunWeapon           gun        = mockGun(SelectiveFire.BURST, 3, 4);
+		RecordingController controller = newController(shooter, gun);
+		assertTrue(controller.tryFire(liveTarget(new AtomicReference<>(eyeAt(10, 0)))));
+
+		when(shooter.isValid()).thenReturn(false);
+		SequenceTimer timer = mock(SequenceTimer.class);
+		controller.burstRound(gun, timer);
+
+		verify(timer, times(1)).stop();
+		verify(shooter, never()).setRotation(anyFloat(), anyFloat());
+		assertEquals(0, controller.fireRoundCalls);
 	}
 
 	// ---------------------------------------------------------------------------------------------------------------
@@ -226,6 +346,29 @@ class NpcWeaponCadenceTest {
 		// aimErrorDegrees is accepted and stored but must never affect this path (bartizan.md §1.6(8)) — a
 		// deliberately nonzero, never-asserted-on value here would catch anyone who wires it in by mistake.
 		return new RecordingController(plugin, shooter, gun, fireRateMultiplier, 15.0, mock(EffectRunner.class));
+	}
+
+	private static RecordingController newController(LivingEntity shooter, GunWeapon gun) {
+		return new RecordingController(mock(JavaPlugin.class), shooter, gun, NO_RATE_SCALING, 15.0,
+		                               mock(EffectRunner.class));
+	}
+
+	/** The shooter stands at the origin, eyes at y 1.6, facing {@code yaw} level; fresh Locations per call. */
+	private static void stubFacing(LivingEntity shooter, float yaw) {
+		when(shooter.getLocation()).thenAnswer(inv -> new Location(null, 0, 0, 0, yaw, 0f));
+		when(shooter.getEyeLocation()).thenAnswer(inv -> new Location(null, 0, 1.6, 0, yaw, 0f));
+	}
+
+	/** An eye location level with the shooter's. */
+	private static Location eyeAt(double x, double z) {
+		return new Location(null, x, 1.6, z);
+	}
+
+	private static LivingEntity liveTarget(AtomicReference<Location> eye) {
+		LivingEntity target = mock(LivingEntity.class);
+		when(target.isValid()).thenReturn(true);
+		when(target.getEyeLocation()).thenAnswer(inv -> eye.get().clone());
+		return target;
 	}
 
 	private static GunWeapon mockGun(SelectiveFire mode, int perShot, int cooldown) {
