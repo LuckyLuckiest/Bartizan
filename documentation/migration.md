@@ -492,7 +492,9 @@ time-to-kill collapses until the consumer sets the scale.
   entity kept firing from the removed entity's last position. Create controllers with
   `NpcWeaponFactory.create(Supplier<? extends LivingEntity>, ...)` (e.g. `() -> npc.getEntity()`): the controller
   reads the shooter on every shot and skips firing, without throwing, while the supplier yields `null` or a
-  dead/removed entity. The `LivingEntity` overload still works and binds that one entity.
+  dead/removed entity. The `LivingEntity` overload still works and binds that one entity, but that
+  controller now goes silent once the entity is dead or removed (0.5.x kept firing from its last position), so a
+  consumer still on it stops firing for the rest of the fight after a Citizens entity swap. Switch to the supplier.
 - **Fixed with the Keystone bump:** a full-auto burst ending ran its end-of-burst cleanup (recoil reset, trigger
   tracking) twice on Keystone 1.11.2+.
 
