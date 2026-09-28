@@ -48,7 +48,7 @@
         <!-- Single source of truth for the Bartizan version (CI-friendly versioning).
              Bump ONLY this property; child poms reference ${revision} and flatten-maven-plugin
              resolves it in the installed/deployed poms. -->
-        <revision>0.5.2</revision>
+        <revision>0.6.0</revision>
 
         <!-- Java 17, matching Keystone's floor. -->
         <maven.compiler.release>17</maven.compiler.release>
@@ -61,7 +61,7 @@
         <bukkit.version>1.16.5-R0.1-SNAPSHOT</bukkit.version>
 
         <!-- Keystone: provided at runtime from Keystone-<version>.jar in /plugins, never shaded. -->
-        <keystone.version>1.9.0</keystone.version>
+        <keystone.version>1.13.0</keystone.version>
 
         <viaversion.version>5.8.1</viaversion.version>
         <!-- Gate HD: WeaponPlaceholders' PlaceholderAPI expansion. The "placeholderapi" repository below already
