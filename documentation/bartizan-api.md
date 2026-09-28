@@ -508,7 +508,9 @@ internal-only; see `documentation/migration.md` §14 for the consumer-facing sum
 
 - Compiles against Keystone 1.13.0. `NpcWeaponController` inherits (and Bartizan implements) `tick(int
   elapsedServerTicks)` — the cooldown in server ticks, already divided by the NPC's `AbstractNpc#setFireRateScale`
-  — and `isReloading()`. No new Bartizan-owned API; see `documentation/migration.md` §16.
+  (`setFireRateScale(aiTickRate)` reproduces the 0.5.x cadence exactly; the default 1.0 fires up to `aiTickRate`
+  times faster, so ship 0.6.0 with a consumer that sets it) — and `isReloading()`. No new Bartizan-owned API; see
+  `documentation/migration.md` §16.
 
 ## What Bartizan does *not* use
 

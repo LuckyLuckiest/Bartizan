@@ -52,7 +52,8 @@ held (`settings.yml` `Weapons.Trigger.Exact_Release_Detection`, on by default). 
 
 0.6.0 needs Keystone 1.13.0. NPC gun cadence now counts real server ticks and scales with the NPC's fire-rate scale
 (the consumer's per-tier multiplier), a reloading NPC tells its squad, and a BURST's later rounds keep tracking a
-moving target with the same aim error. See `documentation/migration.md` §16.
+moving target with the same aim error. Deploy it with a consumer that sets that scale (the NPC's AI tick rate keeps
+the 0.5.x cadence exactly): at the default 1.0 NPC guns fire up to 10x faster. See `documentation/migration.md` §16.
 
 ## Package map (as-built, 0.5.1)
 

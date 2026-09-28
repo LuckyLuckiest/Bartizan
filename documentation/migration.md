@@ -467,11 +467,21 @@ re-sends right-click every 4 ticks while it is held and sends nothing on release
 Install **Keystone 1.13.0** first; Bartizan 0.6.0 compiles against it. On an older Keystone the new NPC hooks below
 are simply never called.
 
-- **NPC gun cadence counts server ticks.** Keystone 1.13 hands the weapon controller the server ticks elapsed per
-  AI tick (`tick(int)`), where 0.5.x took one tick off per AI tick. A cop on a 10-tick AI clock therefore fires
-  about once per AI tick (the 5-tick floor now means 5 server ticks) instead of once every 5 AI ticks. Tune it per
-  NPC tier through Keystone's `AbstractNpc#setFireRateScale` (Gangland exposes it per tier in its NPC configs);
-  the factory's `fireRateMultiplier` still scales each cooldown as before.
+**Deploy 0.6.0 together with a consumer that sets each NPC's fire-rate scale, never ahead of it.** On its own,
+Keystone 1.13's default scale of 1.0 makes every Bartizan NPC gun fire up to `aiTickRate` times faster (see below);
+time-to-kill collapses until the consumer sets the scale.
+
+- **NPC gun cadence counts server ticks.** Keystone 1.13 hands the weapon controller
+  `aiTickRate / fireRateScale` server ticks per AI tick (`tick(int)`, the fraction carried), where 0.5.x took one
+  tick off per AI tick. At the default scale 1.0, a cop on a 10-tick AI clock takes 10 ticks off per AI tick, so
+  it fires about once per AI tick (the 5-tick floor now means 5 server ticks) instead of once every 5 AI ticks:
+  guns at the floor fire 5x faster, a cooldown-20 SINGLE 10x (capped at one round per AI tick).
+- **Parity value: `setFireRateScale(aiTickRate)` reproduces the 0.5.x cadence exactly, for every gun.** The
+  controller then gets `aiTickRate / aiTickRate = 1` tick per AI tick, the same decrement 0.5.x made, so a
+  cooldown of C still lasts C AI ticks (`C × aiTickRate` server ticks). This is the default a consumer tunes from:
+  Gangland's per-tier fire-rate multipliers (cops, civilians) should start at the NPC's AI tick rate (10 for cops)
+  and move from there. Until Gangland 0.12.0 ships those multipliers, nothing sets the scale. The factory's
+  `fireRateMultiplier` still scales each cooldown as before.
 - **Reload signal.** `isReloading()` mirrors the held weapon, so Keystone squads hear a member reloading and a
   reloading shooter backs off to the far edge of its band.
 - **BURST rounds re-aim.** A burst remembers its target and the aim error Keystone applied when it faced it; each

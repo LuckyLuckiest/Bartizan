@@ -40,8 +40,9 @@ import org.luckyraven.keystone.timer.SequenceTimer;
  *
  * <p><b>Cadence in server ticks (0.6.0).</b> Keystone 1.13 calls {@link #tick(int)} once per AI tick with the server
  * ticks elapsed, already divided by the NPC's {@code AbstractNpc#setFireRateScale} (the consumer's per-tier fire-rate
- * multiplier), so every cooldown here counts real server ticks. {@link #tick()} still takes one tick off for an older
- * Keystone that never calls {@code tick(int)}.
+ * multiplier), so every cooldown here counts real server ticks. A scale equal to the NPC's AI tick rate hands this
+ * 1 per AI tick - exactly the 0.5.x cadence; the default 1.0 fires up to {@code aiTickRate} times faster (migration.md
+ * §16). {@link #tick()} still takes one tick off for an older Keystone that never calls {@code tick(int)}.
  *
  * <p><b>Burst re-aim (0.6.0).</b> SINGLE and AUTO fire right after Keystone's {@code faceTarget}, but a BURST's later
  * rounds land ticks after it while shooter and target move. {@link #performBurstFire} stores the target and the

@@ -247,6 +247,29 @@ class NpcWeaponCadenceTest {
 	}
 
 	@Test
+	void fireRateScaleEqualToAiTickRate_reproducesThe05xCadence() {
+		// migration.md §16: Keystone passes aiTickRate / fireRateScale server ticks per AI tick, so a scale equal to
+		// the AI tick rate hands tick(int) exactly 1 - the same one-per-AI-tick decrement 0.5.x's tick() made.
+		int aiTickRate = 10;
+		RecordingController legacy   = newController(mockGun(SelectiveFire.SINGLE, 1, 20), NO_RATE_SCALING);
+		RecordingController parity   = newController(mockGun(SelectiveFire.SINGLE, 1, 20), NO_RATE_SCALING);
+		RecordingController unscaled = newController(mockGun(SelectiveFire.SINGLE, 1, 20), NO_RATE_SCALING);
+		LivingEntity target = mock(LivingEntity.class);
+		assertTrue(legacy.tryFire(target));
+		assertTrue(parity.tryFire(target));
+		assertTrue(unscaled.tryFire(target));
+
+		int legacyAiTicks = 0, parityAiTicks = 0, unscaledAiTicks = 0;
+		while (legacy.isBusy()) { legacy.tick(); legacyAiTicks++; }
+		while (parity.isBusy()) { parity.tick((int) (aiTickRate / (double) aiTickRate)); parityAiTicks++; }
+		while (unscaled.isBusy()) { unscaled.tick(aiTickRate); unscaledAiTicks++; }
+
+		assertEquals(20, legacyAiTicks);
+		assertEquals(legacyAiTicks, parityAiTicks, "scale = aiTickRate keeps the 0.5.x time between shots");
+		assertEquals(2, unscaledAiTicks, "the default scale 1.0 fires 10x faster on a 10-tick AI clock");
+	}
+
+	@Test
 	void tickNoArg_stillOnePerCall() {
 		RecordingController controller = newController(mockGun(SelectiveFire.SINGLE, 1, 6), NO_RATE_SCALING);
 		assertTrue(controller.tryFire(mock(LivingEntity.class)));
