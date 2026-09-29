@@ -135,10 +135,13 @@ public class FullAutoTask extends Timer {
 		tickIndex = (tickIndex + 1) % 20;
 	}
 
+	/**
+	 * Routed through {@link #stop()} so {@code onCancel} runs exactly once: Keystone 1.11.2+ {@code Timer.cancel()}
+	 * already calls {@code stop()} on a started timer, which ran {@code onCancel} a second time.
+	 */
 	@Override
-	public synchronized void cancel() throws IllegalStateException {
-		onCancel.run();
-		super.cancel();
+	public void cancel() {
+		stop();
 	}
 
 	@Override

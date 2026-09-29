@@ -43,9 +43,9 @@ public final class Bartizan extends JavaPlugin {
 		// Symmetric teardown (gate-GG review B2): the WeaponRaytracer, BartizanApi and ItemVocabulary providers are
 		// registered at bean construction, so a disable/enable cycle must not leave dead providers behind.
 		//
-		// PacketBridge.reset() only where it is scoped to the caller's own install (BZ-NU-01): on the documented
-		// deployment floor (Keystone 1.9.0, pom.xml keystone.version) it is `adapter = NoOpAdapter.INSTANCE`, a single
-		// server-global field shared by every Keystone-powered plugin - resetting it would downgrade recoil and packet
+		// PacketBridge.reset() only where it is scoped to the caller's own install (BZ-NU-01): on a Keystone older than
+		// 1.11.2 (Bartizan compiles against 1.13.0, but an old jar may still be deployed) it is
+		// `adapter = NoOpAdapter.INSTANCE`, a single server-global field shared by every Keystone-powered plugin - resetting it would downgrade recoil and packet
 		// handling to a no-op for every OTHER plugin still running, while leaving Bartizan's stateless install live
 		// is harmless. Keystone 1.11.2+ keeps one install per plugin classloader instead, and there skipping the
 		// reset pins this dead PluginClassLoader (and every Bartizan static) for good on each disable/enable.

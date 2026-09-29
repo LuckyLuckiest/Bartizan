@@ -461,3 +461,46 @@ re-sends right-click every 4 ticks while it is held and sends nothing on release
 - **New: `Weapon#getItemFinisher()`/`#setItemFinisher(Consumer<ItemStack>)`** — a last pass over every item
   `buildItem` builds and `updateWeaponData` rewrites, shared by every copy of a template (like the placeholder
   resolver). Bartizan's own `WeaponAddon` sets it on every gun template; additive only.
+
+## 16. 0.5.2 → 0.6.0 — NPC fire while moving (Keystone 1.13.0)
+
+Install **Keystone 1.13.0** first; Bartizan 0.6.0 compiles against it. On an older Keystone the new NPC hooks below
+are simply never called.
+
+**Deploy 0.6.0 together with a consumer that sets each NPC's fire-rate scale, never ahead of it.** On its own,
+Keystone 1.13's default scale of 1.0 makes every Bartizan NPC gun fire up to `aiTickRate` times faster (see below);
+time-to-kill collapses until the consumer sets the scale.
+
+- **NPC gun cadence counts server ticks.** Keystone 1.13 hands the weapon controller
+  `aiTickRate / fireRateScale` server ticks per AI tick (`tick(int)`, the fraction carried), where 0.5.x took one
+  tick off per AI tick. At the default scale 1.0, a cop on a 10-tick AI clock takes 10 ticks off per AI tick, so
+  it fires about once per AI tick (the 5-tick floor now means 5 server ticks) instead of once every 5 AI ticks:
+  guns at the floor fire 5x faster, a cooldown-20 SINGLE 10x (capped at one round per AI tick).
+- **Parity value: `setFireRateScale(aiTickRate)` reproduces the 0.5.x cadence exactly, for every gun.** The
+  controller then gets `aiTickRate / aiTickRate = 1` tick per AI tick, the same decrement 0.5.x made, so a
+  cooldown of C still lasts C AI ticks (`C × aiTickRate` server ticks). This is the default a consumer tunes from:
+  Gangland's per-tier fire-rate multipliers (cops, civilians) should start at the NPC's AI tick rate (10 for cops)
+  and move from there. Until Gangland 0.12.0 ships those multipliers, nothing sets the scale. The factory's
+  `fireRateMultiplier` still scales each cooldown as before.
+- **Reload signal.** `isReloading()` mirrors the held weapon, so Keystone squads hear a member reloading and a
+  reloading shooter backs off to the far edge of its band.
+- **BURST rounds re-aim.** A burst remembers its target and the aim error Keystone applied when it faced it; each
+  later round faces the target's current position with that same error, so a strafing target no longer walks out
+  of the burst and the NPC shoots no straighter. A target that dies or leaves mid-burst ends the burst. SINGLE and
+  AUTO are unchanged: each shot already follows Keystone's fresh facing.
+- **Live shooter.** Citizens can replace an NPC's entity shortly after spawn; a controller bound to the spawn-time
+  entity kept firing from the removed entity's last position. Create controllers with
+  `NpcWeaponFactory.create(Supplier<? extends LivingEntity>, ...)` (e.g. `() -> npc.getEntity()`): the controller
+  reads the shooter on every shot and skips firing, without throwing, while the supplier yields `null` or a
+  dead/removed entity. The `LivingEntity` overload still works and binds that one entity, but that
+  controller now goes silent once the entity is dead or removed (0.5.x kept firing from its last position), so a
+  consumer still on it stops firing for the rest of the fight after a Citizens entity swap. Switch to the supplier.
+- **Fixed with the Keystone bump:** a full-auto burst ending ran its end-of-burst cleanup (recoil reset, trigger
+  tracking) twice on Keystone 1.11.2+.
+
+### `bartizan-api` deltas
+
+- `NpcWeaponController` now documents the inherited `isReloading()` and `tick(int)` (Keystone 1.13 SPI);
+  no new methods of its own.
+- `NpcWeaponFactory.create(Supplier<? extends LivingEntity> shooter, String, double, double)` - new overload
+  (a `default` that throws `UnsupportedOperationException` for pre-0.6.0 implementations; Bartizan overrides it).

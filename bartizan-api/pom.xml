@@ -54,6 +54,12 @@
             <groupId>com.github.cryptomorin</groupId>
             <artifactId>XSeries</artifactId>
         </dependency>
+        <!-- Keystone 1.13's ItemBuilder carries a Keystone Logger (log4j), provided by the server at runtime;
+             without it on the test classpath ItemBuilder's static initializer fails. -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+        </dependency>
 
         <!-- Test — ModifierHandlerTest (ported from Gangland) needs Mockito even though this is
              a library module; that is not a "test dependency in a module pom" violation, it is a

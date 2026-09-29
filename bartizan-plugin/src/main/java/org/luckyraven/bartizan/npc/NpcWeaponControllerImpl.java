@@ -2,12 +2,14 @@ package org.luckyraven.bartizan.npc;
 
 import lombok.CustomLog;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.Vector;
 import org.luckyraven.bartizan.api.event.WeaponShootEvent;
 import org.luckyraven.bartizan.api.npc.NpcWeaponController;
 import org.luckyraven.bartizan.api.raytrace.WeaponRaytracer;
@@ -20,6 +22,9 @@ import org.luckyraven.bartizan.effect.EffectRunner;
 import org.luckyraven.bartizan.raytrace.WeaponShooting;
 import org.luckyraven.keystone.item.ItemBuilder;
 import org.luckyraven.keystone.timer.SequenceTimer;
+
+import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * Bartizan's sole {@link NpcWeaponController} — NPC firing cadence, ported <b>line by line</b> from
@@ -36,6 +41,24 @@ import org.luckyraven.keystone.timer.SequenceTimer;
  * {@code fireSingleRound}. Kept in the constructor because the interface signature (PICK.md) fixes it; never wire
  * it into the gun path (bartizan.md §1.6(8)).
  *
+ * <p><b>Cadence in server ticks (0.6.0).</b> Keystone 1.13 calls {@link #tick(int)} once per AI tick with the server
+ * ticks elapsed, already divided by the NPC's {@code AbstractNpc#setFireRateScale} (the consumer's per-tier fire-rate
+ * multiplier), so every cooldown here counts real server ticks. A scale equal to the NPC's AI tick rate hands this
+ * 1 per AI tick - exactly the 0.5.x cadence; the default 1.0 fires up to {@code aiTickRate} times faster (migration.md
+ * §16). {@link #tick()} still takes one tick off for an older Keystone that never calls {@code tick(int)}.
+ *
+ * <p><b>Burst re-aim (0.6.0).</b> SINGLE and AUTO fire right after Keystone's {@code faceTarget}, but a BURST's later
+ * rounds land ticks after it while shooter and target move. {@link #performBurstFire} stores the target and the
+ * shooter's facing minus the ideal eye-to-eye direction: Keystone has just applied the difficulty aim error, so that
+ * offset IS the aim error. Each round ({@link #reaim()}) faces the stored target's current eyes plus the same offset,
+ * so a moving NPC keeps tracking without shooting any straighter; {@code aimErrorDegrees} stays unused.
+ *
+ * <p><b>Live shooter (0.6.0).</b> Citizens can replace an NPC's entity after spawn, so the controller reads its
+ * shooter through a {@link Supplier} on every use rather than keeping the entity it was created with (rounds used to
+ * leave from the removed entity's last position). While the supplier yields {@code null} or a dead/removed entity the
+ * controller skips firing: {@link #tryFire} returns {@code false} without touching cooldown or ammunition, and a
+ * running burst stops. The {@code LivingEntity} constructor is kept and binds that one entity.
+ *
  * <p>The two Bukkit-touching side effects — an actual shot ({@link #fireRound}) and burst scheduling
  * ({@link #scheduleBurst}) — are package-private hooks so {@code NpcWeaponCadenceTest} can stub them and exercise
  * the pure cadence arithmetic (attack-cooldown scaling, the busy/one-trigger gate, {@link #tick()}) with no live
@@ -45,19 +68,29 @@ import org.luckyraven.keystone.timer.SequenceTimer;
 public class NpcWeaponControllerImpl implements NpcWeaponController {
 
 	private final JavaPlugin    plugin;
-	private final LivingEntity  shooter;
+	private final Supplier<? extends LivingEntity> shooter;
 	private final Weapon        weapon;
 	private final double        fireRateMultiplier;
 	private final double        aimErrorDegrees;
 	private final EffectRunner  effectRunner;
 
-	/** Ticks remaining before the next {@link #tryFire} may act. Decremented one-per-tick by {@link #tick()}. */
+	/** Server ticks remaining before the next {@link #tryFire} may act; see {@link #tick(int)}. */
 	private int attackCooldown;
+
+	/** The target of the latest burst and the aim error Keystone applied to it; read by {@link #reaim()}. */
+	private LivingEntity burstTarget;
+	private Vector       burstAimOffset = new Vector();
 
 	public NpcWeaponControllerImpl(JavaPlugin plugin, LivingEntity shooter, Weapon weapon,
 	                               double fireRateMultiplier, double aimErrorDegrees, EffectRunner effectRunner) {
+		this(plugin, () -> shooter, weapon, fireRateMultiplier, aimErrorDegrees, effectRunner);
+	}
+
+	/** Reads the shooter from {@code shooter} on every use, so a replaced NPC entity is followed (class javadoc). */
+	public NpcWeaponControllerImpl(JavaPlugin plugin, Supplier<? extends LivingEntity> shooter, Weapon weapon,
+	                               double fireRateMultiplier, double aimErrorDegrees, EffectRunner effectRunner) {
 		this.plugin             = plugin;
-		this.shooter            = shooter;
+		this.shooter            = Objects.requireNonNull(shooter, "shooter");
 		this.weapon             = weapon;
 		this.fireRateMultiplier = fireRateMultiplier;
 		this.aimErrorDegrees    = aimErrorDegrees;
@@ -78,6 +111,12 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 		return attackCooldown > 0 || weapon.isReloading();
 	}
 
+	/** Drives Keystone's RELOADING squad signal and the reload far-edge fallback (Keystone 1.13+). */
+	@Override
+	public boolean isReloading() {
+		return weapon.isReloading();
+	}
+
 	/**
 	 * Ported from {@code NpcCombatDelegate.performGanglandWeaponAttack} (`:175-191`): dispatches on the weapon's
 	 * current {@link SelectiveFire}, defaulting to {@code AUTO} when unset — same as the original's
@@ -87,6 +126,8 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	public boolean tryFire(LivingEntity target) {
 		if (!(weapon instanceof GunWeapon gun)) return false;
 		if (isBusy()) return false;
+		LivingEntity self = liveShooter();
+		if (self == null) return false;
 
 		if (weapon.isBroken() || weapon.isMagazineEmpty()) {
 			triggerReload();
@@ -98,7 +139,7 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 
 		return switch (mode) {
 			case SINGLE -> performSingleShot(gun);
-			case BURST -> performBurstFire(gun);
+			case BURST -> performBurstFire(gun, self, target);
 			case AUTO -> performAutoShot(gun);
 		};
 	}
@@ -133,7 +174,7 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	}
 
 	/** Ported from {@code NpcCombatDelegate.performBurstFire} (`:283-306`) — one trigger per burst. */
-	private boolean performBurstFire(GunWeapon gun) {
+	private boolean performBurstFire(GunWeapon gun, LivingEntity self, LivingEntity target) {
 		if (plugin == null) return false;
 
 		int perShot  = Math.max(gun.getProjectileData().getPerShot(), 1);
@@ -141,6 +182,11 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 
 		int totalBurstTicks = perShot * cooldown + cooldown;
 		attackCooldown = scaleCooldown(Math.max(totalBurstTicks, 5));
+
+		// Keystone's faceTarget has just applied the aim error, so facing minus ideal IS that error (class javadoc).
+		Vector ideal = ideal(self, target);
+		burstTarget    = target;
+		burstAimOffset = ideal == null ? new Vector() : self.getEyeLocation().getDirection().subtract(ideal);
 
 		scheduleBurst(gun, perShot, cooldown);
 
@@ -178,6 +224,10 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 			timer.stop();
 			return;
 		}
+		if (!reaim()) {
+			timer.stop();
+			return;
+		}
 
 		fireRound(gun);
 
@@ -197,7 +247,39 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	 * {@code NpcWeaponCadenceTest} can pin it without a live Bukkit scheduler — see the class javadoc.
 	 */
 	boolean isShooterGone() {
-		return !shooter.isValid();
+		return liveShooter() == null;
+	}
+
+	/** The shooter as it is now, or {@code null} while the supplier has none or it is dead/removed (class javadoc). */
+	private LivingEntity liveShooter() {
+		LivingEntity entity = shooter.get();
+		return entity == null || !entity.isValid() || entity.isDead() ? null : entity;
+	}
+
+	/**
+	 * Faces the burst's target where it is now, off by the burst's stored aim error (class javadoc). {@code false}
+	 * once the target is gone or dead, which ends the burst. Package-private for {@code NpcWeaponCadenceTest}.
+	 */
+	boolean reaim() {
+		LivingEntity target = burstTarget;
+		if (target == null || !target.isValid() || target.isDead()) return false;
+		LivingEntity self = liveShooter();
+		if (self == null) return false;
+
+		Vector ideal = ideal(self, target);
+		if (ideal == null) return true;   // coincident eyes: nothing to face, keep the current rotation
+		Vector direction = ideal.add(burstAimOffset);
+		if (direction.lengthSquared() < 1.0E-12) return true;
+
+		Location facing = self.getLocation().setDirection(direction.normalize());
+		self.setRotation(facing.getYaw(), facing.getPitch());
+		return true;
+	}
+
+	/** Unit vector from the shooter's eyes to the target's, or {@code null} when they coincide. */
+	private static Vector ideal(LivingEntity self, LivingEntity target) {
+		Vector between = target.getEyeLocation().toVector().subtract(self.getEyeLocation().toVector());
+		return between.lengthSquared() < 1.0E-12 ? null : between.normalize();
 	}
 
 	/**
@@ -208,6 +290,9 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	 * item. Extracted as its own method so {@code NpcWeaponCadenceTest} can stub it — see the class javadoc.
 	 */
 	boolean fireRound(GunWeapon gun) {
+		LivingEntity shooter = liveShooter();
+		if (shooter == null) return false;
+
 		if (weapon.isBroken() || weapon.isMagazineEmpty()) {
 			triggerReload();
 			return false;
@@ -253,8 +338,10 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	@Override
 	public void refreshHeldItem() {
 		if (weapon == null) return;
+		LivingEntity self = liveShooter();
+		if (self == null) return;
 
-		EntityEquipment equipment = shooter.getEquipment();
+		EntityEquipment equipment = self.getEquipment();
 		if (equipment == null) return;
 
 		ItemStack current = equipment.getItemInMainHand();
@@ -277,6 +364,15 @@ public class NpcWeaponControllerImpl implements NpcWeaponController {
 	@Override
 	public void tick() {
 		if (attackCooldown > 0) attackCooldown--;
+	}
+
+	/**
+	 * Takes the server ticks elapsed since the last AI tick off the cooldown (Keystone 1.13+). Keystone has already
+	 * divided them by the NPC's fire-rate scale and carries the fraction, so 0 is a legal value and subtracts nothing.
+	 */
+	@Override
+	public void tick(int elapsedServerTicks) {
+		attackCooldown = Math.max(0, attackCooldown - Math.max(0, elapsedServerTicks));
 	}
 
 	/** Ported from {@code NpcCombatDelegate.scaleCooldown} (`:364-367`). */
