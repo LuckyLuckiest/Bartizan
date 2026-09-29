@@ -293,7 +293,7 @@ class TriggerReleaseTest {
 	}
 
 	@Test
-	@DisplayName("a ViaVersion that can't be asked: the fallback for that client, and one warning, not one per call")
+	@DisplayName("a ViaVersion that can't be asked: the fallback, and one warning, not one per call")
 	void clientFollowsUseState_viaFails_warnsOnceAndFallsBack() {
 		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
 		mode(true, true);
@@ -306,6 +306,28 @@ class TriggerReleaseTest {
 			assertFalse(TriggerRelease.clientFollowsUseState(mock(Player.class)));
 
 			assertEquals(1, logs.count(Level.WARN, "ViaVersion"));
+		}
+	}
+
+	@Test
+	@DisplayName("a ViaVersion that failed once stays unasked until the next reload, as its warning says")
+	void clientFollowsUseState_viaFailedOnce_fallbackUntilReload() {
+		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
+		mode(true, true);
+
+		try (MockedStatic<Via> via = mockStatic(Via.class)) {
+			Player    modern = mock(Player.class);
+			UUID      uuid   = UUID.randomUUID();
+			ViaAPI<?> api    = mock(ViaAPI.class);
+			when(modern.getUniqueId()).thenReturn(uuid);
+			when(api.getPlayerVersion(uuid)).thenReturn(774);
+			via.when(Via::getAPI).thenThrow(new IllegalArgumentException("ViaVersion not loaded yet")).thenReturn(api);
+
+			assertFalse(TriggerRelease.clientFollowsUseState(modern));
+			assertFalse(TriggerRelease.clientFollowsUseState(modern), "asked again after its failure");
+
+			mode(true, true);
+			assertTrue(TriggerRelease.clientFollowsUseState(modern), "a reload binds ViaVersion afresh");
 		}
 	}
 

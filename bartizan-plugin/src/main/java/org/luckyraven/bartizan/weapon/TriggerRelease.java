@@ -124,7 +124,7 @@ public final class TriggerRelease {
 	private static volatile boolean viaVersion;
 	/**
 	 * {@code Via.getAPI()} and {@code ViaAPI#getPlayerVersion(UUID)}, bound once per {@link #configure} (a
-	 * server-global fact); {@code null} when ViaVersion is absent or its API could not be bound.
+	 * server-global fact); {@code null} when ViaVersion is absent or asking it failed.
 	 */
 	@Nullable
 	private static volatile Method viaApi, viaPlayerVersion;
@@ -319,6 +319,8 @@ public final class TriggerRelease {
 	}
 
 	private static void viaFailed(Throwable failed) {
+		// not asked again until the next configure: one failure, one warning, the fallback for everyone
+		viaApi = viaPlayerVersion = null;
 		if (!viaFailureLogged.compareAndSet(false, true)) return;
 		log.warn("Trigger release: can't ask ViaVersion for a client's version - repeat-based fallback for every "
 		         + "player until the next reload", failed);
