@@ -12,6 +12,7 @@ import org.luckyraven.keystone.persistence.config.MappingNode;
 import org.luckyraven.keystone.persistence.config.NodeReader;
 import org.luckyraven.bartizan.api.weapon.dto.EffectsData;
 import org.luckyraven.bartizan.configuration.parser.EffectsSectionParser;
+import org.luckyraven.bartizan.weapon.TriggerRelease;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -68,6 +69,13 @@ public class BartizanSettings implements FileInitializer {
 	 * running session without touching the file - see {@link #setConvertWeaponMechanicsItemsRuntimeOverride}.
 	 */
 	private static @Getter boolean convertWeaponMechanicsItems = false;
+
+	/**
+	 * {@code Weapons.Trigger.Exact_Release_Detection} (0.5.2, default {@code true}) - on a 1.21.11+ server, make gun
+	 * items usable while held so a released right-click is seen on the tick it happens (see {@link TriggerRelease});
+	 * {@code false}, or an older server, keeps the repeat-based release detection.
+	 */
+	private static @Getter boolean exactReleaseDetection = true;
 
 	private final FileHandler fileHandler;
 
@@ -180,6 +188,10 @@ public class BartizanSettings implements FileInitializer {
 		}
 
 		convertWeaponMechanicsItems = bool(section(root, "Import", report), "Convert_WeaponMechanics_Items", false);
+
+		exactReleaseDetection = bool(section(section(root, "Weapons", report), "Trigger", report),
+		                             "Exact_Release_Detection", true);
+		TriggerRelease.configure(exactReleaseDetection);
 
 		if (!report.isEmpty()) report.log(log);
 	}

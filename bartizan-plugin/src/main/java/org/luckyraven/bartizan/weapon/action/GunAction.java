@@ -104,8 +104,8 @@ public class GunAction {
 		// whatever updateWeapon just pushed to the slot. A full-auto loop holding a stale ItemStack reference
 		// notices the item is gone the same way it already notices an empty-handed player — GunAction.weaponShoot
 		// itself returns immediately next tick once WeaponService#getHeldWeaponItem no longer sees a weapon in
-		// hand, and WeaponInteract's AUTO watchdog then stops the task within a couple of ticks once the
-		// "still shooting" flag stops being refreshed by onPlayerInteract.
+		// hand, and the task's own trigger-held check then ends it once the player lets go - at most
+		// WeaponInteract.TRIGGER_REPEAT_TICKS ticks after the last right-click repeat.
 		HandlingData handling = weapon.getHandlingData();
 		if (handling != null) {
 			if (handling.isResetFallDistance()) {

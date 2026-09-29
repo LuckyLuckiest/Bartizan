@@ -27,7 +27,8 @@ import org.luckyraven.keystone.bean.listener.ListenerPriority;
  * <p>Also unscopes and stops reloading on {@link PlayerDeathEvent} (gate {@code HH}; reload-stop added for bug
  * docket BZ-EV-10): vanilla potion effects vanish on death, but {@code ScopeData.scoped} does not track that on
  * its own - without this, a player who dies while scoped keeps {@code scoped} stuck {@code true} until they
- * manually toggle it again, and a player who dies mid-reload keeps {@code isReloading()} stuck {@code true}.
+ * manually toggle it again, and a player who dies mid-reload keeps {@code isReloading()} stuck {@code true}. Death
+ * also clears {@code WeaponInteract}'s tracking state for the weapon, as a quit does, so a live burst ends there.
  */
 @ListenerHandler(priority = ListenerPriority.LOW)
 public class WeaponQuitCleanupListener implements Listener {
@@ -93,6 +94,13 @@ public class WeaponQuitCleanupListener implements Listener {
 
 		stopReloadingIfActive(weapon, player);
 		weapon.unScope(player, true);
+
+		// a burst held into death ends with it: nothing ends a dead player's item use, so with keepInventory a gun on
+		// exact trigger release (0.5.2) stayed "used" and fired on from the death screen until respawn
+		WeaponInteract interact = WeaponInteract.get();
+		if (interact != null) {
+			interact.clearWeaponState(player, weapon);
+		}
 	}
 
 	/**

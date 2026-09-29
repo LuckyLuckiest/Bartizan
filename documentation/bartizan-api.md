@@ -497,6 +497,13 @@ internal-only; see `documentation/migration.md` §14 for the consumer-facing sum
 - `Weapon#getModifiersData()` now always returns a non-null `ModifiersData` instead of sometimes `null` for a
   weapon YAML with no `Modifiers:` section (`BZ-WM-01`).
 
+## 0.5.2 API delta
+
+- `Weapon#getItemFinisher()`/`#setItemFinisher(Consumer<ItemStack>)` (new, additive): a last pass over every item
+  `buildItem` builds and `updateWeaponData` rewrites, injected after construction like the placeholder resolver and
+  shared by every copy of a template. Bartizan sets it on every gun template to add (or strip) the 1.21.11+ use-state
+  components behind exact trigger-release detection; see `documentation/migration.md` §15.
+
 ## What Bartizan does *not* use
 
 Bartizan does not use `keystone-module` — it is a plain Spigot plugin, not a Keystone module host. There is no

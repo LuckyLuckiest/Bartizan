@@ -388,3 +388,76 @@ checklist.
 See `documentation/docket-fix-wave-0.5.1.md` §3 for the full numbered behaviour-change list (config parser
 warnings, importer changes, kill-credit fixes, stats/HUD fixes, and more) and §4 for what was deliberately left
 deferred or out of scope.
+
+## 15. 0.5.1 → 0.5.2 — trigger release
+
+A gun kept firing after right-click was let go: 3 to 5 extra AUTO rounds on a gun that fires every tick, up to 8
+ticks' worth on slower ones, and a `Cooldown` below 1 (`mp5` 0.1, `rifle` 0.5, `minigun` 0.05 — all truncate to 0) also cancelled and restarted
+the burst every 8 ticks while held, resetting recoil. Spigot has no "right-click released" event: the client
+re-sends right-click every 4 ticks while it is held and sends nothing on release. 0.5.2 fixes this in two layers.
+
+- **Every server:** fire now ends at most 4 ticks after the last right-click repeat, whatever the cooldown, and a
+  steady hold never cancels itself. SINGLE/BURST re-arming, the biological/beam charge release and the AUTO
+  flamethrower's spray use the same per-tick counter (the first two with one tick of slack, so a repeat arriving a
+  tick late can no longer fire a second SINGLE shot or release a charge mid-hold).
+- **1.21.11+, on by default:** right-click-trigger gun items are made usable while held — an invisible vanilla use
+  that never finishes, with no slowdown, sprinting kept, and no animation, sound or particles — so the server sees
+  the release itself and fire stops on the very next tick. Switch it off in `settings.yml`:
+
+  ```yaml
+  Weapons:
+     Trigger:
+        Exact_Release_Detection: false
+  ```
+
+  The console says which mode is active at startup (`Trigger release: exact` or `Trigger release: repeat-based
+  fallback (…)`). A server older than 1.21.11 always uses the fallback, and so does one whose item parser rejects
+  the components (Bartizan tries them on a probe item at startup and logs a warning).
+
+### Behaviour to re-check after upgrading
+
+- **A gun item picks the use state up on its next rebuild** — its first shot, a reload, a refresh — so the first
+  press with an old item still uses the fallback. Turning the switch off strips it again the same way.
+- **Guns that stay on the fallback even on 1.21.11:** `Shoot.Trigger: left_click` guns (right-click is their scope),
+  `Scope.Type: spyglass` guns (the spyglass use is the scope), and guns whose `Information.Material` has its own
+  vanilla right-click use (bow, crossbow, trident, spyglass, buckets, boats, bundles, potions, throwables, food,
+  blocks, …). Every shipped right-click gun (hoes, pickaxes, axes, shovels, horse armor) gets the exact mode.
+- **On 1.21.11, left-click does nothing while the trigger is held** (vanilla: a client using an item swallows
+  attack clicks), so a right-click-trigger gun toggles its left-click scope only while the trigger is up. Reload
+  (drop key), selective fire (F / Shift+F) and the hotbar keys still work while firing.
+- **Older and Bedrock clients:** with ViaBackwards, ViaRewind, Geyser-Spigot or floodgate installed on the server,
+  the exact mode stays off and a startup warning names the plugin. A 1.21.2–1.21.10 client would be slowed to 20%
+  and stop sprinting while holding right-click (it has `consumable` but not `use_effects`), and an older or Bedrock
+  client may never send the release at all. If those plugins run on a proxy, the server can't see them: set the
+  switch to `false`. Behind a BungeeCord/Velocity proxy the startup log says so, and a client caught sending
+  right-click repeats through the use state (which a client following it never does) is switched to the fallback
+  for the rest of its session; a 1.21.2–1.21.10 client that does follow the use state is still slowed. An anticheat that expects the vanilla item-use slowdown may flag players sprinting while firing.
+- **A trigger held into a screen:** a client with a screen open sends no release until the screen closes. Death and
+  a container the server opens end the burst at once. Chat, the player's own inventory and the pause menu (also
+  alt-tab with pause-on-lost-focus) are client-side and invisible to the server, so a gun held firing into one of
+  them keeps firing until it closes or the magazine runs dry — **known exploit:** up to one magazine of unattended
+  fire (a player can hold right-click, press T and let go). Nothing resumes a burst after a reload, so it never
+  goes further than that. The fallback stopped within 4 ticks there, since no repeats arrive while a screen is
+  open; set the switch to `false` if one magazine is too much. (Pinned by
+  `WeaponInteractTriggerReleaseTest#exact_longHoldWithoutRepeats_firesThroughoutAndStopsOnRelease` and
+  `#reloadComplete_resumesNothing`.)
+- **A burst a `Shoot.Circumstance` stops mid-hold** (e.g. `Sprinting: deny` once the player starts sprinting)
+  stays stopped until right-click is released and pressed again, even after the circumstance clears — in both
+  modes: the fallback's next repeat arrives as a press, is denied, and holds the trigger until the release.
+- **A right-click held through a reload** does not resume AUTO fire on 1.21.11: release and press again once the
+  reload is done (the fallback's repeats still resume it, as before). A resume would let a trigger held into a
+  screen fire on reload after reload. A right-click pressed *during* a reload is denied its use, so on Paper the
+  client's repeats carry the fire on once the reload ends, as in the fallback.
+- **A press that stops its own use** — a `Cooldown` effect on the shot, or `HUD.Reload_Item_Cooldown` on an
+  empty-magazine reload — or a use another plugin denies falls back to the repeats for that hold; on Spigot, which
+  never resyncs the client, it ends after 4 ticks and needs a fresh press.
+- A press rejected by `Information.Equip_Delay` or the fire-rate lock now needs a fresh press on 1.21.11 (the
+  fallback resumed on the next repeat).
+- **Fire rates are unchanged.** `Projectile.Cooldown` still truncates to whole ticks (`0.1`/`0.5`/`0.05` → 0 → a
+  round every tick); that is a balance decision left for a later release.
+
+### `bartizan-api` deltas
+
+- **New: `Weapon#getItemFinisher()`/`#setItemFinisher(Consumer<ItemStack>)`** — a last pass over every item
+  `buildItem` builds and `updateWeaponData` rewrites, shared by every copy of a template (like the placeholder
+  resolver). Bartizan's own `WeaponAddon` sets it on every gun template; additive only.

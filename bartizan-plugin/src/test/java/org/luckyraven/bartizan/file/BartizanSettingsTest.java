@@ -42,4 +42,23 @@ class BartizanSettingsTest {
 		assertEquals("$", BartizanSettings.getMoneySymbol());
 	}
 
+	@Test
+	void exactReleaseDetectionDefaultsOnAndReadsTheSwitch() throws Exception {
+		assertEquals(true, load("Money_Symbol: \"$\"\n"), "absent: on by default");
+		assertEquals(false, load("Weapons:\n   Trigger:\n      Exact_Release_Detection: false\n"));
+		assertEquals(true, load("Weapons:\n   Trigger:\n      Exact_Release_Detection: true\n"));
+	}
+
+	private boolean load(String yaml) throws Exception {
+		JavaPlugin  plugin      = PluginMocks.plugin(tempDir);
+		FileManager fileManager = new FileManager(plugin);
+
+		File settingsFile = tempDir.resolve("settings.yml").toFile();
+		Files.writeString(settingsFile.toPath(), yaml);
+		fileManager.addFile(new FileHandler(plugin, settingsFile), false);
+
+		new BartizanSettings(fileManager).initialize();
+		return BartizanSettings.isExactReleaseDetection();
+	}
+
 }
