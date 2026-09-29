@@ -1098,10 +1098,12 @@ public class WeaponInteract implements Listener {
 
 	/**
 	 * {@code weapon}'s trigger is tracked through {@code player}'s vanilla use state: {@link TriggerRelease#isExact},
-	 * and the client follows that state ({@link #repeatClients}).
+	 * and the client follows that state - its version ({@link TriggerRelease#clientFollowsUseState}) and its
+	 * behaviour so far ({@link #repeatClients}).
 	 */
 	private boolean exact(Weapon weapon, Player player) {
-		return TriggerRelease.isExact(weapon) && !repeatClients.contains(player.getUniqueId());
+		return TriggerRelease.isExact(weapon) && TriggerRelease.clientFollowsUseState(player) &&
+		       !repeatClients.contains(player.getUniqueId());
 	}
 
 	/**

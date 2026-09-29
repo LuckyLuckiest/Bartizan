@@ -505,7 +505,7 @@ time-to-kill collapses until the consumer sets the scale.
 - `NpcWeaponFactory.create(Supplier<? extends LivingEntity> shooter, String, double, double)` - new overload
   (a `default` that throws `UnsupportedOperationException` for pre-0.6.0 implementations; Bartizan overrides it).
 
-## 17. 0.6.0 → 0.7.0 — crit sound (Keystone 1.13.0)
+## 17. 0.6.0 → 0.7.0 — crit sound, per-player trigger release (Keystone 1.13.0)
 
 Still on **Keystone 1.13.0**; no `bartizan-api` changes.
 
@@ -534,3 +534,20 @@ Still on **Keystone 1.13.0**; no `bartizan-api` changes.
   Crits stay as rare as each weapon's `Damage.Critical_Hit.Chance` makes them; the `awp` (10) and `scout` (15) are
   the easiest to hear it on. A cop NPC that crits a player plays the crunch at the player; the ding goes to the
   NPC's own (fake) connection, so nobody hears it.
+- **Exact trigger release per player.** 0.5.2-0.6.0 switched the exact mode off for the whole server as soon as
+  ViaBackwards or ViaRewind was installed, so even 1.21.11+ clients got the repeat fallback (up to 4 ticks of fire
+  after release). It is now decided per player: Bartizan asks ViaVersion (reflectively, still only a softdepend)
+  for each client's protocol, and a client at 1.21.11 (protocol 774) or newer, including one newer than the server
+  (e.g. 26.x through ViaVersion's forward translation), gets the exact stop on the first tick after release. An
+  older client, or one whose version ViaVersion doesn't know, keeps the fallback; if ViaVersion can't be asked at
+  all, one warning is logged and every player keeps the fallback until the next reload. The startup line reads
+  `Trigger release: exact for 1.21.11+ clients, repeat-based fallback for older ones (asked per player through
+  ViaVersion)`. **Geyser-Spigot or floodgate still switch the exact mode off for everyone** (a Bedrock client joins
+  at the server's protocol, so ViaVersion can't single it out), with the old startup warning.
+- **1.21.2-1.21.10 clients are slowed while holding right-click on a gun.** The gun items still carry the use-state
+  components for everyone; ViaBackwards strips `use_effects` for these clients but keeps `consumable`, so their
+  client predicts a (slowed) use while the server denies it. Paper resyncs such a client onto its right-click
+  repeats, so it fires on the repeat fallback; Spigot never resyncs it, so its client stays in the predicted use,
+  sends no repeats, and its AUTO fire ends 4 ticks into every hold. Clients below 1.21.2 lose both components and
+  are unaffected. If such players matter, set `Exact_Release_Detection: false` (the components come off every gun
+  on its next rebuild).

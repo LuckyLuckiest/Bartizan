@@ -124,10 +124,12 @@ Weapons:
       # right-click being released and a gun stops firing on the very next tick. false, or an older server, falls
       # back to the stream of repeated right-clicks, which reveals a release up to 4 ticks late. A change reaches
       # a gun item already in someone's inventory on its next shot or rebuild.
-      # Stays off on its own while ViaBackwards, ViaRewind, Geyser or Floodgate is installed on this server (older
-      # and Bedrock clients can't release the use state) - set it false yourself if they run on a proxy instead
-      # (the startup log warns behind one; a client seen ignoring the use state falls back on its own). An
-      # anticheat that expects the vanilla item-use slowdown may flag players who sprint while firing.
+      # With ViaVersion installed it is decided per player: a 1.21.11+ client gets it, an older one (joining
+      # through ViaBackwards or ViaRewind) keeps the fallback. Stays off for everyone while Geyser or Floodgate is
+      # installed on this server (Bedrock clients can't release the use state) - set it false yourself if those
+      # plugins run on a proxy instead (the startup log warns behind one; a client seen ignoring the use state falls
+      # back on its own). An anticheat that expects the vanilla item-use slowdown may flag players who sprint while
+      # firing.
       Exact_Release_Detection: true
 
 # Import: settings for /bartizan import weaponmechanics (weapons-roadmap.md gate HM). Missing entirely = both
