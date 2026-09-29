@@ -49,16 +49,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * The server version is only the floor: {@link #configure} also tries the components on a probe item, since
  * {@code modifyItemStack} logs a component its parser rejects and hands the item back unchanged. And the use state is
  * read by the client: with ViaVersion installed a client may join with an older protocol (ViaBackwards, ViaRewind),
- * so {@link #clientFollowsUseState} asks ViaVersion per player and only a 1.21.11+ client gets the exact mode - an
+ * so {@link #clientFollowsUseState} asks ViaVersion per player and only a 1.21.2+ client gets the exact mode - an
  * older one keeps the fallback. Bedrock clients (Geyser, Floodgate: {@link #BEDROCK_BRIDGES}) join at the server's
  * protocol, so ViaVersion can't tell them apart - with either installed the mode stays off for everyone. Such a
  * plugin on a proxy is out of sight: behind one the startup log warns, and {@code WeaponInteract} drops a player to
  * the fallback once their client sends a right-click through the use state (which a client following it never does).
  * <p>
  * The components stay on every gun item whoever holds it: ViaBackwards strips {@code use_effects} for a client below
- * 1.21.11 and {@code consumable} below 1.21.2. // ponytail: a 1.21.2-1.21.10 client keeps the {@code consumable}, so
- * holding right-click slows it client-side while the server denies the use and keeps it on its repeats; per-holder
- * item state (the finisher given the holder) if such players complain.
+ * 1.21.11 and {@code consumable} below 1.21.2 - so the gate is the {@code consumable}: a client that keeps it predicts
+ * the use, and denied it would send no repeats either. // ponytail: a 1.21.2-1.21.10 client follows the use state
+ * without {@code use_effects}, so it is slowed to 20% client-side while holding right-click; per-holder item state
+ * (the finisher given the holder) if such players complain.
  */
 @CustomLog
 public final class TriggerRelease {
@@ -88,10 +89,11 @@ public final class TriggerRelease {
 	private static final List<String> BEDROCK_BRIDGES = List.of("Geyser-Spigot", "floodgate");
 
 	/**
-	 * 1.21.11's protocol, the first with {@code minecraft:use_effects}: an older client keeps the {@code consumable}
-	 * without it (slowed to 20% while holding right-click) or loses both.
+	 * 1.21.2's protocol, the first with {@code minecraft:consumable}: from it on a client keeps the never-finishing
+	 * use (ViaBackwards only strips {@code use_effects}, so up to 1.21.10 it is slowed to 20% while holding
+	 * right-click) and sends the release; an older one loses the component and stays on its repeats.
 	 */
-	private static final int USE_EFFECTS_PROTOCOL = 774;
+	private static final int CONSUMABLE_PROTOCOL = 768;
 
 	/**
 	 * Vanilla items whose own {@code Item#use} does something on right-click - the {@code consumable} path never
@@ -144,7 +146,7 @@ public final class TriggerRelease {
 
 		if (supported && enabled) {
 			if (viaVersion) {
-				log.info("Trigger release: exact for 1.21.11+ clients, repeat-based fallback for older ones (asked "
+				log.info("Trigger release: exact for 1.21.2+ clients, repeat-based fallback for older ones (asked "
 				         + "per player through ViaVersion) - gun items are usable while held, so fire stops on the "
 				         + "first tick after right-click is released");
 			} else {
@@ -179,7 +181,7 @@ public final class TriggerRelease {
 
 	/**
 	 * {@code true} when {@code player}'s client follows the gun's use state: every client without ViaVersion (all
-	 * join at the server's version), else a client ViaVersion reports at 1.21.11 or newer. An unknown version, or a
+	 * join at the server's version), else a client ViaVersion reports at 1.21.2 or newer. An unknown version, or a
 	 * ViaVersion that can't be asked (one warning), is {@code false} - the fallback, never a stuck trigger.
 	 */
 	public static boolean clientFollowsUseState(Player player) {
@@ -189,7 +191,7 @@ public final class TriggerRelease {
 		if (api == null || playerVersion == null) return false;
 
 		try {
-			return (int) playerVersion.invoke(api.invoke(null), player.getUniqueId()) >= USE_EFFECTS_PROTOCOL;
+			return (int) playerVersion.invoke(api.invoke(null), player.getUniqueId()) >= CONSUMABLE_PROTOCOL;
 		} catch (ReflectiveOperationException | RuntimeException failed) {
 			viaFailed(failed);
 			return false;

@@ -399,7 +399,7 @@ class WeaponInteractTriggerReleaseTest {
 
 	/**
 	 * ViaBackwards on the server: exact is decided per client through ViaVersion, the protocol it joined with -
-	 * 1.21.11 (774, {@code use_effects}) and newer follow the use state, older ones stay on their repeats.
+	 * 1.21.2 (768, {@code consumable}) and newer follow the use state, older ones stay on their repeats.
 	 */
 	private MockedStatic<Via> viaBackwardsClient(int protocol) {
 		PluginManager plugins = mock(PluginManager.class);
@@ -416,8 +416,8 @@ class WeaponInteractTriggerReleaseTest {
 	}
 
 	@ParameterizedTest(name = "protocol {0}")
-	@CsvSource({"774", "775"})
-	@DisplayName("exact with ViaBackwards installed: a 1.21.11+ client still stops on the first tick after release")
+	@CsvSource({"768", "773", "774", "775"})
+	@DisplayName("exact with ViaBackwards installed: a 1.21.2+ client still stops on the first tick after release")
 	void exact_modernClientWithViaBackwards_stopsOnTheFirstTickAfterRelease(int protocol) {
 		gun(0, SelectiveFire.AUTO);
 		List<Long> rounds = new ArrayList<>();
@@ -435,18 +435,18 @@ class WeaponInteractTriggerReleaseTest {
 	}
 
 	@Test
-	@DisplayName("exact with ViaBackwards installed: a 1.21.10 client is denied the use and stays on its repeats")
+	@DisplayName("exact with ViaBackwards installed: a 1.21.1 client is denied the use and stays on its repeats")
 	void exact_olderClientWithViaBackwards_useDeniedAndFallsBackToTheRepeats() {
 		gun(0, SelectiveFire.AUTO);
 		List<Long> rounds = new ArrayList<>();
 
-		try (MockedStatic<Via> ignoredVia = viaBackwardsClient(773);
+		try (MockedStatic<Via> ignoredVia = viaBackwardsClient(767);
 		     MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
 				     (shot, context) -> rounds.add(clock.now()))) {
 			run(24, tick -> {
 				if (repeatAt(tick, 8)) {
 					assertEquals(Event.Result.DENY, press().useItemInHand(),
-					             "a client without use_effects must never be put in the use state");
+					             "a client without the consumable must never be put in the use state");
 				}
 			});
 		}

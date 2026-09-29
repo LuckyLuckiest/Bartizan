@@ -235,7 +235,7 @@ class TriggerReleaseTest {
 		try (LogCapture logs = LogCapture.attach(TriggerRelease.class)) {
 			mode(true, true);
 
-			assertTrue(logs.any(Level.INFO, "Trigger release: exact for 1.21.11+ clients"));
+			assertTrue(logs.any(Level.INFO, "Trigger release: exact for 1.21.2+ clients"));
 			assertFalse(logs.any(Level.WARN, "is installed"));
 		}
 		assertTrue(TriggerRelease.isExact(gun(Material.IRON_HOE)));
@@ -273,8 +273,8 @@ class TriggerReleaseTest {
 	}
 
 	@ParameterizedTest(name = "protocol {0}")
-	@CsvSource({"47, false", "-1, false", "768, false", "773, false", "774, true", "775, true", "778, true"})
-	@DisplayName("with ViaVersion, only a 1.21.11+ client (protocol 774, use_effects) follows the use state")
+	@CsvSource({"47, false", "-1, false", "767, false", "768, true", "773, true", "774, true", "775, true", "778, true"})
+	@DisplayName("with ViaVersion, only a 1.21.2+ client (protocol 768, consumable) follows the use state")
 	void clientFollowsUseState_byProtocol(int protocol, boolean follows) {
 		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
 		mode(true, true);

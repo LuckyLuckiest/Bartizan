@@ -58,7 +58,7 @@ the 0.5.x cadence exactly): at the default 1.0 NPC guns fire up to 10x faster. S
 0.7.0 (still on Keystone 1.13.0) makes a critical hit audible: the shipped `Default_Effects.On_Critical` is now a
 private ding for the shooter plus the vanilla crit crunch at the target. An existing `settings.yml` keeps its old
 block until it is replaced by hand. Exact trigger release no longer switches off for the whole server when
-ViaBackwards or ViaRewind is installed: it is decided per player through ViaVersion (1.21.11+ clients exact, older
+ViaBackwards or ViaRewind is installed: it is decided per player through ViaVersion (1.21.2+ clients exact, older
 ones on the fallback); Geyser or Floodgate still switch it off for everyone. See `documentation/migration.md` §17.
 
 ## Package map (as-built, 0.5.1)
