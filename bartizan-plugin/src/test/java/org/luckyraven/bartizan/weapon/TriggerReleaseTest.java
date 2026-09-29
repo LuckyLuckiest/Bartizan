@@ -260,6 +260,26 @@ class TriggerReleaseTest {
 		             applied(gun(Material.IRON_HOE)));
 	}
 
+	@ParameterizedTest(name = "{0}")
+	@ValueSource(strings = {"Geyser-Spigot", "floodgate"})
+	@DisplayName("a Bedrock plugin next to ViaVersion: still the fallback for everyone, ViaVersion never asked")
+	void configure_bedrockBridgeWithViaVersion_fallsBackServerWide(String bridge) {
+		when(plugins.getPlugin(bridge)).thenReturn(mock(Plugin.class));
+		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
+
+		try (MockedStatic<Via> via = mockStatic(Via.class);
+		     LogCapture logs = LogCapture.attach(TriggerRelease.class)) {
+			mode(true, true);
+
+			assertTrue(logs.any(Level.WARN, bridge + " is installed"));
+			assertFalse(logs.any(Level.INFO, "asked per player through ViaVersion"));
+			assertFalse(TriggerRelease.isExact(gun(Material.IRON_HOE)));
+			// ViaVersion left unbound: no per-player question, the server-wide fallback alone decides
+			assertTrue(TriggerRelease.clientFollowsUseState(mock(Player.class)));
+			via.verifyNoInteractions();
+		}
+	}
+
 	// per client
 
 	private Player viaClient(int protocol, MockedStatic<Via> via) {
