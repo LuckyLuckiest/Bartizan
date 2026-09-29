@@ -504,3 +504,33 @@ time-to-kill collapses until the consumer sets the scale.
   no new methods of its own.
 - `NpcWeaponFactory.create(Supplier<? extends LivingEntity> shooter, String, double, double)` - new overload
   (a `default` that throws `UnsupportedOperationException` for pre-0.6.0 implementations; Bartizan overrides it).
+
+## 17. 0.6.0 → 0.7.0 — crit sound (Keystone 1.13.0)
+
+Still on **Keystone 1.13.0**; no `bartizan-api` changes.
+
+- **Critical hits are audible.** The shipped `settings.yml` `Default_Effects.On_Critical` was one soft
+  `ITEM_SHIELD_BREAK` clunk for the shooter, buried under the hit sound. It is now two sounds: a sharp ding heard
+  only by the shooter (`ENTITY_ARROW_HIT_PLAYER`, pitch 1.6, `Target: source`) and the vanilla crit crunch
+  broadcast at the target (`ENTITY_PLAYER_ATTACK_CRIT`, `At: victim`). A weapon's own `Effects.On_Critical` list
+  still replaces both. **An existing `settings.yml` keeps its old block** (a present `Default_Effects` section is
+  used as written), so replace its `On_Critical` block by hand:
+
+  ```yaml
+  Default_Effects:
+     On_Critical:
+        - Type: Sound
+          Sound: ENTITY_ARROW_HIT_PLAYER
+          Volume: 1.0
+          Pitch: 1.6
+          Target: source
+        - Type: Sound
+          Sound: ENTITY_PLAYER_ATTACK_CRIT
+          Volume: 1.0
+          Pitch: 1.0
+          At: victim
+  ```
+
+  Crits stay as rare as each weapon's `Damage.Critical_Hit.Chance` makes them; the `awp` (10) and `scout` (15) are
+  the easiest to hear it on. A cop NPC that crits a player plays the crunch at the player; the ding goes to the
+  NPC's own (fake) connection, so nobody hears it.

@@ -21,6 +21,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -244,10 +245,17 @@ class EffectsSectionParserTest {
 		assertEquals("muzzle", muzzleFlash.get(0).arg("At"));
 
 		List<EffectSpec> critical = data.forHook(EffectHook.ON_CRITICAL);
-		assertEquals(1, critical.size());
+		assertEquals(2, critical.size());
+		// the shooter's private ding
 		assertEquals("sound", critical.get(0).type());
-		assertEquals("ITEM_SHIELD_BREAK", critical.get(0).arg("Sound"));
+		assertEquals("ENTITY_ARROW_HIT_PLAYER", critical.get(0).arg("Sound"));
+		assertEquals("1.6", critical.get(0).arg("Pitch"));
 		assertEquals("source", critical.get(0).arg("Target"));
+		assertNull(critical.get(0).arg("At"));
+		// the crunch, broadcast at the target
+		assertEquals("sound", critical.get(1).type());
+		assertEquals("ENTITY_PLAYER_ATTACK_CRIT", critical.get(1).arg("Sound"));
+		assertEquals("victim", critical.get(1).arg("At"));
 
 		List<EffectSpec> deny = data.forHook(EffectHook.ON_DENY);
 		assertEquals(1, deny.size());

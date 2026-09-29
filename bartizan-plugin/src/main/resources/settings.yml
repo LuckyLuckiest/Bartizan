@@ -70,12 +70,19 @@ Default_Effects:
         Offset: "0.05 0.05 0.05"
         Speed: 0.02
         At: muzzle
+   # A critical hit: a private ding for the shooter, plus the vanilla crit crunch heard around the target. A
+   # weapon's own Effects.On_Critical list replaces both.
    On_Critical:
       - Type: Sound
-        Sound: ITEM_SHIELD_BREAK
+        Sound: ENTITY_ARROW_HIT_PLAYER
+        Volume: 1.0
+        Pitch: 1.6
+        Target: source
+      - Type: Sound
+        Sound: ENTITY_PLAYER_ATTACK_CRIT
         Volume: 1.0
         Pitch: 1.0
-        Target: source
+        At: victim
    On_Deny:
       - Type: Action_Bar
         Text: "&c%deny_reason%"

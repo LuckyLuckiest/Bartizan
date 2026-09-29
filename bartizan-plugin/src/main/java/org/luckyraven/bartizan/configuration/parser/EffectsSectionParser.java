@@ -105,12 +105,18 @@ public final class EffectsSectionParser {
 
 		data.put(EffectHook.ON_SHOOT, List.of(MUZZLE_FLASH));
 
-		Map<String, String> critical = new LinkedHashMap<>();
-		critical.put("Sound", "ITEM_SHIELD_BREAK");
-		critical.put("Volume", "1.0");
-		critical.put("Pitch", "1.0");
-		critical.put("Target", "source");
-		data.put(EffectHook.ON_CRITICAL, List.of(new EffectSpec("sound", critical)));
+		// a private ding for the shooter, plus the vanilla crit crunch heard at the target
+		Map<String, String> ding = new LinkedHashMap<>();
+		ding.put("Sound", "ENTITY_ARROW_HIT_PLAYER");
+		ding.put("Volume", "1.0");
+		ding.put("Pitch", "1.6");
+		ding.put("Target", "source");
+		Map<String, String> crunch = new LinkedHashMap<>();
+		crunch.put("Sound", "ENTITY_PLAYER_ATTACK_CRIT");
+		crunch.put("Volume", "1.0");
+		crunch.put("Pitch", "1.0");
+		crunch.put("At", "victim");
+		data.put(EffectHook.ON_CRITICAL, List.of(new EffectSpec("sound", ding), new EffectSpec("sound", crunch)));
 
 		Map<String, String> deny = new LinkedHashMap<>();
 		deny.put("Text", "&c%deny_reason%");
