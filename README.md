@@ -6,7 +6,7 @@ installed on any Keystone-powered server, not just Gangland's.
 
 ## Install
 
-Drop `Bartizan-0.7.0.jar` beside `Keystone-1.13.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
+Drop `Bartizan-0.6.1.jar` beside `Keystone-1.13.0.jar` and `NBTAPI.jar` in `/plugins`. Bartizan `depend`s on both
 Keystone and NBT-API — both must already be installed and enabled, or Bartizan fails to load (Keystone's
 `NbtBridge.detect()` falls back to a no-op accessor when NBT-API is absent, which makes every Bartizan item inert,
 so it is a hard `depend:`, not a `softdepend:`). Soft-depends on `ViaVersion`, `PlaceholderAPI`.
@@ -55,7 +55,7 @@ held (`settings.yml` `Weapons.Trigger.Exact_Release_Detection`, on by default). 
 moving target with the same aim error. Deploy it with a consumer that sets that scale (the NPC's AI tick rate keeps
 the 0.5.x cadence exactly): at the default 1.0 NPC guns fire up to 10x faster. See `documentation/migration.md` §16.
 
-0.7.0 (still on Keystone 1.13.0) makes a critical hit audible: the shipped `Default_Effects.On_Critical` is now a
+0.6.1 (still on Keystone 1.13.0) makes a critical hit audible: the shipped `Default_Effects.On_Critical` is now a
 private ding for the shooter plus the vanilla crit crunch at the target. An existing `settings.yml` keeps its old
 block until it is replaced by hand. Exact trigger release no longer switches off for the whole server when
 ViaBackwards or ViaRewind is installed: it is decided per player through ViaVersion (1.21.2+ clients exact, older

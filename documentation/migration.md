@@ -505,7 +505,7 @@ time-to-kill collapses until the consumer sets the scale.
 - `NpcWeaponFactory.create(Supplier<? extends LivingEntity> shooter, String, double, double)` - new overload
   (a `default` that throws `UnsupportedOperationException` for pre-0.6.0 implementations; Bartizan overrides it).
 
-## 17. 0.6.0 → 0.7.0 — crit sound, per-player trigger release (Keystone 1.13.0)
+## 17. 0.6.0 → 0.6.1 — crit sound, per-player trigger release (Keystone 1.13.0)
 
 Still on **Keystone 1.13.0**; no `bartizan-api` changes.
 
