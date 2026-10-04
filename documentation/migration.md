@@ -339,7 +339,13 @@ checklist.
   documented (it was misread as milliseconds, so spread reset to `Starting_Spread` on nearly every shot), so any
   weapon with a non-zero `Spread.Change.Base` blooms further under sustained fire than it did in 0.5.0 — the
   shipped automatics (`minigun`, `mp5`, `rifle`, `golden_ak47`, `steyr_aug`, …) included. Re-tune `Time`/
-  `Change.Base`/`Change.Bounds` if the old always-reset feel was relied on (`BZ-WM-02`).
+  `Change.Base`/`Change.Bounds` if the old always-reset feel was relied on (`BZ-WM-02`). The shipped defaults
+  were since re-tuned for real bloom (full auto fires up to 20 shots a second, which drove the old 1.5-2.5
+  `Max` to 20-45 degree sprays): first shots are unchanged, `Change.Base` is small, `Max` sits at about 3-5x
+  `Starting_Spread`, and `Reset_On_Bound` is `false`, so a long spray holds at `Max` instead of snapping back
+  to pinpoint. New values (`Base`/`Max`): `rifle` 0.005/0.2, `steyr_aug` 0.005/0.18, `golden_ak47`
+  0.012/0.24, `mp5` 0.006/0.22, `minigun` 0.004/0.3, `pistol` 0.02/0.14, `revolver` 0.03/0.18. An existing
+  `plugins/Bartizan/weapon/` keeps its old files, so copy these values in by hand.
 - **`CombatEligibility` is now enforced for the victim**, not just the shooter, on every weapon damage path (guns,
   beams, incendiary, melee, biological, explosions). A consumer already registering `CombatEligibility` for
   downed-player gating gets it enforced for free with no code change; nothing to do unless you relied on the

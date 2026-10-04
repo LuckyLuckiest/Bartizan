@@ -119,22 +119,22 @@ Shoot:
 
    # The spread of the projectile
    Spread:
-      # The initial spread value
+      # The spread of the first shot (and after a reset). Roughly 0.05 ~ 1 degree off the crosshair.
       Starting_Spread: 0.05
-      # The time before the spread value is reset
+      # Ticks without a shot before the spread resets to Starting_Spread (20 ticks = 1 second)
       Time: 5
-      # The change of the spread after time
+      # Bloom under sustained fire
       Change:
-         # The base value for spread value
-         Base: 0.05
-         # The bounds that would be incremented
+         # Added to the spread after every shot. Full auto fires up to 20 shots a second, so keep this small.
+         Base: 0.005
+         # The range the spread is held in
          Bounds:
-            # Reset to the starting spread when on bound
-            Reset_On_Bound: true
-            # The minimum value for the random value
+            # true snaps back to Starting_Spread on reaching a bound; false holds the spread at the bound
+            Reset_On_Bound: false
+            # The lowest spread
             Min: 0.05
-            # The maximum value for the random value
-            Max: 1.5
+            # The highest spread (here about 4x the first shot)
+            Max: 0.2
 
       # Percent deltas applied to the current spread while the given condition holds (summed, then clamped at 0)
       # - e.g. Zooming: -40 tightens spread 40% while scoped, In_Midair: 100 doubles it while airborne. All keys
