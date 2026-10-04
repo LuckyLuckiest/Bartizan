@@ -49,11 +49,11 @@ Shoot:
       Starting_Spread: 0.06
       Time: 5
       Change:
-         Base: 0.05
+         Base: 0.012
          Bounds:
-            Reset_On_Bound: true
+            Reset_On_Bound: false
             Min: 0.06
-            Max: 1.6
+            Max: 0.24
 
    Recoil:
       Amount: 0.08
