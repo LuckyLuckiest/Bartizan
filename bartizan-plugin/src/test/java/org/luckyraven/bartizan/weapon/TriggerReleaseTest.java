@@ -1,10 +1,13 @@
 package org.luckyraven.bartizan.weapon;
 
+import com.viaversion.viaversion.api.Via;
+import com.viaversion.viaversion.api.ViaAPI;
 import org.apache.logging.log4j.Level;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.UnsafeValues;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -17,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.luckyraven.bartizan.api.support.WeaponFixtures;
 import org.luckyraven.bartizan.api.testsupport.BukkitRegistryFixture;
@@ -222,9 +226,25 @@ class TriggerReleaseTest {
 	}
 
 	@ParameterizedTest(name = "{0}")
-	@ValueSource(strings = {"ViaBackwards", "ViaRewind", "Geyser-Spigot", "floodgate"})
-	@DisplayName("a plugin letting older or Bedrock clients join: the fallback, a warning naming it, items stripped")
-	void configure_olderClientBridge_fallsBackAndStrips(String bridge) {
+	@ValueSource(strings = {"ViaBackwards", "ViaRewind"})
+	@DisplayName("a plugin letting older Java clients join: still exact, decided per client through ViaVersion")
+	void configure_olderClientBridge_staysExactPerClient(String bridge) {
+		when(plugins.getPlugin(bridge)).thenReturn(mock(Plugin.class));
+		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
+
+		try (LogCapture logs = LogCapture.attach(TriggerRelease.class)) {
+			mode(true, true);
+
+			assertTrue(logs.any(Level.INFO, "Trigger release: exact for 1.21.2+ clients"));
+			assertFalse(logs.any(Level.WARN, "is installed"));
+		}
+		assertTrue(TriggerRelease.isExact(gun(Material.IRON_HOE)));
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@ValueSource(strings = {"Geyser-Spigot", "floodgate"})
+	@DisplayName("a plugin letting Bedrock clients join: the fallback, a warning naming it, items stripped")
+	void configure_bedrockBridge_fallsBackAndStrips(String bridge) {
 		when(plugins.getPlugin(bridge)).thenReturn(mock(Plugin.class));
 
 		try (LogCapture logs = LogCapture.attach(TriggerRelease.class)) {
@@ -238,6 +258,97 @@ class TriggerReleaseTest {
 		heldItem(true);
 		assertEquals("minecraft:iron_hoe[!minecraft:consumable,minecraft:use_effects={}]",
 		             applied(gun(Material.IRON_HOE)));
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@ValueSource(strings = {"Geyser-Spigot", "floodgate"})
+	@DisplayName("a Bedrock plugin next to ViaVersion: still the fallback for everyone, ViaVersion never asked")
+	void configure_bedrockBridgeWithViaVersion_fallsBackServerWide(String bridge) {
+		when(plugins.getPlugin(bridge)).thenReturn(mock(Plugin.class));
+		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
+
+		try (MockedStatic<Via> via = mockStatic(Via.class);
+		     LogCapture logs = LogCapture.attach(TriggerRelease.class)) {
+			mode(true, true);
+
+			assertTrue(logs.any(Level.WARN, bridge + " is installed"));
+			assertFalse(logs.any(Level.INFO, "asked per player through ViaVersion"));
+			assertFalse(TriggerRelease.isExact(gun(Material.IRON_HOE)));
+			// ViaVersion left unbound: no per-player question, the server-wide fallback alone decides
+			assertTrue(TriggerRelease.clientFollowsUseState(mock(Player.class)));
+			via.verifyNoInteractions();
+		}
+	}
+
+	// per client
+
+	private Player viaClient(int protocol, MockedStatic<Via> via) {
+		Player  player = mock(Player.class);
+		UUID    uuid   = UUID.randomUUID();
+		ViaAPI<?> api  = mock(ViaAPI.class);
+		when(player.getUniqueId()).thenReturn(uuid);
+		when(api.getPlayerVersion(uuid)).thenReturn(protocol);
+		via.when(Via::getAPI).thenReturn(api);
+		return player;
+	}
+
+	@ParameterizedTest(name = "protocol {0}")
+	@CsvSource({"47, false", "-1, false", "767, false", "768, true", "773, true", "774, true", "775, true", "778, true"})
+	@DisplayName("with ViaVersion, only a 1.21.2+ client (protocol 768, consumable) follows the use state")
+	void clientFollowsUseState_byProtocol(int protocol, boolean follows) {
+		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
+		mode(true, true);
+
+		try (MockedStatic<Via> via = mockStatic(Via.class)) {
+			assertEquals(follows, TriggerRelease.clientFollowsUseState(viaClient(protocol, via)));
+		}
+	}
+
+	@Test
+	@DisplayName("without ViaVersion every client joins at the server's version, so every client follows it")
+	void clientFollowsUseState_noViaVersion_true() {
+		mode(true, true);
+
+		assertTrue(TriggerRelease.clientFollowsUseState(mock(Player.class)));
+	}
+
+	@Test
+	@DisplayName("a ViaVersion that can't be asked: the fallback, and one warning, not one per call")
+	void clientFollowsUseState_viaFails_warnsOnceAndFallsBack() {
+		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
+		mode(true, true);
+
+		try (MockedStatic<Via> via = mockStatic(Via.class);
+		     LogCapture logs = LogCapture.attach(TriggerRelease.class)) {
+			via.when(Via::getAPI).thenThrow(new IllegalArgumentException("ViaVersion not loaded yet"));
+
+			assertFalse(TriggerRelease.clientFollowsUseState(mock(Player.class)));
+			assertFalse(TriggerRelease.clientFollowsUseState(mock(Player.class)));
+
+			assertEquals(1, logs.count(Level.WARN, "ViaVersion"));
+		}
+	}
+
+	@Test
+	@DisplayName("a ViaVersion that failed once stays unasked until the next reload, as its warning says")
+	void clientFollowsUseState_viaFailedOnce_fallbackUntilReload() {
+		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
+		mode(true, true);
+
+		try (MockedStatic<Via> via = mockStatic(Via.class)) {
+			Player    modern = mock(Player.class);
+			UUID      uuid   = UUID.randomUUID();
+			ViaAPI<?> api    = mock(ViaAPI.class);
+			when(modern.getUniqueId()).thenReturn(uuid);
+			when(api.getPlayerVersion(uuid)).thenReturn(774);
+			via.when(Via::getAPI).thenThrow(new IllegalArgumentException("ViaVersion not loaded yet")).thenReturn(api);
+
+			assertFalse(TriggerRelease.clientFollowsUseState(modern));
+			assertFalse(TriggerRelease.clientFollowsUseState(modern), "asked again after its failure");
+
+			mode(true, true);
+			assertTrue(TriggerRelease.clientFollowsUseState(modern), "a reload binds ViaVersion afresh");
+		}
 	}
 
 	// item components

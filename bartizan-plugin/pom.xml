@@ -173,5 +173,13 @@
             <artifactId>log4j-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- TriggerRelease's per-client check: mocking ViaAPI (clientFollowsUseState tests) loads its
+             sendRawPacket(ByteBuf) signature, which the server provides at runtime but the API jar does not -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-buffer</artifactId>
+            <version>4.1.118.Final</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

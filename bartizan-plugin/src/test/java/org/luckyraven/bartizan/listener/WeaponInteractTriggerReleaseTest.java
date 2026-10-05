@@ -1,5 +1,7 @@
 package org.luckyraven.bartizan.listener;
 
+import com.viaversion.viaversion.api.Via;
+import com.viaversion.viaversion.api.ViaAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -20,6 +22,7 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.junit.jupiter.api.AfterEach;
@@ -392,6 +395,63 @@ class WeaponInteractTriggerReleaseTest {
 		}
 
 		assertEquals(List.of(0L, 1L, 2L, 3L, 4L), rounds);
+	}
+
+	/**
+	 * ViaBackwards on the server: exact is decided per client through ViaVersion, the protocol it joined with -
+	 * 1.21.2 (768, {@code consumable}) and newer follow the use state, older ones stay on their repeats.
+	 */
+	private MockedStatic<Via> viaBackwardsClient(int protocol) {
+		PluginManager plugins = mock(PluginManager.class);
+		when(plugins.getPlugin("ViaBackwards")).thenReturn(mock(Plugin.class));
+		when(plugins.getPlugin("ViaVersion")).thenReturn(mock(Plugin.class));
+		bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
+		exactMode(true, true);
+
+		ViaAPI<?> api = mock(ViaAPI.class);
+		when(api.getPlayerVersion(player.getUniqueId())).thenReturn(protocol);
+		MockedStatic<Via> via = mockStatic(Via.class);
+		via.when(Via::getAPI).thenReturn(api);
+		return via;
+	}
+
+	@ParameterizedTest(name = "protocol {0}")
+	@CsvSource({"768", "773", "774", "775"})
+	@DisplayName("exact with ViaBackwards installed: a 1.21.2+ client still stops on the first tick after release")
+	void exact_modernClientWithViaBackwards_stopsOnTheFirstTickAfterRelease(int protocol) {
+		gun(0, SelectiveFire.AUTO);
+		List<Long> rounds = new ArrayList<>();
+
+		try (MockedStatic<Via> ignoredVia = viaBackwardsClient(protocol);
+		     MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
+				     (shot, context) -> rounds.add(clock.now()))) {
+			run(20, tick -> {
+				if (tick == 0) assertEquals(Event.Result.ALLOW, pressAndUse().useItemInHand());
+				if (tick == 4) handRaised = false;
+			});
+		}
+
+		assertEquals(List.of(0L, 1L, 2L, 3L, 4L), rounds);
+	}
+
+	@Test
+	@DisplayName("exact with ViaBackwards installed: a 1.21.1 client is denied the use and stays on its repeats")
+	void exact_olderClientWithViaBackwards_useDeniedAndFallsBackToTheRepeats() {
+		gun(0, SelectiveFire.AUTO);
+		List<Long> rounds = new ArrayList<>();
+
+		try (MockedStatic<Via> ignoredVia = viaBackwardsClient(767);
+		     MockedConstruction<GunAction> ignored = mockConstruction(GunAction.class,
+				     (shot, context) -> rounds.add(clock.now()))) {
+			run(24, tick -> {
+				if (repeatAt(tick, 8)) {
+					assertEquals(Event.Result.DENY, press().useItemInHand(),
+					             "a client without the consumable must never be put in the use state");
+				}
+			});
+		}
+
+		assertEquals(LongStream.rangeClosed(0, 12).boxed().toList(), rounds);
 	}
 
 	/**

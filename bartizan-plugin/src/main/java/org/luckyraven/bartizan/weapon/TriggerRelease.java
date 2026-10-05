@@ -5,6 +5,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -18,8 +19,11 @@ import org.luckyraven.bartizan.api.weapon.dto.ScopeType;
 import org.luckyraven.keystone.nms.NmsVersion;
 
 import java.io.File;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Exact trigger-release detection (0.5.2, {@code settings.yml} {@code Weapons.Trigger.Exact_Release_Detection}).
@@ -44,11 +48,18 @@ import java.util.Set;
  * <p>
  * The server version is only the floor: {@link #configure} also tries the components on a probe item, since
  * {@code modifyItemStack} logs a component its parser rejects and hands the item back unchanged. And the use state is
- * read by the client: with a plugin installed that lets older or Bedrock clients join ({@link #OLDER_CLIENT_BRIDGES}),
- * such a client may be slowed while holding right-click, or never send the release at all, so the mode stays off.
- * Such a plugin on a proxy is out of sight: behind one the startup log warns, and {@code WeaponInteract} drops a
- * player to the fallback once their client sends a right-click through the use state (which a client following it
- * never does).
+ * read by the client: with ViaVersion installed a client may join with an older protocol (ViaBackwards, ViaRewind),
+ * so {@link #clientFollowsUseState} asks ViaVersion per player and only a 1.21.2+ client gets the exact mode - an
+ * older one keeps the fallback. Bedrock clients (Geyser, Floodgate: {@link #BEDROCK_BRIDGES}) join at the server's
+ * protocol, so ViaVersion can't tell them apart - with either installed the mode stays off for everyone. Such a
+ * plugin on a proxy is out of sight: behind one the startup log warns, and {@code WeaponInteract} drops a player to
+ * the fallback once their client sends a right-click through the use state (which a client following it never does).
+ * <p>
+ * The components stay on every gun item whoever holds it: ViaBackwards strips {@code use_effects} for a client below
+ * 1.21.11 and {@code consumable} below 1.21.2 - so the gate is the {@code consumable}: a client that keeps it predicts
+ * the use, and denied it would send no repeats either. // ponytail: a 1.21.2-1.21.10 client follows the use state
+ * without {@code use_effects}, so it is slowed to 20% client-side while holding right-click; per-holder item state
+ * (the finisher given the holder) if such players complain.
  */
 @CustomLog
 public final class TriggerRelease {
@@ -71,13 +82,18 @@ public final class TriggerRelease {
 	private static final NamespacedKey MARKER = NamespacedKey.fromString("bartizan:trigger_use");
 
 	/**
-	 * Plugins that let clients older than the server join (ViaBackwards, ViaRewind) or Bedrock clients (Geyser,
-	 * Floodgate). A 1.21.2-1.21.10 client gets the {@code consumable} without {@code use_effects}, so holding
-	 * right-click slows it to 20% and stops sprinting; an older or Bedrock client does not know the component at all
-	 * and may never send the release the server's use state waits for.
+	 * Plugins that let Bedrock clients join (Geyser, Floodgate). A Bedrock client does not know the components at all
+	 * and may never send the release the server's use state waits for, and it joins at the server's protocol, so
+	 * {@link #clientFollowsUseState} can't single it out.
 	 */
-	private static final List<String> OLDER_CLIENT_BRIDGES = List.of("ViaBackwards", "ViaRewind", "Geyser-Spigot",
-	                                                                 "floodgate");
+	private static final List<String> BEDROCK_BRIDGES = List.of("Geyser-Spigot", "floodgate");
+
+	/**
+	 * 1.21.2's protocol, the first with {@code minecraft:consumable}: from it on a client keeps the never-finishing
+	 * use (ViaBackwards only strips {@code use_effects}, so up to 1.21.10 it is slowed to 20% while holding
+	 * right-click) and sends the release; an older one loses the component and stays on its repeats.
+	 */
+	private static final int CONSUMABLE_PROTOCOL = 768;
 
 	/**
 	 * Vanilla items whose own {@code Item#use} does something on right-click - the {@code consumable} path never
@@ -99,9 +115,20 @@ public final class TriggerRelease {
 	 */
 	private static volatile boolean supported;
 	/**
-	 * The switch is on and no {@link #OLDER_CLIENT_BRIDGES older-client plugin} is installed.
+	 * The switch is on and no {@link #BEDROCK_BRIDGES Bedrock plugin} is installed.
 	 */
 	private static volatile boolean enabled;
+	/**
+	 * ViaVersion is installed, so a client's protocol may differ from the server's - see {@link #clientFollowsUseState}.
+	 */
+	private static volatile boolean viaVersion;
+	/**
+	 * {@code Via.getAPI()} and {@code ViaAPI#getPlayerVersion(UUID)}, bound once per {@link #configure} (a
+	 * server-global fact); {@code null} when ViaVersion is absent or asking it failed.
+	 */
+	@Nullable
+	private static volatile Method viaApi, viaPlayerVersion;
+	private static final AtomicBoolean viaFailureLogged = new AtomicBoolean();
 
 	private TriggerRelease() {
 	}
@@ -113,12 +140,19 @@ public final class TriggerRelease {
 	public static void configure(boolean exactReleaseDetection) {
 		supported = serverSupportsUseState();
 
-		String bridge = supported && exactReleaseDetection ? olderClientBridge() : null;
+		String bridge = supported && exactReleaseDetection ? bedrockBridge() : null;
 		enabled = exactReleaseDetection && bridge == null;
+		bindViaVersion();
 
 		if (supported && enabled) {
-			log.info("Trigger release: exact - gun items are usable while held (1.21.11+ item components), so fire "
-			         + "stops on the first tick after right-click is released");
+			if (viaVersion) {
+				log.info("Trigger release: exact for 1.21.2+ clients, repeat-based fallback for older ones (asked "
+				         + "per player through ViaVersion) - gun items are usable while held, so fire stops on the "
+				         + "first tick after right-click is released");
+			} else {
+				log.info("Trigger release: exact - gun items are usable while held (1.21.11+ item components), so "
+				         + "fire stops on the first tick after right-click is released");
+			}
 			if (behindProxy()) {
 				log.warn("Trigger release: exact, behind a BungeeCord/Velocity proxy - if ViaBackwards, ViaRewind or "
 				         + "Geyser runs on the proxy, set Weapons.Trigger.Exact_Release_Detection: false in "
@@ -127,9 +161,9 @@ public final class TriggerRelease {
 				         + "repeat-based fallback on its own");
 			}
 		} else if (bridge != null) {
-			log.warn("Trigger release: repeat-based fallback - " + bridge + " is installed, and a client older than "
-			         + "the server or a Bedrock client would be slowed while holding right-click, or never release "
-			         + "the gun's use state. AUTO fire stops at most 4 ticks after the last right-click repeat");
+			log.warn("Trigger release: repeat-based fallback - " + bridge + " is installed, and a Bedrock client "
+			         + "might never release the gun's use state. AUTO fire stops at most 4 ticks after the last "
+			         + "right-click repeat");
 		} else {
 			log.info("Trigger release: repeat-based fallback (" +
 			         (supported ? "Weapons.Trigger.Exact_Release_Detection is false" : "needs a 1.21.11+ server") +
@@ -146,6 +180,25 @@ public final class TriggerRelease {
 	}
 
 	/**
+	 * {@code true} when {@code player}'s client follows the gun's use state: every client without ViaVersion (all
+	 * join at the server's version), else a client ViaVersion reports at 1.21.2 or newer. An unknown version, or a
+	 * ViaVersion that can't be asked (one warning), is {@code false} - the fallback, never a stuck trigger.
+	 */
+	public static boolean clientFollowsUseState(Player player) {
+		if (!viaVersion) return true;
+
+		Method api = viaApi, playerVersion = viaPlayerVersion;
+		if (api == null || playerVersion == null) return false;
+
+		try {
+			return (int) playerVersion.invoke(api.invoke(null), player.getUniqueId()) >= CONSUMABLE_PROTOCOL;
+		} catch (ReflectiveOperationException | RuntimeException failed) {
+			viaFailed(failed);
+			return false;
+		}
+	}
+
+	/**
 	 * {@code true} when {@code item} already carries the use state - only then may its vanilla use go through: an item
 	 * built before it had the components (they arrive with its next rebuild, usually the first shot) would otherwise
 	 * run its material's own default use, e.g. an armor piece equipping itself.
@@ -159,7 +212,7 @@ public final class TriggerRelease {
 
 	/**
 	 * Adds the use-state components to {@code item} when {@code weapon} {@link #isExact is exact}, and strips them
-	 * when it is not (the switch off, or an older-client plugin installed). A no-op on a server without item
+	 * when it is not (the switch off, or a Bedrock plugin installed). A no-op on a server without item
 	 * components, and whenever the item is already in the wanted state.
 	 */
 	@SuppressWarnings("deprecation")
@@ -235,7 +288,7 @@ public final class TriggerRelease {
 
 	/**
 	 * Spigot's {@code settings.bungeecord} or Paper's {@code proxies.velocity.enabled} - where an older-client plugin
-	 * may run on the proxy, out of {@link #olderClientBridge}'s sight.
+	 * may run on the proxy, out of {@link #bedrockBridge}'s and ViaVersion's sight.
 	 */
 	private static boolean behindProxy() {
 		try {
@@ -248,9 +301,34 @@ public final class TriggerRelease {
 		       YamlConfiguration.loadConfiguration(paperGlobal).getBoolean("proxies.velocity.enabled");
 	}
 
+	private static void bindViaVersion() {
+		viaApi = viaPlayerVersion = null;
+		viaFailureLogged.set(false);
+		// only asked while the mode is on - off, every client is on the fallback anyway
+		viaVersion = supported && enabled && Bukkit.getPluginManager().getPlugin("ViaVersion") != null;
+		if (!viaVersion) return;
+
+		try {
+			// reflective, like the recoil: Bartizan names no ViaVersion type (plugin.yml softdepends on it)
+			viaApi           = Class.forName("com.viaversion.viaversion.api.Via").getMethod("getAPI");
+			viaPlayerVersion = Class.forName("com.viaversion.viaversion.api.ViaAPI")
+			                        .getMethod("getPlayerVersion", UUID.class);
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError failed) {
+			viaFailed(failed);
+		}
+	}
+
+	private static void viaFailed(Throwable failed) {
+		// not asked again until the next configure: one failure, one warning, the fallback for everyone
+		viaApi = viaPlayerVersion = null;
+		if (!viaFailureLogged.compareAndSet(false, true)) return;
+		log.warn("Trigger release: can't ask ViaVersion for a client's version - repeat-based fallback for every "
+		         + "player until the next reload", failed);
+	}
+
 	@Nullable
-	private static String olderClientBridge() {
-		for (String name : OLDER_CLIENT_BRIDGES) {
+	private static String bedrockBridge() {
+		for (String name : BEDROCK_BRIDGES) {
 			if (Bukkit.getPluginManager().getPlugin(name) != null) return name;
 		}
 		return null;

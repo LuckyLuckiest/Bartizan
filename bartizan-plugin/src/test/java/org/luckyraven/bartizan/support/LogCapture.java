@@ -45,6 +45,12 @@ public final class LogCapture implements AutoCloseable {
 				         event.getMessage().getFormattedMessage().contains(messageFragment));
 	}
 
+	public long count(Level level, String messageFragment) {
+		return appender.events.stream().filter(
+				event -> event.getLevel().equals(level) &&
+				         event.getMessage().getFormattedMessage().contains(messageFragment)).count();
+	}
+
 	@Override
 	public void close() {
 		logger.removeAppender(appender);

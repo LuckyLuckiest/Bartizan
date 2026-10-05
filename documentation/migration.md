@@ -510,3 +510,50 @@ time-to-kill collapses until the consumer sets the scale.
   no new methods of its own.
 - `NpcWeaponFactory.create(Supplier<? extends LivingEntity> shooter, String, double, double)` - new overload
   (a `default` that throws `UnsupportedOperationException` for pre-0.6.0 implementations; Bartizan overrides it).
+
+## 17. 0.6.0 → 0.6.1 — crit sound, per-player trigger release (Keystone 1.13.0)
+
+Still on **Keystone 1.13.0**; no `bartizan-api` changes.
+
+- **Critical hits are audible.** The shipped `settings.yml` `Default_Effects.On_Critical` was one soft
+  `ITEM_SHIELD_BREAK` clunk for the shooter, buried under the hit sound. It is now two sounds: a sharp ding heard
+  only by the shooter (`ENTITY_ARROW_HIT_PLAYER`, pitch 1.6, `Target: source`) and the vanilla crit crunch
+  broadcast at the target (`ENTITY_PLAYER_ATTACK_CRIT`, `At: victim`). A weapon's own `Effects.On_Critical` list
+  still replaces both. **An existing `settings.yml` keeps its old block** (a present `Default_Effects` section is
+  used as written), so replace its `On_Critical` block by hand:
+
+  ```yaml
+  Default_Effects:
+     On_Critical:
+        - Type: Sound
+          Sound: ENTITY_ARROW_HIT_PLAYER
+          Volume: 1.0
+          Pitch: 1.6
+          Target: source
+        - Type: Sound
+          Sound: ENTITY_PLAYER_ATTACK_CRIT
+          Volume: 1.0
+          Pitch: 1.0
+          At: victim
+  ```
+
+  Crits stay as rare as each weapon's `Damage.Critical_Hit.Chance` makes them; the `awp` (10) and `scout` (15) are
+  the easiest to hear it on. A cop NPC that crits a player plays the crunch at the player; the ding goes to the
+  NPC's own (fake) connection, so nobody hears it.
+- **Exact trigger release per player.** 0.5.2-0.6.0 switched the exact mode off for the whole server as soon as
+  ViaBackwards or ViaRewind was installed, so even 1.21.11+ clients got the repeat fallback (up to 4 ticks of fire
+  after release). It is now decided per player: Bartizan asks ViaVersion (reflectively, still only a softdepend)
+  for each client's protocol, and a client at 1.21.2 (protocol 768, the first with `minecraft:consumable`) or
+  newer, including one newer than the server (e.g. 26.x through ViaVersion's forward translation), gets the exact
+  stop on the first tick after release. An
+  older client, or one whose version ViaVersion doesn't know, keeps the fallback; if ViaVersion can't be asked at
+  all, one warning is logged and every player keeps the fallback until the next reload. The startup line reads
+  `Trigger release: exact for 1.21.2+ clients, repeat-based fallback for older ones (asked per player through
+  ViaVersion)`. **Geyser-Spigot or floodgate still switch the exact mode off for everyone** (a Bedrock client joins
+  at the server's protocol, so ViaVersion can't single it out), with the old startup warning.
+- **1.21.2-1.21.10 clients are slowed while holding right-click on a gun.** The gun items still carry the use-state
+  components for everyone; ViaBackwards strips `use_effects` for these clients but keeps `consumable`, so they
+  follow the never-finishing use and get the exact stop too, but without `use_effects` their client slows them to
+  20% (and stops sprinting) while right-click is held. Clients below 1.21.2 lose both components and stay on the
+  repeat fallback, unslowed. If the slowdown matters, set `Exact_Release_Detection: false` (the components come off
+  every gun on its next rebuild).
